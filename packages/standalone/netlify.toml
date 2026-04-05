@@ -1,10 +1,18 @@
 # Local netlify.toml for the standalone package.
 #
-# This file is read by @sveltejs/adapter-netlify during `vite build` to
-# verify the publish directory. Netlify CI uses the repo-root netlify.toml
-# (one level up) for actual deploys. Both files should stay in sync for
-# the build/publish paths.
+# Netlify's monorepo detection selects this file when packages/standalone is
+# chosen as the deploy project, BUT Netlify still runs commands from the
+# repository root (/opt/build/repo), not from inside the package. So the
+# build command must be workspace-aware (pnpm --filter ...) and the publish
+# path must be relative to the repo root.
+#
+# This file and the repo-root netlify.toml are kept in sync deliberately.
+# If you change one, change the other.
 
 [build]
-  command = "vite build"
-  publish = "build"
+  command = "pnpm --filter @rehearsal-block/standalone build"
+  publish = "packages/standalone/build"
+
+[build.environment]
+  NODE_VERSION = "22"
+  PNPM_VERSION = "10"
