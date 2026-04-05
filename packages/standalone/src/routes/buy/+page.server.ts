@@ -20,8 +20,13 @@ export const actions: Actions = {
     // over PUBLIC_SITE_URL so preview deploys work correctly too.
     const origin = url.origin || PUBLIC_SITE_URL;
 
+    // Try to create the Stripe Checkout session. Any errors here stay inside
+    // the try/catch. The redirect below MUST NOT be wrapped in try/catch —
+    // SvelteKit's `redirect()` throws a Redirect object that would be caught
+    // here and mistaken for an error.
+    let session;
     try {
-      const session = await stripe.checkout.sessions.create({
+      session = await stripe.checkout.sessions.create({
         mode: "payment",
         payment_method_types: ["card"],
         line_items: [
@@ -41,19 +46,17 @@ export const actions: Actions = {
         cancel_url: `${origin}/buy?canceled=1`,
         allow_promotion_codes: true,
       });
-
-      if (!session.url) {
-        return fail(500, { error: "Stripe did not return a checkout URL." });
-      }
-
-      redirect(303, session.url);
     } catch (err) {
-      // Re-throw redirect errors so SvelteKit handles them
-      if (err instanceof Response || (err as { status?: number })?.status === 303) {
-        throw err;
-      }
-      console.error("Stripe checkout error:", err);
+      console.error("Stripe checkout session create failed:", err);
       return fail(500, { error: "Could not start checkout. Please try again." });
     }
+
+    if (!session.url) {
+      console.error("Stripe returned a session with no URL:", session.id);
+      return fail(500, { error: "Stripe did not return a checkout URL." });
+    }
+
+    // redirect() throws — must be OUTSIDE the try/catch above.
+    redirect(303, session.url);
   },
 };
