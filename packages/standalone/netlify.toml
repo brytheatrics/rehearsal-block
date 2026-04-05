@@ -1,17 +1,19 @@
-# Local netlify.toml for the standalone package.
+# Netlify build configuration for Rehearsal Block.
 #
-# Netlify's monorepo detection selects this file when packages/standalone is
-# chosen as the deploy project, BUT Netlify still runs commands from the
-# repository root (/opt/build/repo), not from inside the package. So the
-# build command must be workspace-aware (pnpm --filter ...) and the publish
-# path must be relative to the repo root.
+# Why base is set to packages/standalone:
+# - @sveltejs/adapter-netlify resolves `publish` relative to svelte.config.js
+#   (packages/standalone), so `publish = "build"` → packages/standalone/build.
+# - Netlify resolves `publish` relative to `base`. With base = packages/standalone,
+#   `publish = "build"` also → packages/standalone/build.
+# - Setting base explicitly makes both tools agree.
 #
-# This file and the repo-root netlify.toml are kept in sync deliberately.
-# If you change one, change the other.
+# pnpm workspaces still work from this subdirectory because pnpm walks up the
+# directory tree to find pnpm-workspace.yaml at the repo root.
 
 [build]
-  command = "pnpm --filter @rehearsal-block/standalone build"
-  publish = "packages/standalone/build"
+  base = "packages/standalone"
+  command = "pnpm run build"
+  publish = "build"
 
 [build.environment]
   NODE_VERSION = "22"
