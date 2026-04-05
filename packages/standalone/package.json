@@ -1,0 +1,28 @@
+{
+  "name": "@rehearsal-block/standalone",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@rehearsal-block/core": "workspace:*",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.47.10",
+    "stripe": "^17.5.0"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-netlify": "^4.4.0",
+    "@sveltejs/kit": "^2.16.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "svelte": "^5.16.0",
+    "svelte-check": "^4.1.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

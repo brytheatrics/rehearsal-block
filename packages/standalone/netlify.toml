@@ -1,0 +1,10 @@
+# Local netlify.toml for the standalone package.
+#
+# This file is read by @sveltejs/adapter-netlify during `vite build` to
+# verify the publish directory. Netlify CI uses the repo-root netlify.toml
+# (one level up) for actual deploys. Both files should stay in sync for
+# the build/publish paths.
+
+[build]
+  command = "vite build"
+  publish = "build"

@@ -1,0 +1,23 @@
+{
+  "name": "rehearsal-block",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rehearsal scheduler for theatre directors and stage managers. A BRY Theatrics product.",
+  "scripts": {
+    "dev": "pnpm --filter @rehearsal-block/standalone dev",
+    "build": "pnpm --filter @rehearsal-block/standalone build",
+    "preview": "pnpm --filter @rehearsal-block/standalone preview",
+    "check": "pnpm -r --parallel check",
+    "test": "pnpm -r --parallel test"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rehearsal-block",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@rehearsal-block/standalone", "dev"],
+      "port": 5173
+    }
+  ]
+}

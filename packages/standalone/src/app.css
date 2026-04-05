@@ -1,0 +1,154 @@
+@import "./lib/theme.css";
+
+/* --- Modern CSS reset (scoped, minimal) --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  margin: 0 0 var(--space-3) 0;
+  line-height: 1.2;
+  color: var(--color-plum);
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+h2 {
+  font-size: 2rem;
+  font-weight: 600;
+}
+h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 var(--space-4) 0;
+}
+
+a {
+  color: var(--color-teal-dark);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-teal);
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* --- Utility classes used across the app --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+}
+
+.btn:hover {
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--color-teal);
+  color: var(--color-text-inverse);
+  border-color: var(--color-teal);
+}
+.btn-primary:hover {
+  background: var(--color-teal-dark);
+  border-color: var(--color-teal-dark);
+  color: var(--color-text-inverse);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-plum);
+  border-color: var(--color-border-strong);
+}
+.btn-secondary:hover {
+  background: var(--color-bg-alt);
+  color: var(--color-plum);
+}
+
+.btn-plum {
+  background: var(--color-plum);
+  color: var(--color-text-inverse);
+  border-color: var(--color-plum);
+}
+.btn-plum:hover {
+  background: var(--color-plum-light);
+  border-color: var(--color-plum-light);
+  color: var(--color-text-inverse);
+}
+
+.btn-lg {
+  padding: var(--space-4) var(--space-6);
+  font-size: 1.125rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+}
+
+.container-sm {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+}

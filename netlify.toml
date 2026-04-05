@@ -1,0 +1,10 @@
+[build]
+  command = "pnpm --filter @rehearsal-block/standalone build"
+  publish = "packages/standalone/build"
+
+[build.environment]
+  NODE_VERSION = "22"
+  PNPM_VERSION = "10"
+
+# SvelteKit's adapter-netlify automatically handles function routing
+# and SPA redirects. No manual [[redirects]] needed.

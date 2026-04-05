@@ -1,0 +1,70 @@
+/**
+ * BRY Theatrics brand tokens for Rehearsal Block.
+ *
+ * This file is the single source of truth for colors, fonts, and spacing.
+ * Change a value here and the whole app updates. When iterating on the
+ * brand, edit this file and only this file.
+ */
+
+:root {
+  /* --- Brand colors (from BRY Theatrics logo) --- */
+  --color-plum: #2d1f3d;
+  --color-plum-light: #3d2d52;
+  --color-plum-dark: #1e1429;
+  --color-teal: #2e9a8f;
+  --color-teal-light: #3aa69a;
+  --color-teal-dark: #1f7a70;
+
+  /* --- Neutrals --- */
+  --color-bg: #ffffff;
+  --color-bg-alt: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-text: #1a1a1a;
+  --color-text-muted: #6b7280;
+  --color-text-subtle: #9ca3af;
+  --color-text-inverse: #ffffff;
+
+  /* --- Semantic --- */
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fffbeb;
+  --color-success: #10b981;
+  --color-success-bg: #ecfdf5;
+  --color-info: var(--color-teal);
+  --color-info-bg: #f0f9f8;
+
+  /* --- Fonts --- */
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+
+  /* --- Spacing (8pt scale) --- */
+  --space-0: 0;
+  --space-1: 0.25rem; /*  4px */
+  --space-2: 0.5rem;  /*  8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem;    /* 16px */
+  --space-5: 1.5rem;  /* 24px */
+  --space-6: 2rem;    /* 32px */
+  --space-7: 3rem;    /* 48px */
+  --space-8: 4rem;    /* 64px */
+
+  /* --- Border radius --- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px rgba(45, 31, 61, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(45, 31, 61, 0.08), 0 2px 4px -2px rgba(45, 31, 61, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(45, 31, 61, 0.1), 0 4px 6px -4px rgba(45, 31, 61, 0.05);
+
+  /* --- Misc --- */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+}
