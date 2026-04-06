@@ -16,12 +16,10 @@
 
     <div class="hero-actions">
       <a href="/demo" class="btn btn-primary btn-lg">Try the Demo</a>
-      {#if !data.user}
-        <a href="/buy" class="btn btn-secondary btn-lg">Buy - $50</a>
-      {:else if !data.profile?.has_paid}
-        <a href="/buy" class="btn btn-secondary btn-lg">Buy - $50</a>
-      {:else}
+      {#if data.profile?.has_paid}
         <a href="/app" class="btn btn-secondary btn-lg">Go to your shows</a>
+      {:else}
+        <span class="btn btn-secondary btn-lg disabled-link" title="Coming soon">Buy - $50</span>
       {/if}
     </div>
 
@@ -106,6 +104,13 @@
   .feature p {
     color: var(--color-text-muted);
     margin: 0;
+  }
+
+  .disabled-link {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    user-select: none;
   }
 
   @media (max-width: 640px) {
