@@ -19,7 +19,7 @@
   <header class="app-header">
     <div class="container header-inner">
       <a href="/" class="brand">
-        <span class="brand-title">Rehearsal Block</span>
+        <img src="/rehearsal-block-logo.svg" alt="Rehearsal Block" class="brand-logo" />
       </a>
       <nav class="nav">
         {#if data.user && data.profile?.has_paid}
@@ -29,8 +29,8 @@
           <a href="/buy" class="btn btn-primary">Buy Rehearsal Block</a>
         {:else}
           <a href="/demo" class="nav-link">Demo</a>
-          <a href="/login" class="nav-link">Sign In</a>
-          <a href="/buy" class="btn btn-primary">Buy Now</a>
+          <span class="nav-link disabled-link" title="Coming soon">Sign In</span>
+          <span class="btn btn-primary disabled-link" title="Coming soon">Buy Now</span>
         {/if}
       </nav>
     </div>
@@ -61,30 +61,34 @@
   }
 
   .app-header {
-    background: var(--color-plum);
-    color: var(--color-text-inverse);
-    border-bottom: 1px solid var(--color-plum-dark);
+    background: #ffffff;
+    color: var(--color-text);
+    border-bottom: none;
   }
 
   .header-inner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 64px;
+    height: 80px;
+    max-width: 2000px;
+    margin: 0 auto;
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
   }
 
   .brand {
-    color: var(--color-text-inverse);
+    color: var(--color-text);
     text-decoration: none;
     font-family: var(--font-display);
     font-weight: 600;
   }
-  .brand-title {
-    font-size: 1.5rem;
-    letter-spacing: 0.02em;
+  .brand-logo {
+    height: 64px;
+    width: auto;
   }
   .brand:hover {
-    color: var(--color-teal-light);
+    opacity: 0.85;
     text-decoration: none;
   }
 
@@ -95,19 +99,26 @@
   }
 
   .nav-link {
-    color: var(--color-text-inverse);
+    color: var(--color-text);
     text-decoration: none;
     font-weight: 500;
     transition: color var(--transition-fast);
   }
   .nav-link:hover {
-    color: var(--color-teal-light);
+    color: var(--color-teal);
     text-decoration: none;
   }
 
   .nav-email {
     color: var(--color-teal-light);
     font-size: 0.875rem;
+  }
+
+  .disabled-link {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    user-select: none;
   }
 
   .app-main {

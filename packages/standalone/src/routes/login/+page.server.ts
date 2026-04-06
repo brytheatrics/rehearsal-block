@@ -9,7 +9,7 @@ export const actions: Actions = {
     //
     // Reason: the current redirect flow sends users to
     // phnttqdakknrejzbnfwh.supabase.co which looks sketchy on Google's
-    // consent screen — users see a random Supabase project URL instead of
+    // consent screen - users see a random Supabase project URL instead of
     // the Rehearsal Block domain. Switching to ID token flow shows the
     // user "Sign in to rehearsalblock.com" (our domain) and can use a
     // popup/One Tap instead of a full-page redirect. Much better UX.

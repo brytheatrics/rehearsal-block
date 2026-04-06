@@ -4,9 +4,9 @@ A rehearsal scheduler for theatre directors and stage managers. Part of [BRY The
 
 ## Repo Layout
 
-- `packages/core` — Shared TypeScript types, data model, pure logic. No DOM, no Svelte. Imported by every app package.
-- `packages/standalone` — The Rehearsal Block SvelteKit app, deployed to Netlify.
-- `packages/tlt` — (Future) Tacoma Little Theatre scheduler shell. Not yet implemented.
+- `packages/core` - Shared TypeScript types, data model, pure logic. No DOM, no Svelte. Imported by every app package.
+- `packages/standalone` - The Rehearsal Block SvelteKit app, deployed to Netlify.
+- `packages/tlt` - (Future) Tacoma Little Theatre scheduler shell. Not yet implemented.
 
 ## Setup
 

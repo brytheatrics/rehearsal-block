@@ -21,7 +21,7 @@ export const actions: Actions = {
     const origin = url.origin || PUBLIC_SITE_URL;
 
     // Try to create the Stripe Checkout session. Any errors here stay inside
-    // the try/catch. The redirect below MUST NOT be wrapped in try/catch —
+    // the try/catch. The redirect below MUST NOT be wrapped in try/catch -
     // SvelteKit's `redirect()` throws a Redirect object that would be caught
     // here and mistaken for an error.
     let session;
@@ -56,7 +56,7 @@ export const actions: Actions = {
       return fail(500, { error: "Stripe did not return a checkout URL." });
     }
 
-    // redirect() throws — must be OUTSIDE the try/catch above.
+    // redirect() throws - must be OUTSIDE the try/catch above.
     redirect(303, session.url);
   },
 };

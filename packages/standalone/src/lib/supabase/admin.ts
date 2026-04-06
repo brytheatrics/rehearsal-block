@@ -1,7 +1,7 @@
 /**
  * Admin (service-role) Supabase client. Bypasses RLS and has full database
  * access. Use ONLY in server-side code for operations that legitimately need
- * to cross user boundaries — e.g. the Stripe webhook marking a user as paid
+ * to cross user boundaries - e.g. the Stripe webhook marking a user as paid
  * based on the email in the webhook payload (no user session at that moment).
  *
  * Never expose this client to the browser. The env var it uses is not

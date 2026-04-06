@@ -2,7 +2,7 @@ import { redirect } from "@sveltejs/kit";
 import type { LayoutServerLoad } from "./$types";
 
 /**
- * Route guard for /app/* — enforces signed-in + paid.
+ * Route guard for /app/* - enforces signed-in + paid.
  *
  * Note: hooks.server.ts also guards this route, so this is a belt-and-suspenders
  * layer. If hooks logic ever changes, this still protects /app.

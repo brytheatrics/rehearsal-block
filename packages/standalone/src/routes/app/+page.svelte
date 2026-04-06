@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-  <title>My Shows — Rehearsal Block</title>
+  <title>My Shows - Rehearsal Block</title>
 </svelte:head>
 
 <div class="app-page container">
@@ -33,7 +33,7 @@
     </p>
     <p>
       Everything in this page is saved to Supabase under your user ID (<code>{data.user.id}</code>),
-      protected by row-level security policies. No other user — signed in or otherwise —
+      protected by row-level security policies. No other user - signed in or otherwise -
       can read or write your data.
     </p>
     <div class="debug">
@@ -50,7 +50,7 @@
           <dd><code>{data.profile.stripe_customer_id}</code></dd>
         {/if}
         <dt>Signed up</dt>
-        <dd>{data.profile?.created_at ? new Date(data.profile.created_at).toLocaleString() : "—"}</dd>
+        <dd>{data.profile?.created_at ? new Date(data.profile.created_at).toLocaleString() : "-"}</dd>
       </dl>
     </div>
   </div>

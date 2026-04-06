@@ -1,4 +1,4 @@
-# Rehearsal Block — Product Spec
+# Rehearsal Block - Product Spec
 
 ## What This Is
 A sellable web app for theatre directors and stage managers to build rehearsal schedules and (phase 2) send rehearsal/performance reports. Hosted on Netlify, sold through blakeryork.com. Designed so the TLT Rehearsal Scheduler can be migrated onto the same codebase later, sharing ~90% of the code.
@@ -21,10 +21,10 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
 ## Tech Stack
 
 ### Framework & tooling
-- **Vite + vanilla JS modules** or **Svelte** (leaning Svelte for reactive state management — eliminates the "UI out of sync with data" bugs the TLT version has everywhere)
+- **Vite + vanilla JS modules** or **Svelte** (leaning Svelte for reactive state management - eliminates the "UI out of sync with data" bugs the TLT version has everywhere)
 - **TypeScript** recommended but optional
-- **Monorepo structure** with `packages/core` (shared logic), `packages/standalone` (Rehearsal Block), `packages/tlt` (TLT-specific shell) — pnpm workspaces or similar
-- **No backend** for Rehearsal Block v1 — pure client-side
+- **Monorepo structure** with `packages/core` (shared logic), `packages/standalone` (Rehearsal Block), `packages/tlt` (TLT-specific shell) - pnpm workspaces or similar
+- **No backend** for Rehearsal Block v1 - pure client-side
 
 ### Hosting
 - **Netlify free tier** on blakeryork.com
@@ -48,15 +48,15 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
 
 ## Phase 1: Core Scheduler (sellable MVP)
 
-### Setup Page (new — not in TLT version)
-- **Show name** — used in page title, PDF filename, CSV filename, print header
-- **Date range** — first/last day to display
-- **Cast list** — character + actor name pairs (add/remove/reorder)
-- **Event types / badges** — customizable list with colors
+### Setup Page (new - not in TLT version)
+- **Show name** - used in page title, PDF filename, CSV filename, print header
+- **Date range** - first/last day to display
+- **Cast list** - character + actor name pairs (add/remove/reorder)
+- **Event types / badges** - customizable list with colors
   - Defaults: Rehearsal, Dark, Tech, Dress Rehearsal, Performance
   - User can add custom types (Fight Call, Dance Call, Music Rehearsal, etc.)
   - Each type: name, bg color, text color, optional default start/end time
-- **Settings** — font family, color scheme, cast display mode default
+- **Settings** - font family, color scheme, cast display mode default
 
 ### Calendar Grid
 - 7-column CSS grid (Sun–Sat) with equal `minmax(0, 1fr)` columns
@@ -65,20 +65,20 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
 - Day cells: date label, event type badge, time, description, actor chips, notes, location
 - **Learned from TLT**: use real placeholder cells (not `display: none` or `visibility: hidden`) for out-of-range days so print alignment holds
 
-### Sidebar — Cast Chips
+### Sidebar - Cast Chips
 - Draggable actor chips
 - "All Called" chip (maroon, distinct)
 - Cast display toggle: Actor / Character / Both
 - Color-coded chips from palette
 - Groups: create named groups, drag group chip to call all members
-- **Chip display**: first name only, disambiguated with last-initial if duplicates (apply same logic to character names — done in TLT)
+- **Chip display**: first name only, disambiguated with last-initial if duplicates (apply same logic to character names - done in TLT)
 
 ### Day Editor Panel
 - Slide-in from right on click
 - Event type pills (user's custom list)
 - Time pickers (start/end)
 - "What are we doing" description field
-- Who's Called — actor checklist with All/None buttons
+- Who's Called - actor checklist with All/None buttons
 - Notes field with rich text (bold at minimum, contenteditable div)
 - Location field with saveable presets
 
@@ -87,7 +87,7 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
   - Hide end time, actor checklist, description
   - Show call time blocks: Crew Call, Actor Call, + Add Call
   - Editable call labels: `[prefix] CALL` pattern
-  - Call time dropdowns filtered to 2.5 hours before curtain (applied to ALL blocks on Dress/Perf, not just Crew Call — TLT fix)
+  - Call time dropdowns filtered to 2.5 hours before curtain (applied to ALL blocks on Dress/Perf, not just Crew Call - TLT fix)
   - Curtain time displayed below badge in matching color
 - **Learned from TLT**: the data model for this was painful. Don't shove crew call into `block 0.startTime` and actor calls into extra blocks. Model as `calls: [{ label, time }]` on each day.
 
@@ -108,7 +108,7 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
 - **Default dates**: list = actual date range; calendar = Sunday of start week through end date (so first week renders with full 7-day row)
 - **Filter logic**: skip `print-filtered` class on inactive placeholder cells so they always hold grid position
 - PDF via popup window with `document.title` set to show name (controls Chrome's filename)
-- Orientation: list = portrait locked, calendar = landscape locked (Chrome's limitation — can't do "default with override")
+- Orientation: list = portrait locked, calendar = landscape locked (Chrome's limitation - can't do "default with override")
 
 ### Print Formats
 - **Calendar view**: full grid, landscape, per-month headers, `break-inside: avoid` on rows, out-of-range cells as transparent placeholders
@@ -119,7 +119,7 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
 - Manual conflict entry per actor per date
 - Conflict warning icons on checklist and calendar cells
 - Conflict display in editor panel
-- Block drag/drop and click on Dry Tech days (if user marks a day as dry tech — no actors called)
+- Block drag/drop and click on Dry Tech days (if user marks a day as dry tech - no actors called)
 
 ### Groups
 - Create, edit, delete custom groups (like "Ensemble", "Leads", "Dancers")
@@ -135,17 +135,17 @@ TLT directors and stage managers use the TLT version for a show, like it, need i
 Stage managers universally hate writing rehearsal reports. They do them on phones in basements with no wifi. Building this right is a real product moat.
 
 ### Core requirements
-- **Offline first** — Service Worker + IndexedDB. App works fully offline, syncs when connection returns.
-- **Rich text editor** — TipTap or Quill. Headers, bullets, bold, link, embedded images.
-- **Photo attachments** — compressed and stored in IndexedDB, uploaded when online.
-- **Report types** — rehearsal, tech, performance, incident (user-customizable templates)
-- **Auto-population** — click a past day, "write report for this rehearsal", get pre-filled with: date, event type, start/end, who was called, notes from that day, conflicts that happened
-- **Department sections** — standard: Scenic, Costumes, Lights, Sound, Props, Production, Stage Management. User can add custom.
-- **Draft queue** — "save as draft" for later, "send when online" for offline-composed reports
-- **Email delivery** — SendGrid, Postmark, or Resend via Netlify Function
-- **Recipient management** — per-show production team email list, CC/BCC options
-- **Send history** — record of what was sent, to whom, when
-- **Templates** — reusable report templates for different shows/theatres
+- **Offline first** - Service Worker + IndexedDB. App works fully offline, syncs when connection returns.
+- **Rich text editor** - TipTap or Quill. Headers, bullets, bold, link, embedded images.
+- **Photo attachments** - compressed and stored in IndexedDB, uploaded when online.
+- **Report types** - rehearsal, tech, performance, incident (user-customizable templates)
+- **Auto-population** - click a past day, "write report for this rehearsal", get pre-filled with: date, event type, start/end, who was called, notes from that day, conflicts that happened
+- **Department sections** - standard: Scenic, Costumes, Lights, Sound, Props, Production, Stage Management. User can add custom.
+- **Draft queue** - "save as draft" for later, "send when online" for offline-composed reports
+- **Email delivery** - SendGrid, Postmark, or Resend via Netlify Function
+- **Recipient management** - per-show production team email list, CC/BCC options
+- **Send history** - record of what was sent, to whom, when
+- **Templates** - reusable report templates for different shows/theatres
 
 ### Pricing leverage
 Reports alone can justify a higher price point or a subscription model. "Free scheduler" → "paid scheduler + reports" is a clean upsell.
@@ -178,12 +178,12 @@ The TLT version manually updates DOM after every state change. Use a reactive fr
 
 ### 3. Modular code
 Split into modules:
-- `core/calendar` — grid building, date logic
-- `core/schedule` — data model, save/load
-- `core/cast` — actor management, display names, groups
-- `core/conflicts` — conflict tracking
-- `core/export` — CSV, PDF, print
-- `core/notes` — rich text editor
+- `core/calendar` - grid building, date logic
+- `core/schedule` - data model, save/load
+- `core/cast` - actor management, display names, groups
+- `core/conflicts` - conflict tracking
+- `core/export` - CSV, PDF, print
+- `core/notes` - rich text editor
 - `ui/calendar-grid`
 - `ui/sidebar`
 - `ui/day-editor`
@@ -209,7 +209,7 @@ Phase 1 = pure client-side. Phase 2 adds minimal Netlify Functions for email sen
 - Recommendation: settle on a neutral brand first (dark blue, charcoal, forest green?) so it doesn't look like a TLT knockoff when selling to other theatres
 
 ### Learned from TLT design work
-- Century Gothic is solid for theatre apps, but Windows-only — use it with fallbacks
+- Century Gothic is solid for theatre apps, but Windows-only - use it with fallbacks
 - Small caps via JavaScript (not CSS `font-variant`) if you want first-letter emphasis
 - Badges in pastel bg + saturated text reads cleanly at small sizes
 - Chip sizing: `display: inline-flex` with content-based width inside a `flex-wrap` container
@@ -241,7 +241,7 @@ Don't port:
 - Dates tab / Callboard integration (save for TLT migration)
 - `_autoPopulateSpecialDays` (user enters everything manually in Rehearsal Block)
 - Location default logic tied to TLT Stage
-- The monolithic single-file structure — split it up
+- The monolithic single-file structure - split it up
 
 ---
 
@@ -337,7 +337,7 @@ Don't port:
 
 ### When Rehearsal Block is stable
 1. Create `packages/tlt` in the monorepo
-2. Add `integrations/google-sheets.ts` — Netlify Function that reads/writes Callboard via service account
+2. Add `integrations/google-sheets.ts` - Netlify Function that reads/writes Callboard via service account
 3. Add TLT-specific initialization: pull cast from Actors tab, dates from Dates tab, etc.
 4. Add admin/director auth layer (Google OAuth with hosted domain restriction to tacomalittletheatre.com)
 5. Deploy to TLT's Netlify subdomain (`scheduler.tacomalittletheatre.com`)

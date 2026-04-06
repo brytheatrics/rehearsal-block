@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-  <title>Payment received — Rehearsal Block</title>
+  <title>Payment received - Rehearsal Block</title>
 </svelte:head>
 
 <div class="success-page container-sm">

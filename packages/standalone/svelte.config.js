@@ -6,7 +6,7 @@ const config = {
   preprocess: vitePreprocess(),
   kit: {
     adapter: adapter({
-      // Use serverless (default) not edge — Stripe's Node SDK doesn't
+      // Use serverless (default) not edge - Stripe's Node SDK doesn't
       // work on edge runtimes.
       edge: false,
       split: false,

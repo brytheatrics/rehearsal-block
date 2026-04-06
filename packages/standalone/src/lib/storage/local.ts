@@ -12,18 +12,18 @@ export const localStorage_: ShowStorage = {
   canWrite: true,
 
   async listShows(): Promise<StoredShow[]> {
-    throw new Error("localStorage storage not yet implemented — fill in next session");
+    throw new Error("localStorage storage not yet implemented - fill in next session");
   },
 
   async loadShow(_id: string): Promise<StoredShow | null> {
-    throw new Error("localStorage storage not yet implemented — fill in next session");
+    throw new Error("localStorage storage not yet implemented - fill in next session");
   },
 
   async saveShow(_show: StoredShow): Promise<StoredShow> {
-    throw new Error("localStorage storage not yet implemented — fill in next session");
+    throw new Error("localStorage storage not yet implemented - fill in next session");
   },
 
   async deleteShow(_id: string): Promise<void> {
-    throw new Error("localStorage storage not yet implemented — fill in next session");
+    throw new Error("localStorage storage not yet implemented - fill in next session");
   },
 };

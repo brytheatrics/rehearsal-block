@@ -13,7 +13,7 @@
  *
  * Security notes:
  * - Uses the admin (service-role) Supabase client because at webhook time
- *   there's no user session — we're acting on behalf of the system.
+ *   there's no user session - we're acting on behalf of the system.
  * - Never trusts the request body without signature verification.
  * - Idempotent: running twice on the same event is harmless.
  */
@@ -47,7 +47,7 @@ export const POST: RequestHandler = async ({ request }) => {
         const session = event.data.object as Stripe.Checkout.Session;
 
         if (session.payment_status !== "paid") {
-          // Not paid yet — ignore
+          // Not paid yet - ignore
           return json({ received: true, ignored: "not paid" });
         }
 
@@ -65,7 +65,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
         if (!userId) {
           console.error("Webhook: no user could be matched for session", session.id);
-          // Return 200 anyway — we don't want Stripe to retry this forever.
+          // Return 200 anyway - we don't want Stripe to retry this forever.
           // We'll need manual intervention to fix this user.
           return json({ received: true, error: "no matching user" });
         }
@@ -91,7 +91,7 @@ export const POST: RequestHandler = async ({ request }) => {
       }
 
       default:
-        // Unhandled event types — return 200 so Stripe doesn't retry
+        // Unhandled event types - return 200 so Stripe doesn't retry
         return json({ received: true, ignored: event.type });
     }
   } catch (err) {

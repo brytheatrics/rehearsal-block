@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
   // Verify the session with Stripe and, as a fallback to the webhook,
   // mark the user paid immediately if they're signed in. The webhook will
-  // also do this — this is belt-and-suspenders so the user sees their
+  // also do this - this is belt-and-suspenders so the user sees their
   // unlocked app instantly even if the webhook is slow.
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);

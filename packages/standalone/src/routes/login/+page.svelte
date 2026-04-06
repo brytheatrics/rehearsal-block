@@ -7,7 +7,7 @@
 </script>
 
 <svelte:head>
-  <title>Sign In — Rehearsal Block</title>
+  <title>Sign In - Rehearsal Block</title>
 </svelte:head>
 
 <div class="login-page container-sm">
@@ -22,7 +22,7 @@
           <a href="/buy">Complete your purchase →</a>
         {/if}
       {:else}
-        Use Google or an email magic link — no password required.
+        Use Google or an email magic link - no password required.
       {/if}
     </p>
 

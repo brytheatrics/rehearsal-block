@@ -1,4 +1,4 @@
-# TLT Rehearsal Scheduler — Feature Map
+# TLT Rehearsal Scheduler - Feature Map
 
 This is a comprehensive analysis for rebuilding the TLT app in Rehearsal Block.
 

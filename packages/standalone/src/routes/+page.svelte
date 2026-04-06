@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-  <title>Rehearsal Block — Scheduling for theatre directors and stage managers</title>
+  <title>Rehearsal Block - Scheduling for theatre directors and stage managers</title>
 </svelte:head>
 
 <section class="hero">
@@ -17,9 +17,9 @@
     <div class="hero-actions">
       <a href="/demo" class="btn btn-primary btn-lg">Try the Demo</a>
       {#if !data.user}
-        <a href="/buy" class="btn btn-secondary btn-lg">Buy — $50</a>
+        <a href="/buy" class="btn btn-secondary btn-lg">Buy - $50</a>
       {:else if !data.profile?.has_paid}
-        <a href="/buy" class="btn btn-secondary btn-lg">Buy — $50</a>
+        <a href="/buy" class="btn btn-secondary btn-lg">Buy - $50</a>
       {:else}
         <a href="/app" class="btn btn-secondary btn-lg">Go to your shows</a>
       {/if}
@@ -39,7 +39,7 @@
     </div>
     <div class="feature">
       <h3>Dress + Performance mode</h3>
-      <p>Multiple call times per day — crew, actors, orchestra, whoever. Curtain time front and center.</p>
+      <p>Multiple call times per day - crew, actors, orchestra, whoever. Curtain time front and center.</p>
     </div>
     <div class="feature">
       <h3>Print that actually works</h3>

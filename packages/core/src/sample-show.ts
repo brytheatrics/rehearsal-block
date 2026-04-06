@@ -5,7 +5,7 @@
  * them to sign up or input any data. The save/export actions are disabled
  * in demo mode and trigger a paywall prompt.
  *
- * Keep this reasonably realistic — it's the first impression every
+ * Keep this reasonably realistic - it's the first impression every
  * prospective customer will get.
  */
 
@@ -20,14 +20,14 @@ export const sampleShow: ScheduleDoc = {
     endDate: "2026-06-14",
   },
   cast: [
-    { id: "c1", character: "Romeo", firstName: "Marcus", lastName: "Chen", color: "#1565c0" },
-    { id: "c2", character: "Juliet", firstName: "Ava", lastName: "Rodriguez", color: "#c2185b" },
-    { id: "c3", character: "Mercutio", firstName: "Jordan", lastName: "Patel", color: "#6a1b9a" },
-    { id: "c4", character: "Tybalt", firstName: "Sam", lastName: "O'Brien", color: "#d84315" },
-    { id: "c5", character: "Nurse", firstName: "Diane", lastName: "Walker", color: "#2e7d32" },
+    { id: "c1", character: "Romeo", firstName: "Marcus", middleName: "James", lastName: "Chen", pronouns: "he/him", color: "#1565c0" },
+    { id: "c2", character: "Juliet", firstName: "Ava", lastName: "Rodriguez", pronouns: "she/her", color: "#c2185b" },
+    { id: "c3", character: "Mercutio", firstName: "Michael", lastName: "Patel", pronouns: "he/him", phone: "253-555-0142", color: "#6a1b9a" },
+    { id: "c4", character: "Tybalt", firstName: "Sam", lastName: "O'Brien", pronouns: "they/them", color: "#d84315" },
+    { id: "c5", character: "Nurse", firstName: "Diane", middleName: "Rose", lastName: "Walker", pronouns: "she/her", color: "#2e7d32" },
     { id: "c6", character: "Friar Laurence", firstName: "Theo", lastName: "Nakamura", color: "#5d4037" },
-    { id: "c7", character: "Benvolio", firstName: "Riley", lastName: "Kim", color: "#00838f" },
-    { id: "c8", character: "Lord Capulet", firstName: "Michael", lastName: "Thompson", color: "#424242" },
+    { id: "c7", character: "Benvolio", firstName: "Riley", lastName: "Kim", pronouns: "he/they", color: "#00838f" },
+    { id: "c8", character: "Lord Capulet", firstName: "Michael", lastName: "Thompson", suffix: "Jr.", pronouns: "he/him", color: "#424242" },
   ],
   groups: [
     {
@@ -47,8 +47,6 @@ export const sampleShow: ScheduleDoc = {
       name: "Rehearsal",
       bgColor: "#e3f2fd",
       textColor: "#1565c0",
-      defaultStart: "19:00",
-      defaultEnd: "21:30",
       isDressPerf: false,
     },
     {
@@ -56,8 +54,6 @@ export const sampleShow: ScheduleDoc = {
       name: "Tech",
       bgColor: "#fff3e0",
       textColor: "#e65100",
-      defaultStart: "18:00",
-      defaultEnd: "22:00",
       isDressPerf: false,
     },
     {
@@ -65,7 +61,13 @@ export const sampleShow: ScheduleDoc = {
       name: "Dress Rehearsal",
       bgColor: "#f3e5f5",
       textColor: "#6a1b9a",
-      defaultStart: "19:30",
+      isDressPerf: true,
+    },
+    {
+      id: "performance",
+      name: "Performance",
+      bgColor: "#ffebee",
+      textColor: "#c62828",
       isDressPerf: true,
     },
     {
@@ -105,7 +107,7 @@ export const sampleShow: ScheduleDoc = {
           calledGroupIds: ["g1"],
         },
       ],
-      description: "Blocking 1.1 — street brawl",
+      description: "Blocking 1.1 - street brawl",
       notes: "<p>Fight choreography basics. Stretch before we start.</p>",
       location: "Main Stage",
     },
@@ -129,8 +131,48 @@ export const sampleShow: ScheduleDoc = {
         },
       ],
       description: "Balcony scene (2.2)",
-      notes: "<p>Romeo and Juliet — please have lines memorized through Act 2.</p>",
+      notes: "<p>Romeo and Juliet - please have lines memorized through Act 2.</p>",
       location: "Main Stage",
+    },
+    "2026-05-13": {
+      eventTypeId: "rehearsal",
+      calls: [
+        {
+          id: "call_split_1",
+          label: "",
+          time: "19:00",
+          endTime: "20:00",
+          description: "Fight choreography (3.1)",
+          location: "Main Stage",
+          calledActorIds: ["c1", "c3", "c4"],
+          calledGroupIds: [],
+        },
+        {
+          id: "call_split_2",
+          label: "",
+          time: "19:00",
+          endTime: "21:30",
+          description: "Dance call",
+          location: "Rehearsal Hall",
+          // Mercutio (c3) is also in the fight call - deliberately
+          // double-booked so the editor's warning is visible.
+          calledActorIds: ["c2", "c3", "c5"],
+          calledGroupIds: [],
+        },
+        {
+          id: "call_split_3",
+          label: "",
+          time: "20:00",
+          endTime: "21:30",
+          description: "Blocking polish (3.2)",
+          location: "Main Stage",
+          calledActorIds: ["c1", "c4"],
+          calledGroupIds: [],
+        },
+      ],
+      description: "",
+      notes: "<p>Split call night - check your block before you arrive.</p>",
+      location: "",
     },
     "2026-06-11": {
       eventTypeId: "tech",
@@ -151,21 +193,50 @@ export const sampleShow: ScheduleDoc = {
     "2026-06-13": {
       eventTypeId: "dress",
       calls: [
-        { id: "call5a", label: "Crew Call", time: "17:00", calledActorIds: [], calledGroupIds: [] },
-        { id: "call5b", label: "Actor Call", time: "18:00", calledActorIds: [], calledGroupIds: ["g1", "g2"] },
+        { id: "call5a", label: "Crew", time: "17:00", calledActorIds: [], calledGroupIds: [] },
+        { id: "call5b", label: "Actor", time: "18:00", calledActorIds: [], calledGroupIds: ["g1", "g2"] },
       ],
-      description: "Final dress",
-      notes: "<p>Curtain at 19:30 sharp.</p>",
+      description: "",
+      notes: "<p>Full run with costumes, lights, and sound.</p>",
       location: "Main Stage",
+      curtainTime: "19:30",
     },
   },
   conflicts: [
     { id: "conf1", actorId: "c3", date: "2026-05-06", label: "Work" },
+    {
+      id: "conf2",
+      actorId: "c2",
+      date: "2026-05-11",
+      label: "Night class",
+      startTime: "20:00",
+      endTime: "22:00",
+    },
+    { id: "conf3", actorId: "c5", date: "2026-05-13", label: "Out of town" },
   ],
-  locationPresets: ["Main Stage", "Rehearsal Hall", "Black Box", "Costume Shop"],
+  locationPresets: ["Main Stage", "Rehearsal Hall", "Black Box"],
   settings: {
     fontFamily: "Inter",
+    fontHeading: "Playfair Display",
+    fontTime: "Inter",
+    fontNotes: "Inter",
     castDisplayMode: "actor",
     weekStartsOn: 0,
+    weekdayDefaults: [
+      { enabled: false, startTime: "19:00", endTime: "21:30" }, // Sun
+      { enabled: true, startTime: "19:00", endTime: "21:30" }, // Mon
+      { enabled: true, startTime: "19:00", endTime: "21:30" }, // Tue
+      { enabled: true, startTime: "19:00", endTime: "21:30" }, // Wed
+      { enabled: true, startTime: "19:00", endTime: "21:30" }, // Thu
+      { enabled: true, startTime: "19:00", endTime: "21:30" }, // Fri
+      { enabled: true, startTime: "10:00", endTime: "14:00" }, // Sat
+    ],
+    defaultLocation: "Main Stage",
+    timeIncrementMinutes: 15,
+    dressCallWindowMinutes: 150,
+    timeFormat: "12h",
+    fontSizeScale: "normal",
+    theme: "light",
+    defaultsAssignedDates: [],
   },
 };

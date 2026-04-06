@@ -9,7 +9,7 @@
 </script>
 
 <svelte:head>
-  <title>Buy Rehearsal Block — $50</title>
+  <title>Buy Rehearsal Block - $50</title>
 </svelte:head>
 
 <div class="buy-page container-sm">
@@ -29,7 +29,7 @@
     <ul class="features">
       <li>Unlimited shows, forever</li>
       <li>Cloud sync across all your devices</li>
-      <li>Works offline — edit anywhere, sync when you're back online</li>
+      <li>Works offline - edit anywhere, sync when you're back online</li>
       <li>Calendar + list view, PDF export, CSV export for Google Calendar</li>
       <li>Drag-and-drop cast management with groups and conflict tracking</li>
       <li>Dress and performance modes with multi-call-time blocks</li>
@@ -65,7 +65,7 @@
 
     <div class="secure-note">
       <span>Secure checkout powered by Stripe.</span>
-      <span>You'll enter card details on Stripe's hosted page — we never see or store them.</span>
+      <span>You'll enter card details on Stripe's hosted page - we never see or store them.</span>
     </div>
   </div>
 </div>

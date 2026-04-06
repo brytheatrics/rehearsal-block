@@ -8,8 +8,8 @@
  *
  * Three implementations live alongside this file:
  * - demo.ts: in-memory, read-only sample show. Writes throw a "Buy to unlock" error.
- * - local.ts: localStorage for anonymous or offline users. (Stub — fill in next session.)
- * - supabase.ts: Supabase Postgres for signed-in paid users. (Stub — fill in next session.)
+ * - local.ts: localStorage for anonymous or offline users. (Stub - fill in next session.)
+ * - supabase.ts: Supabase Postgres for signed-in paid users. (Stub - fill in next session.)
  *
  * And an index.ts that picks the right implementation based on the current
  * user state.
