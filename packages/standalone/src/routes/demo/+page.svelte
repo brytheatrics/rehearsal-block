@@ -1299,6 +1299,9 @@
                 <strong>Copy Link</strong>
                 <span>{shareId ? "Copy the share URL to clipboard" : "Publish first to get a link"}</span>
               </button>
+              <div class="share-demo-note">
+                Demo mode - link is a snapshot. In the full version, republishing updates the link live for your cast.
+              </div>
             </div>
           {/if}
         </div>
@@ -1859,6 +1862,14 @@
   .export-option span {
     font-size: 0.6875rem;
     color: var(--color-text-muted);
+  }
+
+  .share-demo-note {
+    padding: var(--space-2) var(--space-4);
+    font-size: 0.6875rem;
+    color: var(--color-text-subtle);
+    font-style: italic;
+    border-top: 1px solid var(--color-border);
   }
 
   .picker-modal {
