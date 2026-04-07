@@ -31,9 +31,12 @@
   interface Props {
     show: ScheduleDoc;
     onclose: () => void;
+    /** When true, Download PDF opens the paywall instead of generating. */
+    readOnly?: boolean;
+    onpaywall?: () => void;
   }
 
-  const { show, onclose }: Props = $props();
+  const { show, onclose, readOnly = false, onpaywall }: Props = $props();
 
   // ---- View mode ----
   let mode = $state<"calendar" | "list">("calendar");
@@ -690,7 +693,14 @@
     <button
       type="button"
       class="btn btn-primary"
-      onclick={handleDownloadPdf}
+      onclick={() => {
+        if (readOnly && onpaywall) {
+          onclose();
+          onpaywall();
+        } else {
+          handleDownloadPdf();
+        }
+      }}
       disabled={downloading}
     >
       {downloading ? "Generating..." : "Download PDF"}

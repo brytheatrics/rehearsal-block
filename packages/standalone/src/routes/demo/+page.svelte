@@ -1374,7 +1374,12 @@
 {/if}
 
 {#if exportOpen}
-  <ExportModal show={doc} onclose={() => (exportOpen = false)} />
+  <ExportModal
+    show={doc}
+    onclose={() => (exportOpen = false)}
+    readOnly
+    onpaywall={() => (paywallOpen = true)}
+  />
 {/if}
 
 {#if printPickerOpen}
