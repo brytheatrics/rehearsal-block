@@ -24,9 +24,7 @@
 
 [functions]
   directory = ".netlify/functions-internal"
-  node_bundler = "esbuild"
-  external_node_modules = ["@sparticuz/chromium", "follow-redirects"]
-  included_files = ["node_modules/@sparticuz/**", "node_modules/follow-redirects/**", "../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/**", "../../node_modules/.pnpm/follow-redirects@*/node_modules/follow-redirects/**"]
+  node_bundler = "nft"
 
 [build.environment]
   NODE_VERSION = "22"
