@@ -16,7 +16,8 @@
   interface Props {
     show: ScheduleDoc;
     selectedDate: IsoDate | null;
-    onselectday: (date: IsoDate) => void;
+    selectedDates?: Set<IsoDate>;
+    onselectday: (date: IsoDate, shiftKey?: boolean, ctrlKey?: boolean) => void;
     onremoveactor?: (date: IsoDate, callId: string, actorId: string) => void;
     onremovegroup?: (date: IsoDate, callId: string, groupId: string) => void;
     onremoveallcalled?: (date: IsoDate, callId: string) => void;
@@ -28,6 +29,7 @@
   const {
     show,
     selectedDate,
+    selectedDates = new Set(),
     onselectday,
     onremoveactor,
     onremovegroup,
@@ -63,6 +65,7 @@
             day={show.schedule[cell.date]}
             {show}
             selected={selectedDate === cell.date}
+            rangeSelected={selectedDates.has(cell.date)}
             onselect={onselectday}
             {onremoveactor}
             {onremovegroup}

@@ -17,6 +17,7 @@ import type {
   CastMember,
   Conflict,
   Group,
+  LocationPreset,
   ScheduleDay,
   Settings,
 } from "./types.js";
@@ -133,6 +134,60 @@ export function locationColor(
   }
   const idx = Math.abs(hash) % palette.length;
   return palette[idx] ?? null;
+}
+
+/** Shapes for location markers - distinguishable at small print sizes and B&W. */
+export const LOCATION_SHAPES = ["\u25A0", "\u25CF", "\u25B2", "\u25C6", "\u2605", "\u25AE", "\u2B22", "\u271A"] as const;
+
+/**
+ * Consistent shape for a location name. Same name always gets the same
+ * shape so locations are distinguishable even in B&W print.
+ */
+export function locationShape(name: string): string {
+  const key = name.trim().toLowerCase();
+  if (!key) return "\u25A0";
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(hash) % LOCATION_SHAPES.length;
+  return LOCATION_SHAPES[idx] ?? "\u25A0";
+}
+
+/**
+ * Find a location preset by name (case-insensitive).
+ */
+export function findLocationPreset(
+  name: string,
+  presets?: LocationPreset[],
+): LocationPreset | undefined {
+  if (!presets || presets.length === 0) return undefined;
+  const key = name.trim().toLowerCase();
+  return presets.find((p) => p.name.trim().toLowerCase() === key);
+}
+
+/**
+ * Get the effective color for a location - custom override or auto-hashed.
+ */
+export function effectiveLocationColor(
+  name: string,
+  presets?: LocationPreset[],
+): string | null {
+  const preset = findLocationPreset(name, presets);
+  if (preset?.color) return preset.color;
+  return locationColor(name);
+}
+
+/**
+ * Get the effective shape for a location - custom override or auto-hashed.
+ */
+export function effectiveLocationShape(
+  name: string,
+  presets?: LocationPreset[],
+): string {
+  const preset = findLocationPreset(name, presets);
+  if (preset?.shape) return preset.shape;
+  return locationShape(name);
 }
 
 /** Effective description: call override → day default → "". */

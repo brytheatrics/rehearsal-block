@@ -21,7 +21,16 @@
     Settings,
     WeekdayDefault,
   } from "@rehearsal-block/core";
-  import { EVENT_TYPE_COLOR_PALETTE, locationColor } from "@rehearsal-block/core";
+  import {
+    EVENT_TYPE_COLOR_PALETTE,
+    LOCATION_COLOR_PALETTE,
+    LOCATION_SHAPES,
+    locationColor,
+    locationShape,
+    effectiveLocationColor,
+    effectiveLocationShape,
+    findLocationPreset,
+  } from "@rehearsal-block/core";
   import MiniCalendarPicker from "./MiniCalendarPicker.svelte";
   import TimePicker from "./TimePicker.svelte";
 
@@ -35,6 +44,8 @@
     onremoveeventtype: (id: string) => void;
     onassigneventtype: (typeId: string, iso: string) => void;
     onclose: () => void;
+    onconvertgroups?: (mode: "collapse" | "expand") => void;
+    onupdatelocationpreset?: (name: string, patch: { color?: string; shape?: string }) => void;
   }
 
   const {
@@ -47,10 +58,16 @@
     onremoveeventtype,
     onassigneventtype,
     onclose,
+    onconvertgroups,
+    onupdatelocationpreset,
   }: Props = $props();
 
   /** Which event type's color popover is open, if any. */
   let etColorPopoverFor = $state<string | null>(null);
+  /** Which location's customizer is expanded. */
+  let locCustomizeFor = $state<string | null>(null);
+
+  const availableShapes = LOCATION_SHAPES;
 
   /** Which event type's mini-calendar popover is open, if any. */
   let calendarForTypeId = $state<string | null>(null);
@@ -455,6 +472,50 @@
 
     <section class="section">
       <div class="section-header">
+        <h3>Group drop behavior</h3>
+        <p class="hint">
+          When you drag a group onto a day, should it add the group as one
+          chip or expand into individual actor names?
+        </p>
+      </div>
+      <div class="increment-row">
+        <button
+          type="button"
+          class="increment-chip"
+          class:selected={(show.settings.groupDropMode ?? "group") === "group"}
+          onclick={() => onchange({ groupDropMode: "group" })}
+        >
+          Group chip
+        </button>
+        <button
+          type="button"
+          class="increment-chip"
+          class:selected={(show.settings.groupDropMode ?? "group") === "expand"}
+          onclick={() => onchange({ groupDropMode: "expand" })}
+        >
+          Individual actors
+        </button>
+      </div>
+      <div class="convert-row">
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          onclick={() => onconvertgroups?.("collapse")}
+        >
+          Collapse actors into groups
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          onclick={() => onconvertgroups?.("expand")}
+        >
+          Expand groups into actors
+        </button>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
         <h3>Call times per weekday</h3>
         <p class="hint">
           New days on enabled weekdays pre-fill with these times. Disabled
@@ -644,32 +705,88 @@
           to toggle it as default.
         </p>
       </div>
+      <label class="shape-toggle">
+        <input
+          type="checkbox"
+          checked={show.settings.showLocationShapes ?? false}
+          onchange={(e) => onchange({ showLocationShapes: e.currentTarget.checked })}
+        />
+        <span>Show location shapes next to call times</span>
+      </label>
       <ul class="location-list">
         {#each show.locationPresets as preset (preset)}
-          {@const color = locationColor(preset) ?? "var(--color-text-muted)"}
+          {@const presetV2 = findLocationPreset(preset, show.locationPresetsV2)}
+          {@const color = effectiveLocationColor(preset, show.locationPresetsV2) ?? "var(--color-text-muted)"}
+          {@const shape = effectiveLocationShape(preset, show.locationPresetsV2)}
           {@const isDefault = show.settings.defaultLocation === preset}
-          <li class="location-row">
-            <button
-              type="button"
-              class="star-btn"
-              class:starred={isDefault}
-              aria-label={isDefault
-                ? `Unset ${preset} as default`
-                : `Set ${preset} as default`}
-              onclick={() => setDefaultLocation(preset)}
-            >
-              {isDefault ? "★" : "☆"}
-            </button>
-            <span class="swatch" style:background={color}></span>
-            <span class="location-name">{preset}</span>
-            <button
-              type="button"
-              class="remove-btn"
-              aria-label={`Remove ${preset}`}
-              onclick={() => onremovelocationpreset(preset)}
-            >
-              Remove
-            </button>
+          {@const isExpanded = locCustomizeFor === preset}
+          <li class="location-row-wrap">
+            <div class="location-row">
+              <button
+                type="button"
+                class="star-btn"
+                class:starred={isDefault}
+                aria-label={isDefault
+                  ? `Unset ${preset} as default`
+                  : `Set ${preset} as default`}
+                onclick={() => setDefaultLocation(preset)}
+              >
+                {isDefault ? "★" : "☆"}
+              </button>
+              <button
+                type="button"
+                class="swatch"
+                style:background={color}
+                onclick={() => (locCustomizeFor = isExpanded ? null : preset)}
+                title="Customize color and shape"
+              >
+                {show.settings.showLocationShapes ? shape : ""}
+              </button>
+              <span class="location-name">{preset}</span>
+              <button
+                type="button"
+                class="remove-btn"
+                aria-label={`Remove ${preset}`}
+                onclick={() => onremovelocationpreset(preset)}
+              >
+                Remove
+              </button>
+            </div>
+            {#if isExpanded}
+              <div class="loc-customizer">
+                <div class="loc-custom-section">
+                  <span class="loc-custom-label">Shape</span>
+                  <div class="shape-picker">
+                    {#each availableShapes as s (s)}
+                      <button
+                        type="button"
+                        class="shape-option"
+                        class:selected={shape === s}
+                        onclick={() => onupdatelocationpreset?.(preset, { shape: s })}
+                      >
+                        {s}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+                <div class="loc-custom-section">
+                  <span class="loc-custom-label">Color</span>
+                  <div class="color-picker">
+                    {#each LOCATION_COLOR_PALETTE as c (c)}
+                      <button
+                        type="button"
+                        class="color-option"
+                        class:selected={color === c}
+                        style:background={c}
+                        title={c}
+                        aria-label={`Color ${c}`}
+                        onclick={() => onupdatelocationpreset?.(preset, { color: c })}
+                      ></button>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+            {/if}
           </li>
         {/each}
 
@@ -841,6 +958,94 @@
   }
 
   .weekday-list,
+  .location-row-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .loc-customizer {
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    margin-left: 2rem;
+    border-left: 2px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .loc-custom-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .loc-custom-label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-subtle);
+    font-weight: 700;
+  }
+
+  .shape-picker {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .shape-option {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .shape-option:hover {
+    border-color: var(--color-plum);
+  }
+  .shape-option.selected {
+    border-color: var(--color-plum);
+    background: var(--color-plum);
+    color: var(--color-text-inverse);
+  }
+
+  .color-picker {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .color-option {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .color-option:hover {
+    border-color: var(--color-text);
+  }
+  .color-option.selected {
+    border-color: var(--color-text);
+    box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-text);
+  }
+
+  .shape-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.8125rem;
+    color: var(--color-text);
+    cursor: pointer;
+    margin-bottom: var(--space-3);
+  }
+
   .location-list {
     list-style: none;
     padding: 0;
@@ -1120,6 +1325,17 @@
     display: flex;
     gap: var(--space-2);
     flex-wrap: wrap;
+  }
+
+  .convert-row {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+
+  .btn-sm {
+    font-size: 0.75rem;
+    padding: var(--space-1) var(--space-3);
   }
 
   .increment-chip {

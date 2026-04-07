@@ -27,8 +27,11 @@ import { castDisplayNames } from "./cast.js";
 import {
   effectiveDescription,
   effectiveLocation,
+  effectiveLocationColor,
+  effectiveLocationShape,
   expandCalledActorIds,
   locationColor,
+  locationShape,
 } from "./schedule.js";
 import { formatTime } from "./time.js";
 import {
@@ -161,47 +164,64 @@ export function buildCsvContent(
     const gcalDate = isoToGCalDate(iso);
 
     if (day.calls.length === 0) {
-      // Day with a type badge but no calls (e.g. Dark day)
-      rows.push(
-        [
-          csvEscape(doc.show.name + " " + subject),
-          gcalDate,
-          "",
-          gcalDate,
-          "",
-          "FALSE",
-          "",
-          csvEscape(day.location),
-        ].join(","),
-      );
+      // Day with no calls (e.g. Dark day) - skip since there's nothing to schedule.
       continue;
     }
 
+    // Group calls by location, consolidate into one GCal event per location.
+    // Uses earliest start time and latest end time for each location group.
+    const locationGroups = new Map<string, {
+      startTime: string; // HH:MM raw
+      endTime: string;   // HH:MM raw
+      descParts: string[];
+      calledParts: string[];
+    }>();
+
+    const notes = stripHtml(day.notes ?? "");
+
     for (const call of day.calls) {
+      const loc = effectiveLocation(day, call).trim() || "(no location)";
       const calledLabel = buildCalledLabel(call, doc.cast, doc.groups, names);
       const desc = effectiveDescription(day, call).trim();
-      const loc = effectiveLocation(day, call).trim();
-      const notes = stripHtml(day.notes ?? "");
+      const callLabel = call.label ? `${call.label} ${call.suffix ?? "Call"}` : "";
 
-      const descParts: string[] = [];
-      if (call.label) descParts.push(`${call.label} ${call.suffix ?? "Call"}`);
-      if (calledLabel) descParts.push(calledLabel);
-      if (desc) descParts.push(desc);
-      if (notes) descParts.push(notes);
+      let group = locationGroups.get(loc);
+      if (!group) {
+        group = { startTime: call.time ?? "", endTime: call.endTime ?? "", descParts: [], calledParts: [] };
+        locationGroups.set(loc, group);
+      }
 
-      const startTime = call.time ? formatTime(call.time, timeFmt) : "";
-      const endTime = call.endTime ? formatTime(call.endTime, timeFmt) : "";
+      // Track earliest start and latest end (raw HH:MM comparison works)
+      if (call.time && (!group.startTime || call.time < group.startTime)) {
+        group.startTime = call.time;
+      }
+      if (call.endTime && (!group.endTime || call.endTime > group.endTime)) {
+        group.endTime = call.endTime;
+      }
+
+      // Collect descriptions
+      const parts: string[] = [];
+      if (callLabel) parts.push(callLabel);
+      if (desc) parts.push(desc);
+      if (calledLabel) parts.push(calledLabel);
+      if (parts.length > 0) group.descParts.push(parts.join(": "));
+    }
+
+    for (const [loc, group] of locationGroups) {
+      const descAll = [...group.descParts];
+      if (notes) descAll.push(notes);
+      const location = loc === "(no location)" ? "" : loc;
 
       rows.push(
         [
           csvEscape(doc.show.name + " " + subject),
           gcalDate,
-          startTime,
+          group.startTime ? formatTime(group.startTime, timeFmt) : "",
           gcalDate,
-          endTime,
+          group.endTime ? formatTime(group.endTime, timeFmt) : "",
           "FALSE",
-          csvEscape(descParts.join(" - ")),
-          csvEscape(loc),
+          csvEscape(descAll.join(" | ")),
+          csvEscape(location),
         ].join(","),
       );
     }
@@ -233,6 +253,7 @@ export function buildPlainCsvContent(
     "Called",
     "Location",
     "Notes",
+    "Conflicts",
   ];
   const rows: string[] = [headers.join(",")];
 
@@ -245,9 +266,24 @@ export function buildPlainCsvContent(
     const dayName = d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
     const notes = stripHtml(day.notes ?? "");
 
+    // Build conflicts string for this date
+    const dayConflicts = doc.conflicts.filter((c) => c.date === iso);
+    const conflictStr = dayConflicts
+      .map((c) => {
+        const name = names.get(c.actorId) ?? "?";
+        const label = c.label ? ` (${c.label})` : "";
+        const times = c.startTime && c.endTime
+          ? ` ${formatTime(c.startTime, timeFmt)}-${formatTime(c.endTime, timeFmt)}`
+          : c.startTime
+            ? ` ${formatTime(c.startTime, timeFmt)}+`
+            : "";
+        return `${name}${label}${times}`;
+      })
+      .join("; ");
+
     if (day.calls.length === 0) {
       rows.push(
-        [iso, dayName, csvEscape(typeName), "", "", "", "", "", csvEscape(day.location), csvEscape(notes)].join(","),
+        [iso, dayName, csvEscape(typeName), "", "", "", "", "", csvEscape(day.location), csvEscape(notes), csvEscape(conflictStr)].join(","),
       );
       continue;
     }
@@ -274,6 +310,7 @@ export function buildPlainCsvContent(
           csvEscape(calledLabel),
           csvEscape(loc),
           csvEscape(notes),
+          csvEscape(conflictStr),
         ].join(","),
       );
     }
@@ -603,7 +640,7 @@ export function buildPrintHtml(
       font-size: 7px;
       font-weight: 700;
     }
-    .loc-pill::before { content: "\\25A0 "; }
+    .loc-shape { margin-right: 3px; }
 
     /* Conflicts */
     .conflict-mark {
@@ -614,76 +651,80 @@ export function buildPrintHtml(
     }
 
     /* ---- List mode ---- */
+    /* ---- Compact list mode ---- */
     .list-day {
-      padding: 12px 0;
-      border-bottom: 1px solid #d1d5db;
+      padding: 4px 0;
+      border-bottom: 1px solid #e5e7eb;
       page-break-inside: avoid;
     }
     .list-day-header {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
-      margin-bottom: 6px;
+      margin-bottom: 2px;
     }
     .list-day-date {
       font-family: ${fontHeading}, Georgia, serif;
-      font-size: 13px;
+      font-size: 10px;
       font-weight: 700;
       color: #2d1f3d;
     }
     .list-call {
-      margin: 6px 0;
-      padding: 6px 0 6px 10px;
-      border-left: 3px solid #e5e7eb;
+      margin: 1px 0;
+      padding: 2px 0 2px 8px;
+      border-left: 2px solid #e5e7eb;
     }
     .list-time {
       font-family: ${fontTime}, system-ui, sans-serif;
-      font-size: 11px;
+      font-size: 9px;
       font-weight: 700;
+      display: inline;
     }
     .list-desc {
-      font-size: 10px;
+      font-size: 8px;
       color: #374151;
-      margin-top: 2px;
+      display: inline;
+      margin-left: 4px;
     }
+    .list-desc::before { content: "- "; }
     .list-called {
-      font-size: 10px;
+      font-size: 8px;
       font-weight: 700;
-      margin-top: 2px;
     }
     .list-chips {
-      margin-top: 4px;
+      margin-top: 1px;
     }
     .list-notes {
       font-family: ${fontNotes}, system-ui, sans-serif;
-      font-size: 10px;
+      font-size: 8px;
       color: #4b5563;
       font-style: italic;
-      margin-top: 6px;
-      padding: 4px 8px;
+      margin-top: 2px;
+      padding: 2px 6px;
       background: #f9fafb;
-      border-radius: 3px;
+      border-radius: 2px;
     }
     .list-notes p { margin: 0; display: inline; }
     .list-notes strong { font-weight: 700; font-style: normal; }
     .list-location {
-      font-size: 10px;
+      font-size: 8px;
       color: #6b7280;
-      margin-top: 2px;
+      display: inline;
+      margin-left: 4px;
     }
     .list-location::before { content: "@ "; }
     .list-conflicts {
-      font-size: 9px;
+      font-size: 8px;
       color: #dc2626;
       font-weight: 600;
-      margin-top: 4px;
+      margin-top: 1px;
     }
     .dp-curtain {
       font-family: ${fontTime}, system-ui, sans-serif;
-      font-size: 11px;
+      font-size: 9px;
       font-weight: 700;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .empty-msg {
       text-align: center;
@@ -1067,8 +1108,9 @@ function renderDayCellContent(
       const tr = fmtTimeRange(call, timeFmt);
       if (tr) {
         const loc = effectiveLocation(day, call).trim();
-        const color = loc ? locationColor(loc) : null;
-        html += `<div class="call-time" ${color ? `style="color:${color}"` : ""}>${tr}</div>`;
+        const color = loc ? effectiveLocationColor(loc, doc.locationPresetsV2) : null;
+        const shape = (doc.settings.showLocationShapes && loc) ? `<span class="loc-shape" ${color ? `style="color:${color}"` : ""}>${effectiveLocationShape(loc, doc.locationPresetsV2)}</span>` : "";
+        html += `<div class="call-time" ${color ? `style="color:${color}"` : ""}>${shape}${tr}</div>`;
       }
       const desc = effectiveDescription(day, call).trim();
       if (desc) html += `<div class="call-desc">${escapeHtml(desc)}</div>`;
@@ -1099,8 +1141,9 @@ function renderDayCellContent(
   if (locations.size > 0) {
     html += `<div class="location-footer">`;
     for (const loc of locations) {
-      const color = locationColor(loc);
-      html += `<span class="loc-pill" ${color ? `style="color:${color}"` : ""}>${escapeHtml(loc)}</span> `;
+      const color = effectiveLocationColor(loc, doc.locationPresetsV2);
+      const shape = effectiveLocationShape(loc, doc.locationPresetsV2);
+      html += `<span class="loc-pill" ${color ? `style="color:${color}"` : ""}><span class="loc-shape">${shape}</span>${escapeHtml(loc)}</span> `;
     }
     html += `</div>`;
   }
@@ -1242,7 +1285,7 @@ function buildListDayHtml(
       if (!hasCallContent) continue;
 
       const loc = effectiveLocation(day, call).trim();
-      const color = loc ? locationColor(loc) : null;
+      const color = loc ? effectiveLocationColor(loc, doc.locationPresetsV2) : null;
       html += `<div class="list-call" ${color ? `style="border-left-color:${color}"` : ""}>`;
       const tr = fmtTimeRange(call, timeFmt);
       if (tr) html += `<div class="list-time" ${color ? `style="color:${color}"` : ""}>${tr}</div>`;
@@ -1257,7 +1300,7 @@ function buildListDayHtml(
   }
 
   if (isDressPerf && day.location) {
-    const color = locationColor(day.location);
+    const color = effectiveLocationColor(day.location, doc.locationPresetsV2);
     html += `<div class="list-location" ${color ? `style="color:${color}"` : ""}>${escapeHtml(day.location)}</div>`;
   }
 

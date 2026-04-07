@@ -227,6 +227,26 @@ export interface Settings {
    * changes the type via the day editor's pill row.
    */
   defaultsAssignedDates: string[];
+  /**
+   * How group drops behave:
+   * - "group": drops the group as a single chip (default)
+   * - "expand": expands the group into individual actor chips
+   */
+  groupDropMode?: "group" | "expand";
+  /** Show location shapes next to call times and in location footers. */
+  showLocationShapes?: boolean;
+}
+
+// ------------------------------------------------------------------
+// Location presets
+// ------------------------------------------------------------------
+
+export interface LocationPreset {
+  name: string;
+  /** Custom color override. If not set, auto-hashed from name. */
+  color?: string;
+  /** Custom shape override. If not set, auto-hashed from name. */
+  shape?: string;
 }
 
 // ------------------------------------------------------------------
@@ -242,6 +262,9 @@ export interface ScheduleDoc {
   /** Keyed by ISO date "YYYY-MM-DD". */
   schedule: Record<string, ScheduleDay>;
   conflicts: Conflict[];
+  /** Simple string list (legacy). Use locationPresetsV2 for full config. */
   locationPresets: string[];
+  /** Rich location presets with custom color and shape. */
+  locationPresetsV2?: LocationPreset[];
   settings: Settings;
 }

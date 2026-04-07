@@ -24,6 +24,9 @@
     expandCalledActorIds,
     formatTime,
     locationColor,
+    locationShape,
+    effectiveLocationColor,
+    effectiveLocationShape,
   } from "@rehearsal-block/core";
   import CastChip from "./CastChip.svelte";
   import GroupChip from "./GroupChip.svelte";
@@ -33,7 +36,8 @@
     day: ScheduleDay | undefined;
     show: ScheduleDoc;
     selected: boolean;
-    onselect: (date: string) => void;
+    onselect: (date: string, shiftKey?: boolean, ctrlKey?: boolean) => void;
+    rangeSelected?: boolean;
     /**
      * Remove an actor from a specific call on this day (from a direct
      * cast chip's × button).
@@ -72,6 +76,7 @@
     show,
     selected,
     onselect,
+    rangeSelected = false,
     onremoveactor,
     onremovegroup,
     onremoveallcalled,
@@ -79,6 +84,16 @@
     ondropgroup,
     ondropallcalled,
   }: Props = $props();
+
+  const locPresets = $derived(show.locationPresetsV2);
+
+  // Wrappers that pass presets automatically
+  function locColor(name: string): string | null {
+    return effectiveLocationColor(name, locPresets);
+  }
+  function locShape(name: string): string {
+    return effectiveLocationShape(name, locPresets);
+  }
 
   const eventType = $derived<EventType | undefined>(
     day ? show.eventTypes.find((t) => t.id === day.eventTypeId) : undefined,
@@ -217,9 +232,9 @@
     return out;
   });
 
-  function handleClick() {
+  function handleClick(e: MouseEvent) {
     if (!cell.inRange) return;
-    onselect(cell.date);
+    onselect(cell.date, e.shiftKey, e.ctrlKey || e.metaKey);
   }
 
   function handleKey(e: KeyboardEvent) {
@@ -352,6 +367,7 @@
   class="cell"
   class:placeholder={!cell.inRange}
   class:selected
+  class:range-selected={rangeSelected}
   class:today={cell.isToday}
   class:drag-hot={cellIsDragHot}
   class:shake={shaking}
@@ -486,13 +502,13 @@
           </div>
         {/if}
         {#if day.location}
-          {@const color = locationColor(day.location)}
+          {@const color = locColor(day.location)}
           <div class="location-footer">
             <span
               class="loc-pill"
               style:--loc-color={color ?? "var(--color-text-muted)"}
             >
-              {day.location}
+              <span class="loc-shape">{locShape(day.location)}</span>{day.location}
             </span>
           </div>
         {/if}
@@ -500,7 +516,7 @@
         {#each populatedCalls as call (call.id)}
           {@const desc = effectiveDescription(day, call)}
           {@const loc = effectiveLocation(day, call)}
-          {@const color = loc ? locationColor(loc) : null}
+          {@const color = loc ? locColor(loc) : null}
           {@const groupsForCall = callGroups(call)}
           {@const individuals = directMembers(call)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -514,7 +530,7 @@
             ondragleave={() => handleCallDragLeave(call.id)}
             ondrop={(e) => handleCallDrop(e, call.id)}
           >
-            <div class="time">{timeRange(call)}</div>
+            <div class="time">{#if show.settings.showLocationShapes && loc}<span class="loc-shape" style:color={color}>{locShape(loc)}</span>{/if}{timeRange(call)}</div>
             {#if desc}
               <div class="call-desc">{desc}</div>
             {/if}
@@ -575,12 +591,12 @@
         {#if uniqueLocations.length > 0}
           <div class="location-footer">
             {#each uniqueLocations as loc (loc)}
-              {@const color = locationColor(loc)}
+              {@const color = locColor(loc)}
               <span
                 class="loc-pill"
                 style:--loc-color={color ?? "var(--color-text-muted)"}
               >
-                {loc}
+                <span class="loc-shape">{locShape(loc)}</span>{loc}
               </span>
             {/each}
           </div>
@@ -639,6 +655,11 @@
   .cell.selected {
     border-color: var(--color-plum);
     box-shadow: 0 0 0 2px var(--color-plum);
+  }
+
+  .cell.range-selected {
+    border-color: var(--color-teal);
+    background: rgba(56, 129, 125, 0.06);
   }
 
   /* A chip is hovering over this cell mid-drag. Accent with teal so the
@@ -950,8 +971,8 @@
     white-space: nowrap;
   }
 
-  .loc-pill::before {
-    content: "■ ";
+  .loc-shape {
+    margin-right: 2px;
   }
 
   .conflict-footer {

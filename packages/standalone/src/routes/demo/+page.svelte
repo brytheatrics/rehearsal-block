@@ -23,7 +23,7 @@
     Settings,
     Show,
   } from "@rehearsal-block/core";
-  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf } from "@rehearsal-block/core";
+  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange } from "@rehearsal-block/core";
   import { publishSchedule, buildShareUrlFromId } from "$lib/share";
 
   let { data } = $props();
@@ -117,6 +117,7 @@
   const canRedo = $derived(redoStack.length > 0);
 
   let selectedDate = $state<IsoDate | null>(null);
+  let selectedDates = $state<Set<IsoDate>>(new Set());
   /**
    * Draft ScheduleDay for blank cells the user just opened. We don't
    * auto-commit these to `doc.schedule` - otherwise cancelling out of a
@@ -142,6 +143,7 @@
   );
   let exportDropdownOpen = $state(false);
   let csvPickerOpen = $state(false);
+  let csvEndTimeWarningOpen = $state(false);
   let printPickerOpen = $state(false);
   let clearConfirmOpen = $state(false);
   let conflictToDelete = $state<Conflict | null>(null);
@@ -205,13 +207,42 @@
     };
   }
 
-  function selectDay(iso: IsoDate) {
+  function selectDay(iso: IsoDate, shiftKey?: boolean, ctrlKey?: boolean) {
+    if (shiftKey && selectedDate && selectedDate !== iso) {
+      // Shift-click: select a range from the last selected date to this one
+      const allDates = eachDayOfRange(doc.show.startDate, doc.show.endDate);
+      const startIdx = allDates.indexOf(selectedDate);
+      const endIdx = allDates.indexOf(iso);
+      if (startIdx >= 0 && endIdx >= 0) {
+        const lo = Math.min(startIdx, endIdx);
+        const hi = Math.max(startIdx, endIdx);
+        selectedDates = new Set(allDates.slice(lo, hi + 1));
+      }
+      return;
+    }
+
+    if (ctrlKey) {
+      // Ctrl-click: toggle individual day in the selection.
+      // If this is the first Ctrl-click, include the currently
+      // selected day so it becomes part of the multi-selection.
+      const next = new Set(selectedDates);
+      if (next.size === 0 && selectedDate) {
+        next.add(selectedDate);
+      }
+      if (next.has(iso)) {
+        next.delete(iso);
+      } else {
+        next.add(iso);
+      }
+      selectedDates = next;
+      return;
+    }
+
+    // Normal click: clear multi-select, open the editor
+    selectedDates = new Set();
     if (doc.schedule[iso]) {
-      // Existing day - no draft needed.
       draftDay = null;
     } else {
-      // Blank cell - seed a local draft that lives outside doc.schedule
-      // until the user actually edits something.
       draftDay = emptyDay(iso);
     }
     selectedDate = iso;
@@ -223,11 +254,18 @@
     draftDay = null;
   }
 
-  /** Open the confirmation modal asking the user to clear the current day. */
+  /** Open the confirmation modal asking the user to clear day(s). */
   function requestClearDay() {
-    if (!selectedDate) return;
+    if (!selectedDate && selectedDates.size === 0) return;
     clearConfirmOpen = true;
   }
+
+  /** The dates that will be cleared - either multi-select or just the single selected day. */
+  const clearTargetDates = $derived.by(() => {
+    if (selectedDates.size > 0) return [...selectedDates].sort();
+    if (selectedDate) return [selectedDate];
+    return [];
+  });
 
   /**
    * Wipe the day's content. Behavior depends on ownership:
@@ -248,29 +286,32 @@
    * shouldn't disappear when they reset a day's content.
    */
   function performClearDay() {
-    if (!selectedDate) return;
-    const iso = selectedDate;
-    const existing = doc.schedule[iso];
-    if (!existing) {
-      // Blank-cell draft - discard and close.
-      draftDay = null;
-      selectedDate = null;
-      clearConfirmOpen = false;
-      return;
-    }
+    const targets = clearTargetDates;
+    if (targets.length === 0) return;
     pushUndoImmediate();
-    if (isInDefaults(iso)) {
-      doc.schedule[iso] = {
-        eventTypeId: existing.eventTypeId,
-        calls: [],
-        description: "",
-        notes: "",
-        location: "",
-      };
-    } else {
-      const next = { ...doc.schedule };
-      delete next[iso];
-      doc.schedule = next;
+
+    const next = { ...doc.schedule };
+    for (const iso of targets) {
+      const existing = next[iso];
+      if (!existing) continue;
+      if (isInDefaults(iso)) {
+        next[iso] = {
+          eventTypeId: existing.eventTypeId,
+          calls: [],
+          description: "",
+          notes: "",
+          location: "",
+        };
+      } else {
+        delete next[iso];
+      }
+    }
+    doc.schedule = next;
+
+    // Clean up state
+    draftDay = null;
+    if (targets.length > 1) {
+      selectedDates = new Set();
     }
     clearConfirmOpen = false;
   }
@@ -527,6 +568,18 @@
     }
   }
 
+  function updateLocationPreset(name: string, patch: { color?: string; shape?: string }) {
+    pushUndoImmediate();
+    const presets = doc.locationPresetsV2 ? [...doc.locationPresetsV2] : [];
+    const idx = presets.findIndex((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (idx >= 0) {
+      presets[idx] = { ...presets[idx], ...patch };
+    } else {
+      presets.push({ name, ...patch });
+    }
+    doc.locationPresetsV2 = presets;
+  }
+
   function addEventType(type: EventType) {
     pushUndoImmediate();
     doc.eventTypes = [...doc.eventTypes, type];
@@ -660,6 +713,52 @@
       });
       if (touched) doc.schedule[date] = { ...day, calls: nextCalls };
     }
+  }
+
+  /**
+   * Convert all calls between group chips and individual actor chips.
+   * "collapse": actors that form a complete group get replaced by the group chip.
+   * "expand": group chips get replaced by their member actors.
+   */
+  function convertGroups(mode: "collapse" | "expand") {
+    pushUndoImmediate();
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      let changed = false;
+      const nextCalls = day.calls.map((call) => {
+        if (mode === "expand") {
+          if (call.calledGroupIds.length === 0) return call;
+          const newActorIds = new Set(call.calledActorIds);
+          for (const gid of call.calledGroupIds) {
+            const group = doc.groups.find((g) => g.id === gid);
+            if (group) {
+              for (const mid of group.memberIds) newActorIds.add(mid);
+            }
+          }
+          changed = true;
+          return { ...call, calledGroupIds: [] as string[], calledActorIds: [...newActorIds] };
+        } else {
+          if (call.calledActorIds.length === 0) return call;
+          const remainingActors = new Set(call.calledActorIds);
+          const newGroupIds = [...call.calledGroupIds];
+          for (const group of doc.groups) {
+            if (newGroupIds.includes(group.id)) continue;
+            const allPresent = group.memberIds.length > 0 &&
+              group.memberIds.every((mid) => remainingActors.has(mid));
+            if (allPresent) {
+              newGroupIds.push(group.id);
+              for (const mid of group.memberIds) remainingActors.delete(mid);
+              changed = true;
+            }
+          }
+          if (!changed) return call;
+          return { ...call, calledGroupIds: newGroupIds, calledActorIds: [...remainingActors] };
+        }
+      });
+      if (changed) {
+        doc.schedule[iso as IsoDate] = { ...day, calls: nextCalls };
+      }
+    }
+    showToast(mode === "expand" ? "Groups expanded into actors" : "Actors collapsed into groups");
   }
 
   // --- Cast CRUD (from the CastEditorModal) --------------------------
@@ -802,10 +901,24 @@
     if (!resolved) return;
     const { day, callIndex } = resolved;
     const target = day.calls[callIndex]!;
-    if (target.calledGroupIds.includes(groupId)) return;
-    patchCallAtIndex(iso, day, callIndex, {
-      calledGroupIds: [...target.calledGroupIds, groupId],
-    });
+
+    if (doc.settings.groupDropMode === "expand") {
+      // Expand: add each group member as an individual actor
+      const group = doc.groups.find((g) => g.id === groupId);
+      if (!group) return;
+      const existingIds = new Set(target.calledActorIds);
+      const newIds = group.memberIds.filter((id) => !existingIds.has(id));
+      if (newIds.length === 0) return;
+      patchCallAtIndex(iso, day, callIndex, {
+        calledActorIds: [...target.calledActorIds, ...newIds],
+      });
+    } else {
+      // Group mode (default): add as a group chip
+      if (target.calledGroupIds.includes(groupId)) return;
+      patchCallAtIndex(iso, day, callIndex, {
+        calledGroupIds: [...target.calledGroupIds, groupId],
+      });
+    }
   }
 
   function dropAllCalledOnDate(iso: IsoDate, callId?: string) {
@@ -903,6 +1016,41 @@
       showToast("Nothing on clipboard");
       return;
     }
+
+    // Multi-paste: shift-selected range
+    if (selectedDates.size > 1) {
+      pushUndoImmediate();
+      let count = 0;
+      for (const iso of selectedDates) {
+        if (iso === clipboard.sourceDate && !clipboard.isCut) continue;
+        doc.schedule[iso] = cloneDay(clipboard.day);
+        count++;
+      }
+      if (clipboard.isCut) {
+        const src = clipboard.sourceDate;
+        if (doc.schedule[src] && !selectedDates.has(src)) {
+          if (isInDefaults(src)) {
+            doc.schedule[src] = {
+              eventTypeId: doc.schedule[src]!.eventTypeId,
+              calls: [],
+              description: "",
+              notes: "",
+              location: "",
+            };
+          } else {
+            const next = { ...doc.schedule };
+            delete next[src];
+            doc.schedule = next;
+          }
+        }
+        clipboard = null;
+      }
+      showToast(`Pasted onto ${count} day${count === 1 ? "" : "s"}`);
+      selectedDates = new Set();
+      return;
+    }
+
+    // Single paste
     if (!selectedDate) {
       showToast("Select a day first");
       return;
@@ -913,7 +1061,6 @@
     }
     const targetDay = doc.schedule[selectedDate];
     if (targetDay && targetDay.calls.length > 0) {
-      // Target has content - ask Replace/Merge/Cancel
       pasteConflict = {
         targetDate: selectedDate,
         day: clipboard.day,
@@ -922,7 +1069,6 @@
       };
       return;
     }
-    // Target is blank or has only a skeleton - just paste
     executePaste("replace");
   }
 
@@ -976,12 +1122,14 @@
       }
     }
 
+    const wasCut = clipboard.isCut;
     showToast(
-      clipboard.isCut
+      wasCut
         ? `Moved to ${formatDateShort(targetDate)}`
         : `Pasted onto ${formatDateShort(targetDate)}`,
     );
-    clipboard = null;
+    // Keep clipboard for copy (paste multiple times), clear for cut
+    if (wasCut) clipboard = null;
     pasteConflict = null;
   }
 
@@ -1111,6 +1259,60 @@
     } catch {
       window.prompt("Copy this link to share with your cast:", url);
     }
+  }
+
+  /** Find calls with a start time but no end time. */
+  function findMissingEndTimes(): { date: IsoDate; callIndex: number; label: string; isDressPerf: boolean }[] {
+    const missing: { date: IsoDate; callIndex: number; label: string; isDressPerf: boolean }[] = [];
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      const et = doc.eventTypes.find((t) => t.id === day.eventTypeId);
+      const isDressPerf = et?.isDressPerf ?? false;
+      for (let i = 0; i < day.calls.length; i++) {
+        const call = day.calls[i];
+        if (call.time && !call.endTime) {
+          const label = call.label
+            ? `${call.label} ${call.suffix ?? "Call"}`
+            : et?.name ?? "Call";
+          missing.push({ date: iso as IsoDate, callIndex: i, label, isDressPerf });
+        }
+      }
+    }
+    return missing.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** Add default end times: 2.5hr for rehearsals, 3.5hr for dress/perf. */
+  function autoFillEndTimes() {
+    pushUndoImmediate();
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      const et = doc.eventTypes.find((t) => t.id === day.eventTypeId);
+      const isDressPerf = et?.isDressPerf ?? false;
+      const durationMin = isDressPerf ? 210 : 150; // 3.5hr or 2.5hr
+      for (const call of day.calls) {
+        if (call.time && !call.endTime) {
+          const [h, m] = call.time.split(":").map(Number);
+          const totalMin = h * 60 + m + durationMin;
+          const endH = Math.floor(totalMin / 60) % 24;
+          const endM = totalMin % 60;
+          call.endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+        }
+      }
+    }
+  }
+
+  function exportGcalCsv() {
+    const missing = findMissingEndTimes();
+    if (missing.length > 0) {
+      csvPickerOpen = false;
+      csvEndTimeWarningOpen = true;
+      return;
+    }
+    csvPickerOpen = false;
+    downloadCsv(doc, {
+      mode: "list",
+      startDate: doc.show.startDate,
+      endDate: doc.show.endDate,
+      csvFormat: "gcal",
+    });
   }
 
   function formatHeaderDate(iso: string) {
@@ -1327,6 +1529,7 @@
         <CalendarGrid
           show={doc}
           {selectedDate}
+          {selectedDates}
           onselectday={selectDay}
           onremoveactor={removeActorFromCall}
           onremovegroup={removeGroupFromCall}
@@ -1370,6 +1573,8 @@
     onremoveeventtype={removeEventType}
     onassigneventtype={assignEventTypeToDate}
     onclose={() => (defaultsOpen = false)}
+    onconvertgroups={convertGroups}
+    onupdatelocationpreset={updateLocationPreset}
   />
 {/if}
 
@@ -1377,7 +1582,7 @@
   <ExportModal
     show={doc}
     onclose={() => (exportOpen = false)}
-    readOnly
+    readOnly={typeof window !== "undefined" && window.location.hostname !== "localhost"}
     onpaywall={() => (paywallOpen = true)}
   />
 {/if}
@@ -1454,8 +1659,50 @@
         <button
           type="button"
           class="picker-option"
+          onclick={exportGcalCsv}
+        >
+          <strong>Google Calendar</strong>
+          <span>Formatted for Google Calendar import</span>
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if csvEndTimeWarningOpen}
+  {@const missing = findMissingEndTimes()}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" onclick={() => (csvEndTimeWarningOpen = false)}>
+    <div class="picker-modal" style="max-width:480px" onclick={(e) => e.stopPropagation()}>
+      <h3>Missing end times</h3>
+      <p style="font-size:0.875rem;color:var(--color-text-muted);margin-bottom:var(--space-3)">
+        {missing.length} call{missing.length === 1 ? "" : "s"} {missing.length === 1 ? "doesn't" : "don't"} have
+        end times. Google Calendar needs both start and end to create events.
+        Days with no calls (like dark days) are not included in this export.
+      </p>
+      <ul class="clear-day-list" style="margin-bottom:var(--space-4)">
+        {#each missing as m (m.date + m.callIndex)}
+          <li>{formatDateShort(m.date)} - {m.label}</li>
+        {/each}
+      </ul>
+      <div class="picker-options">
+        <button
+          type="button"
+          class="picker-option"
           onclick={() => {
-            csvPickerOpen = false;
+            csvEndTimeWarningOpen = false;
+          }}
+        >
+          <strong>Go back and fix</strong>
+          <span>Add end times manually in the editor</span>
+        </button>
+        <button
+          type="button"
+          class="picker-option"
+          onclick={() => {
+            autoFillEndTimes();
+            csvEndTimeWarningOpen = false;
             downloadCsv(doc, {
               mode: "list",
               startDate: doc.show.startDate,
@@ -1464,8 +1711,8 @@
             });
           }}
         >
-          <strong>Google Calendar</strong>
-          <span>Formatted for Google Calendar import</span>
+          <strong>Auto-fill and export</strong>
+          <span>Rehearsals: 2.5 hours, Dress/Perf: 3.5 hours</span>
         </button>
       </div>
     </div>
@@ -1567,17 +1814,22 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <h2>Clear this day?</h2>
+      <h2>Clear {clearTargetDates.length === 1 ? "this day" : `${clearTargetDates.length} days`}?</h2>
       <p>
         All calls, description, notes, location, and called cast will be
-        removed from this day.
+        removed from {clearTargetDates.length === 1 ? "this day" : "these days"}:
       </p>
+      <ul class="clear-day-list">
+        {#each clearTargetDates as iso (iso)}
+          <li>{formatDateShort(iso)}</li>
+        {/each}
+      </ul>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick={cancelClearDay}>
           Cancel
         </button>
         <button type="button" class="btn btn-danger" onclick={performClearDay}>
-          Clear day
+          Clear {clearTargetDates.length === 1 ? "day" : `${clearTargetDates.length} days`}
         </button>
       </div>
       <p class="confirm-footer">
@@ -2165,6 +2417,18 @@
   }
   .confirm-modal :global(.btn-danger:hover) {
     background: #b91c1c;
+  }
+
+  .clear-day-list {
+    margin: var(--space-2) 0 var(--space-3);
+    padding-left: var(--space-5);
+    font-size: 0.875rem;
+    color: var(--color-text);
+    max-height: 150px;
+    overflow-y: auto;
+  }
+  .clear-day-list li {
+    margin-bottom: 2px;
   }
 
   .paste-actions {
