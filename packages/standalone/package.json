@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@rehearsal-block/core": "workspace:*",
-    "@sparticuz/chromium": "^143.0.4",
+    "@sparticuz/chromium-min": "^143.0.4",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
     "follow-redirects": "^1.15.11",

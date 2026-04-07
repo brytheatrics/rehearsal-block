@@ -24,7 +24,7 @@
 
 [functions]
   directory = ".netlify/functions-internal"
-  node_bundler = "nft"
+  node_bundler = "esbuild"
 
 [build.environment]
   NODE_VERSION = "22"
