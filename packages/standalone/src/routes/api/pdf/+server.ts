@@ -129,7 +129,7 @@ export const POST: RequestHandler = async ({ request }) => {
       ]);
 
       browser = await puppeteer.default.launch({
-        args: chromium.default.args,
+        args: [...chromium.default.args, "--disable-dev-shm-usage", "--disable-gpu", "--single-process"],
         executablePath: await chromium.default.executablePath(
           "https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.x64.tar",
         ),
@@ -154,9 +154,12 @@ export const POST: RequestHandler = async ({ request }) => {
     // Inject basic body reset
     html = html.replace("</head>", `<style>body{margin:0!important;padding:0!important}</style></head>`);
 
+    // Use networkidle2 (allows 2 outstanding connections) instead of
+    // networkidle0 to reduce memory/time waiting for all resources.
+    // Fonts typically load within the first few connections.
     await page.setContent(html, {
-      waitUntil: "networkidle0",
-      timeout: 15_000,
+      waitUntil: "networkidle2",
+      timeout: 10_000,
     });
 
     const m = body.marginMm ?? 10;
