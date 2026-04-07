@@ -131,7 +131,7 @@ export const POST: RequestHandler = async ({ request }) => {
       browser = await puppeteer.default.launch({
         args: chromium.default.args,
         executablePath: await chromium.default.executablePath(
-          "https://github.com/nicoreed/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.tar",
+          "https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.x64.tar",
         ),
         headless: true,
       });
