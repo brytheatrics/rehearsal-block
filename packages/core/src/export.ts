@@ -21,6 +21,7 @@ import {
   buildCalendarGrid,
   isMonthHeaderRow,
   isWeekRow,
+  type CalendarWeekRow,
 } from "./calendar.js";
 import { castDisplayNames } from "./cast.js";
 import {
@@ -210,17 +211,92 @@ export function buildCsvContent(
 }
 
 /**
+ * Build a plain CSV with one row per scheduled day, showing all call
+ * details in a human-readable table format. Good for spreadsheets,
+ * sharing with production teams, or importing into other tools.
+ */
+export function buildPlainCsvContent(
+  doc: ScheduleDoc,
+  options: ExportOptions,
+): string {
+  const timeFmt = doc.settings.timeFormat ?? "12h";
+  const displayMode = doc.settings.castDisplayMode ?? "actor";
+  const names = castDisplayNames(doc.cast, displayMode);
+  const headers = [
+    "Date",
+    "Day",
+    "Type",
+    "Call",
+    "Start Time",
+    "End Time",
+    "Description",
+    "Called",
+    "Location",
+    "Notes",
+  ];
+  const rows: string[] = [headers.join(",")];
+
+  for (const iso of eachDayOfRange(options.startDate, options.endDate)) {
+    const day = doc.schedule[iso];
+    if (!day) continue;
+    const eventType = doc.eventTypes.find((t) => t.id === day.eventTypeId);
+    const typeName = eventType?.name ?? "";
+    const d = parseIsoDate(iso);
+    const dayName = d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+    const notes = stripHtml(day.notes ?? "");
+
+    if (day.calls.length === 0) {
+      rows.push(
+        [iso, dayName, csvEscape(typeName), "", "", "", "", "", csvEscape(day.location), csvEscape(notes)].join(","),
+      );
+      continue;
+    }
+
+    for (const call of day.calls) {
+      const calledLabel = buildCalledLabel(call, doc.cast, doc.groups, names);
+      const desc = effectiveDescription(day, call).trim();
+      const loc = effectiveLocation(day, call).trim();
+      const callLabel = call.label
+        ? `${call.label} ${call.suffix ?? "Call"}`
+        : call.suffix ?? "";
+      const startTime = call.time ? formatTime(call.time, timeFmt) : "";
+      const endTime = call.endTime ? formatTime(call.endTime, timeFmt) : "";
+
+      rows.push(
+        [
+          iso,
+          dayName,
+          csvEscape(typeName),
+          csvEscape(callLabel),
+          startTime,
+          endTime,
+          csvEscape(desc),
+          csvEscape(calledLabel),
+          csvEscape(loc),
+          csvEscape(notes),
+        ].join(","),
+      );
+    }
+  }
+
+  return rows.join("\n");
+}
+
+/**
  * Download a CSV file. Creates a Blob, generates an object URL,
  * clicks a temporary <a> tag, and cleans up.
  */
-export function downloadCsv(doc: ScheduleDoc, options: ExportOptions): void {
-  const csv = buildCsvContent(doc, options);
+export function downloadCsv(doc: ScheduleDoc, options: ExportOptions & { csvFormat?: "gcal" | "plain" }): void {
+  const csv = (options.csvFormat === "plain")
+    ? buildPlainCsvContent(doc, options)
+    : buildCsvContent(doc, options);
+  const suffix = options.csvFormat === "plain" ? "_Schedule" : "_Google_Calendar";
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download =
-    (doc.show.name || "Schedule").replace(/\s+/g, "_") + "_Schedule.csv";
+    (doc.show.name || "Schedule").replace(/\s+/g, "_") + suffix + ".csv";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -265,7 +341,6 @@ function googleFontsLink(doc: ScheduleDoc): string {
 function formatDateLong(iso: IsoDate): string {
   const d = parseIsoDate(iso);
   return d.toLocaleDateString("en-US", {
-    weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -678,7 +753,6 @@ export function buildPrintHtml(
   const exportDoc = { ...doc, show: exportShow };
 
   const footerOpts = { showFooterLogo, showPageNumbers, showDownloadDate };
-
   if (isCalendar) {
     body += buildCalendarBody(exportDoc, options, names, timeFmt, footerOpts);
   } else {
@@ -687,7 +761,7 @@ export function buildPrintHtml(
 
   const autoprint =
     options.action === "print"
-      ? `<script>document.fonts.ready.then(function(){window.print();})<\/script>`
+      ? `<script>document.fonts.ready.then(function(){window.print();window.close();})<\/script>`
       : "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>${fontsLink}<style>${css}</style></head><body class="${noBgClass.trim()}">${body}${autoprint}</body></html>`;
@@ -781,10 +855,16 @@ function buildCalendarBody(
     : "";
 
   if (usePageWraps) {
-    // Months mode: each month in its own .print-page
+    // Months mode: each month in its own .print-page.
+    // When a week straddles two months, it appears on both pages:
+    // - On the current month's page with next-month cells greyed out
+    // - On the next month's page with previous-month cells greyed out
     const pages: string[] = [];
     let currentPageContent = "";
+    let currentMonth = -1; // 0-indexed month number
     let pageOpen = false;
+    let pendingStraddleRow: CalendarWeekRow | null = null;
+    let pendingStraddleMonth = -1;
 
     for (const row of grid.rows) {
       if (isMonthHeaderRow(row)) {
@@ -793,11 +873,36 @@ function buildCalendarBody(
           currentPageContent = "";
         }
         pageOpen = true;
+        currentMonth = row.month;
         currentMonthLabel = row.label;
         currentPageContent += `<div class="month-label">${escapeHtml(row.label)}</div>`;
         currentPageContent += weekdayRowHtml;
+
+        // If there's a straddling week from the previous month, add it
+        // at the top of this page with previous-month cells greyed out
+        if (pendingStraddleRow) {
+          currentPageContent += buildWeekRowHtml(
+            pendingStraddleRow, doc, names, timeFmt, currentMonthLabel, currentMonth,
+          );
+          pendingStraddleRow = null;
+        }
       } else if (isWeekRow(row)) {
-        currentPageContent += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
+        // Check if this week straddles into the next month
+        const months = new Set(
+          row.cells.filter((c) => c.inRange).map((c) => c.month),
+        );
+
+        if (months.size > 1 && currentMonth >= 0) {
+          // Straddling week: render on current page with other-month cells greyed
+          currentPageContent += buildWeekRowHtml(
+            row, doc, names, timeFmt, currentMonthLabel, currentMonth,
+          );
+          // Save for the next page
+          pendingStraddleRow = row;
+          pendingStraddleMonth = currentMonth;
+        } else {
+          currentPageContent += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
+        }
       }
     }
 
@@ -823,18 +928,26 @@ function buildCalendarBody(
   }
 }
 
-/** Build HTML for a single week row, with optional data-month-label for repeat headers. */
+/**
+ * Build HTML for a single week row.
+ * When `activeMonth` is provided (0-indexed), cells from other months
+ * are rendered as grey placeholders even if they're in range. This is
+ * used for straddling weeks in months mode - the week appears on both
+ * pages, with "wrong month" days greyed out.
+ */
 function buildWeekRowHtml(
-  row: { cells: Array<{ date: string; dayOfMonth: number; inRange: boolean }> },
+  row: { cells: Array<{ date: string; dayOfMonth: number; inRange: boolean; month?: number }> },
   doc: ScheduleDoc,
   names: Map<string, string>,
   timeFmt: "12h" | "24h",
   monthLabel: string,
+  activeMonth?: number,
 ): string {
   let html = `<div class="week-row" data-month-label="${escapeHtml(monthLabel)}">`;
   for (const cell of row.cells) {
-    if (!cell.inRange) {
-      html += `<div class="day-cell placeholder"></div>`;
+    const outsideActiveMonth = activeMonth !== undefined && cell.month !== undefined && cell.month !== activeMonth;
+    if (!cell.inRange || outsideActiveMonth) {
+      html += `<div class="day-cell placeholder"><div class="cell-header"><span class="day-num" style="opacity:0.3">${cell.inRange ? cell.dayOfMonth : ""}</span></div></div>`;
       continue;
     }
     html += `<div class="day-cell">`;
@@ -1170,8 +1283,9 @@ function buildListDayHtml(
 }
 
 /**
- * Open a print popup window with the generated HTML and trigger the
- * browser's native print dialog. Used for "Print" (physical printer).
+ * Open a print popup with the schedule HTML. The browser's print
+ * dialog handles paper size and margins - this is a convenience
+ * shortcut, not a precise layout tool. Use Download PDF for that.
  */
 export function openPrintWindow(
   doc: ScheduleDoc,
@@ -1185,80 +1299,4 @@ export function openPrintWindow(
   }
   popup.document.write(html);
   popup.document.close();
-}
-
-/**
- * Generate and download a real PDF file using html2pdf.js. No browser
- * print dialog involved - one click, direct download. The HTML is
- * rendered to a hidden container, converted to canvas via html2canvas,
- * and output as a multi-page PDF.
- *
- * The caller must pass the `html2pdf` function since it's a browser-
- * only ESM import that can't live in the core package.
- */
-export function downloadPdf(
-  doc: ScheduleDoc,
-  options: PrintOptions,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  html2pdfFn: any,
-): void {
-  const html = buildPrintHtml(doc, {
-    ...options,
-    action: "pdf", // don't auto-print
-  });
-
-  // Create a hidden container to render the HTML
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  // Extract only the body content (skip <html><head>)
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const bodyContent = bodyMatch?.[1] ?? html;
-  const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
-  const styleContent = styleMatch?.[1] ?? "";
-
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "absolute";
-  wrapper.style.left = "-9999px";
-  wrapper.style.top = "0";
-  // Set width based on orientation for proper rendering
-  const isLandscape = options.mode === "calendar";
-  wrapper.style.width = isLandscape ? "1100px" : "800px";
-  const style = document.createElement("style");
-  style.textContent = styleContent;
-  wrapper.appendChild(style);
-  const content = document.createElement("div");
-  content.innerHTML = bodyContent;
-  wrapper.appendChild(content);
-  document.body.appendChild(wrapper);
-
-  const filename =
-    (doc.show.name || "Schedule").replace(/\s+/g, "_") +
-    "_Schedule.pdf";
-
-  const pdfOptions = {
-    margin: isLandscape ? 8 : 10,
-    filename,
-    image: { type: "jpeg", quality: 0.95 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      letterRendering: true,
-    },
-    jsPDF: {
-      unit: "mm",
-      format: isLandscape ? "a4" : "a4",
-      orientation: isLandscape ? "landscape" : "portrait",
-    },
-  };
-
-  html2pdfFn()
-    .set(pdfOptions)
-    .from(wrapper)
-    .save()
-    .then(() => {
-      document.body.removeChild(wrapper);
-    })
-    .catch(() => {
-      document.body.removeChild(wrapper);
-    });
 }

@@ -24,6 +24,7 @@
     Show,
   } from "@rehearsal-block/core";
   import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf } from "@rehearsal-block/core";
+  import { publishSchedule, buildShareUrlFromId } from "$lib/share";
 
   let { data } = $props();
 
@@ -132,7 +133,16 @@
   let showEditorOpen = $state(false);
   let dateEditorOpen = $state(false);
   let exportOpen = $state(false);
+  let shareId = $state<string | null>(null);
+  let shareDropdownOpen = $state(false);
+  let publishing = $state(false);
+  let lastPublishedJson = $state("");
+  const hasUnpublishedChanges = $derived(
+    shareId ? JSON.stringify(doc) !== lastPublishedJson : false,
+  );
   let exportDropdownOpen = $state(false);
+  let csvPickerOpen = $state(false);
+  let printPickerOpen = $state(false);
   let clearConfirmOpen = $state(false);
   let conflictToDelete = $state<Conflict | null>(null);
   /** Toggled by . and , hotkeys to collapse/expand all call cards in
@@ -286,11 +296,10 @@
    * event-dispatch time, so transient elements stay matchable.
    */
   function onWindowClick(e: MouseEvent) {
+    // Close dropdowns on any outside click
+    if (exportDropdownOpen) exportDropdownOpen = false;
+    if (shareDropdownOpen) shareDropdownOpen = false;
     if (!selectedDate) return;
-    // Close the export dropdown on any outside click
-    if (exportDropdownOpen) {
-      exportDropdownOpen = false;
-    }
     if (defaultsOpen || paywallOpen || clearConfirmOpen || conflictToDelete || pasteConflict || castEditorOpen || showEditorOpen || dateEditorOpen || exportOpen)
       return;
     const path = (e.composedPath?.() ?? [e.target]) as EventTarget[];
@@ -1079,6 +1088,31 @@
     return c.label ? `${name} · ${when} · ${c.label}` : `${name} · ${when}`;
   }
 
+  async function publish() {
+    shareDropdownOpen = false;
+    publishing = true;
+    try {
+      shareId = await publishSchedule(doc, shareId);
+      lastPublishedJson = JSON.stringify(doc);
+      showToast(shareId ? "Schedule published!" : "Schedule published!");
+    } catch {
+      showToast("Could not publish schedule");
+    }
+    publishing = false;
+  }
+
+  async function copyShareLink() {
+    shareDropdownOpen = false;
+    if (!shareId) return;
+    const url = buildShareUrlFromId(shareId, window.location.origin);
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Link copied!");
+    } catch {
+      window.prompt("Copy this link to share with your cast:", url);
+    }
+  }
+
   function formatHeaderDate(iso: string) {
     const [y, m, d] = iso.split("-").map(Number);
     const dt = new Date(Date.UTC(y!, m! - 1, d!));
@@ -1185,6 +1219,7 @@
             onclick={(e) => {
               e.stopPropagation();
               exportDropdownOpen = !exportDropdownOpen;
+              shareDropdownOpen = false;
             }}
           >
             Export ▾
@@ -1192,7 +1227,7 @@
           {#if exportDropdownOpen}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="export-dropdown" onclick={(e) => e.stopPropagation()}>
+            <div class="export-dropdown">
               <button
                 type="button"
                 class="export-option"
@@ -1209,12 +1244,7 @@
                 class="export-option"
                 onclick={() => {
                   exportDropdownOpen = false;
-                  openPrintWindow(doc, {
-                    mode: "calendar",
-                    startDate: weekStartOf(doc.show.startDate, doc.settings.weekStartsOn),
-                    endDate: doc.show.endDate,
-                    action: "print",
-                  });
+                  printPickerOpen = true;
                 }}
               >
                 <strong>Print</strong>
@@ -1225,15 +1255,49 @@
                 class="export-option"
                 onclick={() => {
                   exportDropdownOpen = false;
-                  downloadCsv(doc, {
-                    mode: "list",
-                    startDate: doc.show.startDate,
-                    endDate: doc.show.endDate,
-                  });
+                  csvPickerOpen = true;
                 }}
               >
                 <strong>Export CSV</strong>
-                <span>Google Calendar format</span>
+                <span>Download as spreadsheet</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+        <div class="export-dropdown-wrap">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            class:share-has-changes={hasUnpublishedChanges}
+            onclick={(e) => {
+              e.stopPropagation();
+              shareDropdownOpen = !shareDropdownOpen;
+              exportDropdownOpen = false;
+            }}
+          >
+            Share{hasUnpublishedChanges ? " *" : ""} ▾
+          </button>
+          {#if shareDropdownOpen}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="export-dropdown" onclick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                class="export-option"
+                onclick={publish}
+                disabled={publishing}
+              >
+                <strong>{publishing ? "Publishing..." : "Publish"}</strong>
+                <span>{shareId ? "Push latest changes to your cast" : "Create a read-only link for your cast"}</span>
+              </button>
+              <button
+                type="button"
+                class="export-option"
+                onclick={copyShareLink}
+                disabled={!shareId}
+              >
+                <strong>Copy Link</strong>
+                <span>{shareId ? "Copy the share URL to clipboard" : "Publish first to get a link"}</span>
               </button>
             </div>
           {/if}
@@ -1308,6 +1372,96 @@
 
 {#if exportOpen}
   <ExportModal show={doc} onclose={() => (exportOpen = false)} />
+{/if}
+
+{#if printPickerOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" onclick={() => (printPickerOpen = false)}>
+    <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Print</h3>
+      <div class="picker-options">
+        <button
+          type="button"
+          class="picker-option"
+          onclick={() => {
+            printPickerOpen = false;
+            openPrintWindow(doc, {
+              mode: "calendar",
+              startDate: weekStartOf(doc.show.startDate, doc.settings.weekStartsOn),
+              endDate: doc.show.endDate,
+              action: "print",
+              pageBreaks: "months",
+            });
+          }}
+        >
+          <strong>Calendar</strong>
+          <span>Landscape, one month per page</span>
+        </button>
+        <button
+          type="button"
+          class="picker-option"
+          onclick={() => {
+            printPickerOpen = false;
+            openPrintWindow(doc, {
+              mode: "list",
+              startDate: doc.show.startDate,
+              endDate: doc.show.endDate,
+              action: "print",
+              pageBreaks: "months",
+            });
+          }}
+        >
+          <strong>List</strong>
+          <span>Portrait, day-by-day view</span>
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if csvPickerOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" onclick={() => (csvPickerOpen = false)}>
+    <div class="picker-modal" onclick={(e) => e.stopPropagation()}>
+      <h3>Export CSV</h3>
+      <div class="picker-options">
+        <button
+          type="button"
+          class="picker-option"
+          onclick={() => {
+            csvPickerOpen = false;
+            downloadCsv(doc, {
+              mode: "list",
+              startDate: doc.show.startDate,
+              endDate: doc.show.endDate,
+              csvFormat: "plain",
+            });
+          }}
+        >
+          <strong>Spreadsheet</strong>
+          <span>Plain CSV for Excel, Sheets, etc.</span>
+        </button>
+        <button
+          type="button"
+          class="picker-option"
+          onclick={() => {
+            csvPickerOpen = false;
+            downloadCsv(doc, {
+              mode: "list",
+              startDate: doc.show.startDate,
+              endDate: doc.show.endDate,
+              csvFormat: "gcal",
+            });
+          }}
+        >
+          <strong>Google Calendar</strong>
+          <span>Formatted for Google Calendar import</span>
+        </button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 {#if showEditorOpen}
@@ -1656,6 +1810,11 @@
     position: relative;
   }
 
+  .share-has-changes {
+    border-color: var(--color-teal) !important;
+    color: var(--color-teal) !important;
+  }
+
   .export-dropdown {
     position: absolute;
     top: calc(100% + 4px);
@@ -1686,8 +1845,12 @@
   .export-option:last-child {
     border-bottom: none;
   }
-  .export-option:hover {
+  .export-option:hover:not(:disabled) {
     background: var(--color-bg-alt);
+  }
+  .export-option:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
   .export-option strong {
     font-size: 0.875rem;
@@ -1695,6 +1858,56 @@
   }
   .export-option span {
     font-size: 0.6875rem;
+    color: var(--color-text-muted);
+  }
+
+  .picker-modal {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-5);
+    min-width: 300px;
+    max-width: 400px;
+    cursor: default;
+  }
+
+  .picker-modal h3 {
+    font-family: var(--font-display);
+    color: var(--color-plum);
+    font-size: 1.125rem;
+    margin: 0 0 var(--space-4);
+  }
+
+  .picker-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .picker-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+  }
+  .picker-option:hover {
+    border-color: var(--color-teal);
+    background: var(--color-surface);
+  }
+  .picker-option strong {
+    font-size: 0.875rem;
+    color: var(--color-text);
+  }
+  .picker-option span {
+    font-size: 0.75rem;
     color: var(--color-text-muted);
   }
 

@@ -1,11 +1,16 @@
 <script lang="ts">
   import "../app.css";
   import { invalidate } from "$app/navigation";
+  import { page } from "$app/state";
   import { onMount } from "svelte";
 
   let { data, children } = $props();
 
+  /** View pages use their own minimal layout - skip the app shell. */
+  const isViewRoute = $derived(page.url.pathname.startsWith("/view"));
+
   onMount(() => {
+    if (isViewRoute || !data.supabase) return;
     const { data: sub } = data.supabase.auth.onAuthStateChange((_event, newSession) => {
       if (newSession?.expires_at !== data.session?.expires_at) {
         invalidate("supabase:auth");
@@ -15,43 +20,47 @@
   });
 </script>
 
-<div class="app-shell">
-  <header class="app-header">
-    <div class="container header-inner">
-      <a href="/" class="brand">
-        <img src="/rehearsal-block-logo.svg" alt="Rehearsal Block" class="brand-logo" />
-      </a>
-      <nav class="nav">
-        {#if data.user && data.profile?.has_paid}
-          <a href="/app" class="nav-link">My Shows</a>
-          <span class="nav-email">{data.user.email}</span>
-        {:else if data.user}
-          <a href="/buy" class="btn btn-primary">Buy Rehearsal Block</a>
-        {:else}
-          <a href="/demo" class="nav-link">Demo</a>
-          <span class="nav-link disabled-link" title="Coming soon">Sign In</span>
-          <span class="btn btn-primary disabled-link" title="Coming soon">Buy Now</span>
-        {/if}
-      </nav>
-    </div>
-  </header>
-
-  <main class="app-main">
-    {@render children?.()}
-  </main>
-
-  <footer class="app-footer">
-    <div class="container footer-inner">
-      <div class="footer-brand">
-        <img src="/bry-theatrics-logo.png" alt="BRY Theatrics" class="footer-logo" />
-        <span>by <strong>BRY Theatrics</strong></span>
+{#if isViewRoute}
+  {@render children?.()}
+{:else}
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="container header-inner">
+        <a href="/" class="brand">
+          <img src="/rehearsal-block-logo.svg" alt="Rehearsal Block" class="brand-logo" />
+        </a>
+        <nav class="nav">
+          {#if data.user && data.profile?.has_paid}
+            <a href="/app" class="nav-link">My Shows</a>
+            <span class="nav-email">{data.user.email}</span>
+          {:else if data.user}
+            <a href="/buy" class="btn btn-primary">Buy Rehearsal Block</a>
+          {:else}
+            <a href="/demo" class="nav-link">Demo</a>
+            <span class="nav-link disabled-link" title="Coming soon">Sign In</span>
+            <span class="btn btn-primary disabled-link" title="Coming soon">Buy Now</span>
+          {/if}
+        </nav>
       </div>
-      <div class="footer-meta">
-        <span>&copy; {new Date().getFullYear()} BRY Theatrics</span>
+    </header>
+
+    <main class="app-main">
+      {@render children?.()}
+    </main>
+
+    <footer class="app-footer">
+      <div class="container footer-inner">
+        <div class="footer-brand">
+          <img src="/bry-theatrics-logo.png" alt="BRY Theatrics" class="footer-logo" />
+          <span>by <strong>BRY Theatrics</strong></span>
+        </div>
+        <div class="footer-meta">
+          <span>&copy; {new Date().getFullYear()} BRY Theatrics</span>
+        </div>
       </div>
-    </div>
-  </footer>
-</div>
+    </footer>
+  </div>
+{/if}
 
 <style>
   .app-shell {

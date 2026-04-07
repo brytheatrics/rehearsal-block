@@ -16,8 +16,6 @@
   import {
     buildPrintHtml,
     buildPageFooter,
-    downloadCsv,
-    downloadPdf,
     weekStartOf,
   } from "@rehearsal-block/core";
   import type { FooterOpts } from "@rehearsal-block/core";
@@ -343,109 +341,66 @@
 
   let downloading = $state(false);
 
-  function getPageCss(): string {
-    const m = marginValues[marginPreset];
-    const size = pageSizes[pageSize];
-    const w = orientation === "landscape" ? size.h : size.w;
-    const h = orientation === "landscape" ? size.w : size.h;
-    let css = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
-    css += `body { transform: scale(${scale / 100}); transform-origin: top left; }`;
-    if (scale !== 100) {
-      const scaleW = 100 / (scale / 100);
-      css += `body { width: ${scaleW}%; }`;
+  let pdfError = $state("");
+
+  /** Shared fetch to the PDF server endpoint. */
+  async function generatePdf(): Promise<Blob> {
+    const html = buildPrintHtml(show, { ...exportOpts, action: "pdf" });
+    const filename =
+      (show.show.name || "Schedule").replace(/\s+/g, "_") + "_Schedule.pdf";
+
+    const res = await fetch("/api/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        html,
+        pageSize,
+        orientation,
+        marginMm: marginValues[marginPreset],
+        scale,
+        printBackground: printBackgrounds,
+        filename,
+        showFooterLogo,
+        showPageNumbers,
+        showDownloadDate,
+        repeatTitle,
+        showName: show.show.name || "Schedule",
+        fontHeading: show.settings.fontHeading ?? "Playfair Display",
+        showRunDates: showRunDates
+          ? `${new Date(startDate + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })} - ${new Date(endDate + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+          : "",
+      }),
+      signal: AbortSignal.timeout(25_000),
+    });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "Unknown error");
+      throw new Error(msg);
     }
-    if (!printBackgrounds) {
-      css += `.badge,.group-chip,.all-called-chip,.chip-dot{-webkit-print-color-adjust:economy !important;print-color-adjust:economy !important;}`;
-    }
-    return css;
+
+    return res.blob();
   }
 
   async function handleDownloadPdf() {
     downloading = true;
+    pdfError = "";
     try {
-      const html2pdf = (await import("html2pdf.js")).default;
-      const size = pageSizes[pageSize];
-      const m = marginValues[marginPreset];
-      const isLandscape = orientation === "landscape";
-
-      // Build our HTML content
-      const html = buildPrintHtml(show, { ...exportOpts, action: "pdf" });
-
-      // Extract body content and styles
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)(?:<script[\s\S]*?<\/script>)?\s*<\/body>/i);
-      const bodyContent = bodyMatch?.[1] ?? html;
-      const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
-      const styleContent = styleMatch?.[1] ?? "";
-
-      // Build off-screen container
-      const wrapper = document.createElement("div");
-      wrapper.style.position = "absolute";
-      wrapper.style.left = "-9999px";
-      wrapper.style.top = "0";
-
-      // Width based on page size minus margins, scaled
-      const pageW = isLandscape ? size.h : size.w;
-      const contentW = (pageW - m * 2) * (96 / 25.4); // mm to px at 96dpi
-      wrapper.style.width = `${contentW * (scale / 100)}px`;
-
-      const style = document.createElement("style");
-      style.textContent = styleContent;
-      wrapper.appendChild(style);
-      if (bodyClass) wrapper.classList.add(...bodyClass.split(/\s+/).filter(Boolean));
-      const content = document.createElement("div");
-      content.innerHTML = bodyContent;
-      wrapper.appendChild(content);
-      document.body.appendChild(wrapper);
-
+      const blob = await generatePdf();
       const filename =
         (show.show.name || "Schedule").replace(/\s+/g, "_") + "_Schedule.pdf";
-
-      await html2pdf()
-        .set({
-          margin: m * (96 / 25.4) / 2, // mm to approximate px, halved since html2pdf adds its own
-          filename,
-          image: { type: "jpeg", quality: 0.95 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            letterRendering: true,
-          },
-          jsPDF: {
-            unit: "mm",
-            format: [isLandscape ? size.h : size.w, isLandscape ? size.w : size.h],
-            orientation: isLandscape ? "landscape" : "portrait",
-          },
-        })
-        .from(wrapper)
-        .save();
-
-      document.body.removeChild(wrapper);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("PDF generation failed:", err);
+      pdfError = "PDF generation failed. Please try again.";
     }
     downloading = false;
-  }
-
-  function handlePrint() {
-    const html = buildPrintHtml(show, { ...exportOpts, action: "print" });
-    const extraCss = getPageCss();
-    const modifiedHtml = html.replace(
-      "</style></head>",
-      `${extraCss}</style></head>`,
-    );
-
-    const popup = window.open("", "_blank");
-    if (!popup) {
-      alert("Popup blocked. Please allow popups for this site and try again.");
-      return;
-    }
-    popup.document.write(modifiedHtml);
-    popup.document.close();
-  }
-
-  function handleCsv() {
-    downloadCsv(show, { mode, startDate, endDate });
-    onclose();
   }
 
   function onEscape(e: KeyboardEvent) {
@@ -726,6 +681,9 @@
   </div>
 
   <footer class="modal-footer">
+    {#if pdfError}
+      <span class="pdf-error">{pdfError}</span>
+    {/if}
     <button type="button" class="btn btn-secondary" onclick={onclose}>
       Cancel
     </button>
@@ -1053,9 +1011,16 @@
   .modal-footer {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-5);
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-alt);
+  }
+
+  .pdf-error {
+    color: #dc2626;
+    font-size: 0.8125rem;
+    margin-right: auto;
   }
 </style>

@@ -12,39 +12,44 @@ import { sequence } from "@sveltejs/kit/hooks";
 import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from "$env/static/public";
 
 const supabase: Handle = async ({ event, resolve }) => {
-  event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
-    cookies: {
-      getAll: () => event.cookies.getAll(),
-      setAll: (cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) => {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          event.cookies.set(name, value, { ...options, path: "/" });
-        });
+  try {
+    event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
+      cookies: {
+        getAll: () => event.cookies.getAll(),
+        setAll: (cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            event.cookies.set(name, value, { ...options, path: "/" });
+          });
+        },
       },
-    },
-  });
+    });
+  } catch {
+    // Supabase unavailable - set a stub so downstream code doesn't crash
+    event.locals.supabase = null as any;
+  }
 
-  /**
-   * Supabase's `getSession` does not validate the JWT. `safeGetSession`
-   * calls `getUser` first (which does validate) so any compromised session
-   * is rejected before it reaches our code.
-   */
   event.locals.safeGetSession = async () => {
-    const {
-      data: { session },
-    } = await event.locals.supabase.auth.getSession();
-    if (!session) {
+    try {
+      if (!event.locals.supabase) return { session: null, user: null };
+      const {
+        data: { session },
+      } = await event.locals.supabase.auth.getSession();
+      if (!session) {
+        return { session: null, user: null };
+      }
+
+      const {
+        data: { user },
+        error,
+      } = await event.locals.supabase.auth.getUser();
+      if (error) {
+        return { session: null, user: null };
+      }
+
+      return { session, user };
+    } catch {
       return { session: null, user: null };
     }
-
-    const {
-      data: { user },
-      error,
-    } = await event.locals.supabase.auth.getUser();
-    if (error) {
-      return { session: null, user: null };
-    }
-
-    return { session, user };
   };
 
   return resolve(event, {
@@ -55,18 +60,32 @@ const supabase: Handle = async ({ event, resolve }) => {
 };
 
 const authGuard: Handle = async ({ event, resolve }) => {
-  const { session, user } = await event.locals.safeGetSession();
+  let session = null;
+  let user = null;
+
+  try {
+    const result = await event.locals.safeGetSession();
+    session = result.session;
+    user = result.user;
+  } catch {
+    // Supabase unavailable - continue without auth
+  }
+
   event.locals.session = session;
   event.locals.user = user;
 
   // Load profile (has_paid flag) for signed-in users
   if (user) {
-    const { data: profile } = await event.locals.supabase
-      .from("profiles")
-      .select("id, email, has_paid, stripe_customer_id, created_at")
-      .eq("id", user.id)
-      .single();
-    event.locals.profile = profile ?? null;
+    try {
+      const { data: profile } = await event.locals.supabase
+        .from("profiles")
+        .select("id, email, has_paid, stripe_customer_id, created_at")
+        .eq("id", user.id)
+        .single();
+      event.locals.profile = profile ?? null;
+    } catch {
+      event.locals.profile = null;
+    }
   } else {
     event.locals.profile = null;
   }
