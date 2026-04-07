@@ -25,7 +25,8 @@
 [functions]
   directory = ".netlify/functions-internal"
   node_bundler = "esbuild"
-  external_node_modules = ["@sparticuz/chromium-min"]
+  external_node_modules = ["@sparticuz/chromium"]
+  included_files = ["node_modules/@sparticuz/**", "../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/**"]
 
 [build.environment]
   NODE_VERSION = "22"

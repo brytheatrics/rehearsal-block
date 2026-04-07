@@ -125,14 +125,12 @@ export const POST: RequestHandler = async ({ request }) => {
     } else {
       const [puppeteer, chromium] = await Promise.all([
         import("puppeteer-core"),
-        import("@sparticuz/chromium-min"),
+        import("@sparticuz/chromium"),
       ]);
 
       browser = await puppeteer.default.launch({
         args: chromium.default.args,
-        executablePath: await chromium.default.executablePath(
-          "https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.x64.tar",
-        ),
+        executablePath: await chromium.default.executablePath(),
         headless: true,
       });
     }

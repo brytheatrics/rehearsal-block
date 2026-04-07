@@ -19,7 +19,7 @@ importers:
       '@rehearsal-block/core':
         specifier: workspace:*
         version: link:../core
-      '@sparticuz/chromium-min':
+      '@sparticuz/chromium':
         specifier: ^143.0.4
         version: 143.0.4
       '@supabase/ssr':
@@ -536,8 +536,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sparticuz/chromium-min@143.0.4':
-    resolution: {integrity: sha512-vAV731SUEVH0FUmMc+404ZoRq0glq7DlhEGpAX0C7/rXupZ0HasOIJHbrjNNNE+VElenkdmwBm8MVTzwYcFPyQ==}
+  '@sparticuz/chromium@143.0.4':
+    resolution: {integrity: sha512-/6I7uQTRhRDD2/gGPQ1Gkf+Dqk0RYDACPJDZfSzz0OWk4JmUTonNHPXbrn6UIklOHlnDLf8xAAzkOZKB/cJpLA==}
     engines: {node: '>=20.11.0'}
 
   '@standard-schema/spec@1.1.0':
@@ -1536,7 +1536,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@sparticuz/chromium-min@143.0.4':
+  '@sparticuz/chromium@143.0.4':
     dependencies:
       follow-redirects: 1.15.11
       tar-fs: 3.1.2
