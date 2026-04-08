@@ -903,28 +903,50 @@ function buildCalendarBody(
         .replace("Page 0 of 0", "Page <!--PAGE_NUM--> of <!--TOTAL_PAGES-->")
     : "";
 
+  const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+
+  /** Detect month from the last in-range cell of a week row. */
+  function weekMonth(row: CalendarWeekRow): { month: number; year: number; label: string } {
+    const last = [...row.cells].reverse().find((c) => c.inRange) ?? row.cells[0]!;
+    return {
+      month: last.month,
+      year: last.year,
+      label: `${MONTH_NAMES[last.month]} ${last.year}`,
+    };
+  }
+
+  /** Check if a week straddles two months (has in-range cells in different months). */
+  function weekStraddles(row: CalendarWeekRow): boolean {
+    const months = new Set(row.cells.filter((c) => c.inRange).map((c) => c.month));
+    return months.size > 1;
+  }
+
   if (usePageWraps) {
     // Months mode: each month in its own .print-page.
-    // When a week straddles two months, it appears on both pages:
-    // - On the current month's page with next-month cells greyed out
-    // - On the next month's page with previous-month cells greyed out
+    // Detect month boundaries from cell data (no month-header rows).
     const pages: string[] = [];
     let currentPageContent = "";
-    let currentMonth = -1; // 0-indexed month number
+    let currentMonth = -1;
     let pageOpen = false;
     let pendingStraddleRow: CalendarWeekRow | null = null;
-    let pendingStraddleMonth = -1;
 
     for (const row of grid.rows) {
-      if (isMonthHeaderRow(row)) {
+      if (!isWeekRow(row)) continue;
+      const wm = weekMonth(row);
+
+      if (wm.month !== currentMonth) {
+        // New month - close the old page and start a new one
         if (pageOpen) {
           pages.push(`<div class="print-page"><div class="page-content">${currentPageContent}</div>${footerPlaceholder}</div>`);
           currentPageContent = "";
         }
         pageOpen = true;
-        currentMonth = row.month;
-        currentMonthLabel = row.label;
-        currentPageContent += `<div class="month-label">${escapeHtml(row.label)}</div>`;
+        currentMonth = wm.month;
+        currentMonthLabel = wm.label;
+        currentPageContent += `<div class="month-label">${escapeHtml(wm.label)}</div>`;
         currentPageContent += weekdayRowHtml;
 
         // If there's a straddling week from the previous month, add it
@@ -935,23 +957,17 @@ function buildCalendarBody(
           );
           pendingStraddleRow = null;
         }
-      } else if (isWeekRow(row)) {
-        // Check if this week straddles into the next month
-        const months = new Set(
-          row.cells.filter((c) => c.inRange).map((c) => c.month),
-        );
+      }
 
-        if (months.size > 1 && currentMonth >= 0) {
-          // Straddling week: render on current page with other-month cells greyed
-          currentPageContent += buildWeekRowHtml(
-            row, doc, names, timeFmt, currentMonthLabel, currentMonth,
-          );
-          // Save for the next page
-          pendingStraddleRow = row;
-          pendingStraddleMonth = currentMonth;
-        } else {
-          currentPageContent += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
-        }
+      if (weekStraddles(row)) {
+        // Straddling week: render on current page with other-month cells greyed
+        currentPageContent += buildWeekRowHtml(
+          row, doc, names, timeFmt, currentMonthLabel, currentMonth,
+        );
+        // Save for the next page
+        pendingStraddleRow = row;
+      } else {
+        currentPageContent += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
       }
     }
 
@@ -964,14 +980,21 @@ function buildCalendarBody(
   } else {
     // Continuous mode: flat output, pagination handled by ExportModal/browser
     let html = "";
+    let lastMonthKey = "";
     for (const row of grid.rows) {
-      if (isMonthHeaderRow(row)) {
-        currentMonthLabel = row.label;
-        html += `<div class="month-label">${escapeHtml(row.label)}</div>`;
-        html += weekdayRowHtml;
-      } else if (isWeekRow(row)) {
-        html += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
+      if (!isWeekRow(row)) continue;
+      // Check if we need a month label before this week
+      const firstInRange = row.cells.find((c) => c.inRange);
+      if (firstInRange) {
+        const key = `${firstInRange.year}-${firstInRange.month}`;
+        if (key !== lastMonthKey) {
+          currentMonthLabel = `${MONTH_NAMES[firstInRange.month]} ${firstInRange.year}`;
+          html += `<div class="month-label">${escapeHtml(currentMonthLabel)}</div>`;
+          html += weekdayRowHtml;
+          lastMonthKey = key;
+        }
       }
+      html += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
     }
     return html;
   }

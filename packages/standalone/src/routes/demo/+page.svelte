@@ -24,7 +24,7 @@
     Settings,
     Show,
   } from "@rehearsal-block/core";
-  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange } from "@rehearsal-block/core";
+  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays } from "@rehearsal-block/core";
   import { publishSchedule, buildShareUrlFromId } from "$lib/share";
 
   let { data } = $props();
@@ -147,6 +147,98 @@
   let dateFilterEnd = $state<IsoDate | "">("");
   let dateFilterOpen = $state(false);
   const hasDateFilter = $derived(!!(dateFilterStart || dateFilterEnd));
+
+  /** Effective filter range: combines scope + manual filter. Scope takes priority. */
+  const effectiveFilterStart = $derived.by<IsoDate | undefined>(() => {
+    if (scopeMode !== "auto") return scopeRange.start;
+    return dateFilterStart || undefined;
+  });
+  const effectiveFilterEnd = $derived.by<IsoDate | undefined>(() => {
+    if (scopeMode !== "auto") return scopeRange.end;
+    return dateFilterEnd || undefined;
+  });
+
+  // Scope selector: Auto (full range), Month, Week, Day
+  type ScopeMode = "auto" | "month" | "week" | "day";
+  let scopeMode = $state<ScopeMode>("auto");
+  let scopeAnchor = $state<IsoDate>("" as IsoDate); // current position for month/week/day
+
+  // Initialize anchor to show start date
+  $effect(() => {
+    if (!scopeAnchor || scopeAnchor < doc.show.startDate || scopeAnchor > doc.show.endDate) {
+      scopeAnchor = doc.show.startDate;
+    }
+  });
+
+  /** Compute the visible date range for the current scope. */
+  const scopeRange = $derived.by<{ start: IsoDate; end: IsoDate }>(() => {
+    if (scopeMode === "auto") {
+      return { start: doc.show.startDate, end: doc.show.endDate };
+    }
+    const anchor = scopeAnchor || doc.show.startDate;
+    const d = parseIsoDate(anchor);
+    if (scopeMode === "month") {
+      const year = d.getUTCFullYear();
+      const month = d.getUTCMonth();
+      const first = `${year}-${String(month + 1).padStart(2, "0")}-01` as IsoDate;
+      const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      const last = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}` as IsoDate;
+      // Clamp to show range
+      return {
+        start: (first < doc.show.startDate ? doc.show.startDate : first) as IsoDate,
+        end: (last > doc.show.endDate ? doc.show.endDate : last) as IsoDate,
+      };
+    }
+    if (scopeMode === "week") {
+      const ws = weekStartOf(anchor, doc.settings.weekStartsOn);
+      const we = addDays(ws, 6);
+      return {
+        start: (ws < doc.show.startDate ? doc.show.startDate : ws) as IsoDate,
+        end: (we > doc.show.endDate ? doc.show.endDate : we) as IsoDate,
+      };
+    }
+    // day
+    return { start: anchor, end: anchor };
+  });
+
+  function scopeNav(direction: -1 | 1) {
+    const d = parseIsoDate(scopeAnchor || doc.show.startDate);
+    if (scopeMode === "month") {
+      d.setUTCMonth(d.getUTCMonth() + direction);
+    } else if (scopeMode === "week") {
+      d.setUTCDate(d.getUTCDate() + direction * 7);
+    } else if (scopeMode === "day") {
+      // Navigate to prev/next day that has content
+      const allDates = eachDayOfRange(doc.show.startDate, doc.show.endDate);
+      const curIdx = allDates.indexOf(scopeAnchor);
+      const nextIdx = curIdx + direction;
+      if (nextIdx >= 0 && nextIdx < allDates.length) {
+        scopeAnchor = allDates[nextIdx]!;
+        return;
+      }
+      return;
+    }
+    const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}` as IsoDate;
+    // Clamp
+    if (iso < doc.show.startDate) { scopeAnchor = doc.show.startDate; return; }
+    if (iso > doc.show.endDate) { scopeAnchor = doc.show.endDate; return; }
+    scopeAnchor = iso;
+  }
+
+  /** Human-readable label for the current scope position. */
+  const scopeLabel = $derived.by(() => {
+    if (scopeMode === "auto") return "";
+    const d = parseIsoDate(scopeAnchor || doc.show.startDate);
+    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    if (scopeMode === "month") return `${monthNames[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+    if (scopeMode === "week") {
+      const ws = weekStartOf(scopeAnchor || doc.show.startDate, doc.settings.weekStartsOn);
+      const we = addDays(ws, 6);
+      const fmt = (iso: IsoDate) => new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      return `${fmt(ws)} - ${fmt(we)}`;
+    }
+    return new Date((scopeAnchor || doc.show.startDate) + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+  });
   // Inline editing state
   interface InlineEditState {
     date: IsoDate;
@@ -1426,6 +1518,22 @@
     return name;
   }
 
+  /** Map element size presets to CSS rem values. */
+  const SIZE_MAP: Record<string, Record<string, string>> = {
+    eventType:   { sm: "0.5625rem", md: "0.6875rem", lg: "0.8125rem" },
+    time:        { sm: "0.625rem",  md: "0.75rem",   lg: "0.875rem" },
+    description: { sm: "0.5625rem", md: "0.6875rem", lg: "0.8125rem" },
+    castBadge:   { sm: "0.5625rem", md: "0.6875rem", lg: "0.8125rem" },
+    groupBadge:  { sm: "0.5625rem", md: "0.6875rem", lg: "0.8125rem" },
+    notes:       { sm: "0.5rem",    md: "0.625rem",  lg: "0.75rem" },
+    location:    { sm: "0.5625rem", md: "0.6875rem", lg: "0.8125rem" },
+    conflicts:   { sm: "0.5625rem", md: "0.6875rem", lg: "0.8125rem" },
+  };
+
+  function elSize(element: string, size: string | undefined): string {
+    return SIZE_MAP[element]?.[size ?? "md"] ?? SIZE_MAP[element]?.md ?? "0.6875rem";
+  }
+
   function formatHeaderDate(iso: string) {
     const [y, m, d] = iso.split("-").map(Number);
     const dt = new Date(Date.UTC(y!, m! - 1, d!));
@@ -1460,6 +1568,14 @@
     style:--font-heading={cssFont(doc.settings.fontHeading ?? "Playfair Display")}
     style:--font-time={cssFont(doc.settings.fontTime ?? "Inter")}
     style:--font-notes={cssFont(doc.settings.fontNotes ?? "Inter")}
+    style:--size-event-type={elSize("eventType", doc.settings.sizeEventType)}
+    style:--size-time={elSize("time", doc.settings.sizeTime)}
+    style:--size-description={elSize("description", doc.settings.sizeDescription)}
+    style:--size-cast-badge={elSize("castBadge", doc.settings.sizeCastBadge)}
+    style:--size-group-badge={elSize("groupBadge", doc.settings.sizeGroupBadge)}
+    style:--size-notes={elSize("notes", doc.settings.sizeNotes)}
+    style:--size-location={elSize("location", doc.settings.sizeLocation)}
+    style:--size-conflicts={elSize("conflicts", doc.settings.sizeConflicts)}
   >
     <div class="demo-banner">
       <div class="banner-text">
@@ -1513,6 +1629,55 @@
               <circle cx="2" cy="13" r="1.25" fill="currentColor"/>
             </svg>
           </button>
+        </div>
+
+        <!-- Scope selector -->
+        <div class="toolbar-group">
+          {#if scopeMode !== "auto"}
+            <button
+              type="button"
+              class="toolbar-btn"
+              title="Previous"
+              aria-label="Previous"
+              onclick={() => scopeNav(-1)}
+            >
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          {/if}
+          <div class="scope-select">
+            <select
+              value={scopeMode}
+              onchange={(e) => {
+                scopeMode = e.currentTarget.value as ScopeMode;
+                if (scopeMode !== "auto" && (!scopeAnchor || scopeAnchor < doc.show.startDate)) {
+                  scopeAnchor = doc.show.startDate;
+                }
+              }}
+            >
+              <option value="auto">Auto</option>
+              <option value="month">Month</option>
+              <option value="week">Week</option>
+              <option value="day">Day</option>
+            </select>
+            {#if scopeMode !== "auto"}
+              <span class="scope-label">{scopeLabel}</span>
+            {/if}
+          </div>
+          {#if scopeMode !== "auto"}
+            <button
+              type="button"
+              class="toolbar-btn"
+              title="Next"
+              aria-label="Next"
+              onclick={() => scopeNav(1)}
+            >
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          {/if}
         </div>
 
         <!-- Filter -->
@@ -1762,8 +1927,41 @@
           onremovegroup={removeGroup}
         />
       </div>
-      <div class="scheduler-grid">
-        {#if viewMode === "calendar"}
+      <div class="scheduler-grid" class:day-scope={scopeMode === "day"}>
+        {#if scopeMode === "day"}
+          <!-- Day scope: show DayEditor full-width for the anchor date -->
+          {@const dayDate = scopeAnchor || doc.show.startDate}
+          {@const dayData = doc.schedule[dayDate]}
+          {#if dayData || true}
+            <DayEditor
+              date={dayDate}
+              day={dayData ?? emptyDay(dayDate)}
+              show={doc}
+              onchange={(patch) => {
+                if (!doc.schedule[dayDate]) {
+                  const draft = emptyDay(dayDate);
+                  doc.schedule[dayDate] = { ...draft, ...patch };
+                } else {
+                  doc.schedule[dayDate] = { ...doc.schedule[dayDate], ...patch };
+                }
+              }}
+              onaddlocationpreset={addLocationPreset}
+              onaddconflict={addConflict}
+              onrequestremoveconflict={requestRemoveConflict}
+              onrequestclear={() => {
+                selectedDate = dayDate;
+                requestClearDay();
+              }}
+              onaddeventtype={addEventType}
+              oncopy={() => {}}
+              onmove={() => {}}
+              onpaste={() => {}}
+              hasClipboard={false}
+              allCollapsed={undefined}
+              onclose={() => (scopeMode = "auto")}
+            />
+          {/if}
+        {:else if viewMode === "calendar"}
           <CalendarGrid
             show={doc}
             {selectedDate}
@@ -1775,8 +1973,8 @@
             ondropactor={dropActorOnDate}
             ondropgroup={dropGroupOnDate}
             ondropallcalled={dropAllCalledOnDate}
-            filterStart={dateFilterStart || undefined}
-            filterEnd={dateFilterEnd || undefined}
+            filterStart={effectiveFilterStart}
+            filterEnd={effectiveFilterEnd}
             {inlineEdit}
             onstartinlineedit={startInlineEdit}
             oninlinechange={inlineChange}
@@ -1796,8 +1994,8 @@
             ondropactor={dropActorOnDate}
             ondropgroup={dropGroupOnDate}
             ondropallcalled={dropAllCalledOnDate}
-            filterStart={dateFilterStart || undefined}
-            filterEnd={dateFilterEnd || undefined}
+            filterStart={effectiveFilterStart}
+            filterEnd={effectiveFilterEnd}
             {inlineEdit}
             onstartinlineedit={startInlineEdit}
             oninlinechange={inlineChange}
@@ -2360,6 +2558,35 @@
     width: auto;
     padding: 0 var(--space-2);
     gap: var(--space-1);
+  }
+
+  .scope-select {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .scope-select select {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .scope-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+  }
+
+  .scheduler-grid.day-scope {
+    grid-column: 1 / -1;
   }
 
   .date-filter-wrap {

@@ -212,6 +212,15 @@ export interface Settings {
   fontTime: string;
   /** Print/display font for notes. */
   fontNotes: string;
+  /** Per-element font size overrides. "sm" | "md" | "lg". Default is "md". */
+  sizeEventType: "sm" | "md" | "lg";
+  sizeTime: "sm" | "md" | "lg";
+  sizeDescription: "sm" | "md" | "lg";
+  sizeCastBadge: "sm" | "md" | "lg";
+  sizeGroupBadge: "sm" | "md" | "lg";
+  sizeNotes: "sm" | "md" | "lg";
+  sizeLocation: "sm" | "md" | "lg";
+  sizeConflicts: "sm" | "md" | "lg";
   /** Color scheme. "light" is default, "dark" is for directors who
    *  don't want to stare at a white screen during rehearsal. */
   theme: "light" | "dark";

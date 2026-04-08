@@ -347,6 +347,41 @@
 
     <section class="section">
       <div class="section-header">
+        <h3>Font sizes</h3>
+        <p class="hint">Control the size of each element in the calendar cells.</p>
+      </div>
+      <div class="size-grid">
+        {#each [
+          { key: "sizeEventType", label: "Event type" },
+          { key: "sizeTime", label: "Time" },
+          { key: "sizeDescription", label: "Description" },
+          { key: "sizeCastBadge", label: "Cast" },
+          { key: "sizeGroupBadge", label: "Group" },
+          { key: "sizeNotes", label: "Notes" },
+          { key: "sizeLocation", label: "Location" },
+          { key: "sizeConflicts", label: "Conflicts" },
+        ] as item (item.key)}
+          <div class="size-row">
+            <span class="size-label">{item.label}</span>
+            <div class="size-chips">
+              {#each [{ value: "sm", label: "S" }, { value: "md", label: "M" }, { value: "lg", label: "L" }] as opt (opt.value)}
+                <button
+                  type="button"
+                  class="size-chip"
+                  class:selected={(show.settings[item.key as keyof typeof show.settings] ?? "md") === opt.value}
+                  onclick={() => onchange({ [item.key]: opt.value })}
+                >
+                  {opt.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
         <h3>Theme</h3>
       </div>
       <div class="increment-row">
@@ -1447,6 +1482,59 @@
     color: var(--color-plum);
   }
   .increment-chip.selected {
+    background: var(--color-plum);
+    color: var(--color-text-inverse);
+    border-color: var(--color-plum);
+  }
+
+  .size-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .size-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .size-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text);
+    min-width: 5rem;
+  }
+
+  .size-chips {
+    display: flex;
+    gap: 2px;
+  }
+
+  .size-chip {
+    width: 2rem;
+    height: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .size-chip:hover {
+    border-color: var(--color-plum);
+    color: var(--color-plum);
+  }
+
+  .size-chip.selected {
     background: var(--color-plum);
     color: var(--color-text-inverse);
     border-color: var(--color-plum);

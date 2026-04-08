@@ -98,7 +98,7 @@
   .chip.compact {
     padding: 2px var(--space-1) 2px var(--space-2);
     gap: var(--space-1);
-    font-size: 0.6875rem;
+    font-size: var(--size-cast-badge, 0.6875rem);
     border-left-width: 2px;
   }
 

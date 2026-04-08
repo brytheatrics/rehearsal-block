@@ -83,7 +83,7 @@
 
   .group-chip.compact {
     padding: 1px var(--space-1);
-    font-size: 0.625rem;
+    font-size: var(--size-group-badge, 0.625rem);
   }
 
   .group-icon {

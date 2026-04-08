@@ -1021,7 +1021,7 @@
   .badge {
     padding: 1px var(--space-2);
     border-radius: var(--radius-sm);
-    font-size: 0.625rem;
+    font-size: var(--size-event-type, 0.625rem);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -1118,13 +1118,13 @@
   }
 
   .time {
-    font-size: 0.6875rem;
+    font-size: var(--size-time, 0.6875rem);
     font-weight: 700;
     white-space: nowrap;
   }
 
   .call-desc {
-    font-size: 0.6875rem;
+    font-size: var(--size-description, 0.6875rem);
     line-height: 1.25;
     opacity: 0.85;
     word-break: break-word;
@@ -1162,7 +1162,7 @@
     display: flex;
     align-items: flex-start;
     gap: var(--space-1);
-    font-size: 0.625rem;
+    font-size: var(--size-notes, 0.625rem);
     color: var(--color-text-muted);
     font-style: italic;
     line-height: 1.3;
@@ -1231,7 +1231,7 @@
   }
 
   .loc-pill {
-    font-size: 0.625rem;
+    font-size: var(--size-location, 0.625rem);
     font-weight: 700;
     color: var(--loc-color);
     text-transform: uppercase;
@@ -1253,7 +1253,7 @@
     background: var(--color-danger-bg);
     border-radius: var(--radius-sm);
     padding: var(--space-1) var(--space-2);
-    font-size: 0.625rem;
+    font-size: var(--size-conflicts, 0.625rem);
     color: var(--color-danger);
     font-weight: 700;
   }

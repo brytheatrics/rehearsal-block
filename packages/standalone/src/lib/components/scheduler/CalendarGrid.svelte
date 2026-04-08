@@ -96,9 +96,13 @@
     {#if isWeekRow(row)}
       <div class="week">
         {#each row.cells as cell (cell.date)}
+          {@const filterLo = filterStart ?? show.show.startDate}
+          {@const filterHi = filterEnd ?? show.show.endDate}
+          {@const filteredOut = (filterStart || filterEnd) && (cell.date < filterLo || cell.date > filterHi)}
+          {@const effectiveCell = filteredOut ? { ...cell, inRange: false } : cell}
           <DayCell
-            {cell}
-            day={show.schedule[cell.date]}
+            cell={effectiveCell}
+            day={filteredOut ? undefined : show.schedule[cell.date]}
             {show}
             selected={selectedDate === cell.date}
             rangeSelected={selectedDates.has(cell.date)}

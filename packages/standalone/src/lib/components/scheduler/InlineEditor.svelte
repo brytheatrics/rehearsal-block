@@ -154,7 +154,7 @@
 
   .inline-notes {
     font: inherit;
-    font-size: inherit;
+    font-size: var(--size-notes, 0.625rem);
     font-style: italic;
     line-height: inherit;
     width: 100%;
