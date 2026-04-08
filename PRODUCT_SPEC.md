@@ -128,7 +128,12 @@ show_access (future org tier): id, show_id, user_id, role, passcode, created_at
 
 ## What to Build Next
 
-### Priority 1: Wire Up Paid Version
+### Priority 1: Finish the Demo
+- **App list view toggle**: dense scrollable list alongside calendar grid. Directors past the planning phase want a quick "what's happening this week" view. Same editor interaction (click to select, shift/ctrl multi-select, drag-drop, copy/paste). Toggle between Calendar and List in the toolbar.
+- UI refinements based on user feedback from coworkers
+- Any remaining visual polish to make the demo feel like a real product
+
+### Priority 2: Wire Up Paid Version
 1. Activate Supabase auth (Google OAuth) - hooks already scaffolded
 2. Create `shows` table with auto-save (debounced writes to Supabase)
 3. Move share storage from in-memory Map to Supabase `shows.published_doc`
@@ -138,11 +143,6 @@ show_access (future org tier): id, show_id, user_id, role, passcode, created_at
 7. Wire `/app` route for paid users
 8. Auto-save status bar (spinner + "Last saved X ago")
 9. Manual save button as fallback (activates when auto-save stale >5 min)
-
-### Priority 2: Demo Polish
-- App list view toggle (dense scrollable list alongside calendar grid)
-- More sample data variety in the demo
-- UI refinements based on user feedback from coworkers
 
 ### Priority 3: Future Features
 - Organization tier: collaborator links, view-only links with passcodes, locked tech dates
