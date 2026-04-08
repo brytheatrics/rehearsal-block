@@ -19,6 +19,7 @@
     EventType,
     ScheduleDoc,
     Settings,
+    Show,
     WeekdayDefault,
   } from "@rehearsal-block/core";
   import {
@@ -46,6 +47,9 @@
     onclose: () => void;
     onconvertgroups?: (mode: "collapse" | "expand") => void;
     onupdatelocationpreset?: (name: string, patch: { color?: string; shape?: string }) => void;
+    onupdateshow?: (patch: Partial<Show>) => void;
+    /** When true, show name and dates are read-only (demo mode). */
+    showReadOnly?: boolean;
   }
 
   const {
@@ -60,6 +64,8 @@
     onclose,
     onconvertgroups,
     onupdatelocationpreset,
+    onupdateshow,
+    showReadOnly = false,
   }: Props = $props();
 
   /** Which event type's color popover is open, if any. */
@@ -103,10 +109,10 @@
     "Roboto",
     "Open Sans",
     "Lato",
+    "Century Gothic",
     "Playfair Display",
     "Georgia",
     "Merriweather",
-    "Century Gothic",
     "Garamond",
   ] as const;
 
@@ -196,7 +202,7 @@
     }
   }
 
-  type Tab = "appearance" | "schedule" | "event-types" | "locations";
+  type Tab = "appearance" | "schedule" | "event-types" | "locations" | "show";
   let activeTab = $state<Tab>("appearance");
 
   function onBackdropKey(e: KeyboardEvent) {
@@ -226,6 +232,7 @@
         ×
       </button>
     </div>
+
     <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
     <nav class="tab-nav" role="tablist">
       {#each [
@@ -233,6 +240,7 @@
         { id: "schedule", label: "Schedule" },
         { id: "event-types", label: "Event Types" },
         { id: "locations", label: "Locations" },
+        { id: "show", label: "Show" },
       ] as tab (tab.id)}
         <button
           type="button"
@@ -251,25 +259,6 @@
   <div class="modal-body">
     <!-- ==================== APPEARANCE TAB ==================== -->
     {#if activeTab === "appearance"}
-
-    <section class="section">
-      <div class="section-header">
-        <h3>Size</h3>
-        <p class="hint">Controls the overall density of the calendar grid.</p>
-      </div>
-      <div class="increment-row">
-        {#each [{ value: "compact", label: "Compact" }, { value: "normal", label: "Normal" }, { value: "large", label: "Large" }] as opt (opt.value)}
-          <button
-            type="button"
-            class="increment-chip"
-            class:selected={(show.settings.fontSizeScale ?? "normal") === opt.value}
-            onclick={() => onchange({ fontSizeScale: opt.value as "compact" | "normal" | "large" })}
-          >
-            {opt.label}
-          </button>
-        {/each}
-      </div>
-    </section>
 
     <section class="section">
       <div class="section-header">
@@ -816,6 +805,60 @@
     </section>
 
     {/if}
+
+    <!-- ==================== SHOW TAB ==================== -->
+    {#if activeTab === "show"}
+
+    <section class="section">
+      <div class="section-header">
+        <h3>Show title</h3>
+      </div>
+      <input
+        id="defaults-show-name"
+        type="text"
+        class="show-info-input"
+        value={show.show.name}
+        disabled={showReadOnly}
+        oninput={(e) => onupdateshow?.({ name: e.currentTarget.value })}
+      />
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h3>Dates</h3>
+      </div>
+      <div class="show-info-dates">
+        <div class="show-info-row">
+          <label class="show-info-label" for="defaults-start-date">Start date</label>
+          <input
+            id="defaults-start-date"
+            type="date"
+            class="show-info-input"
+            value={show.show.startDate}
+            max={show.show.endDate}
+            disabled={showReadOnly}
+            onchange={(e) => onupdateshow?.({ startDate: e.currentTarget.value })}
+          />
+        </div>
+        <div class="show-info-row">
+          <label class="show-info-label" for="defaults-end-date">End date</label>
+          <input
+            id="defaults-end-date"
+            type="date"
+            class="show-info-input"
+            value={show.show.endDate}
+            min={show.show.startDate}
+            disabled={showReadOnly}
+            onchange={(e) => onupdateshow?.({ endDate: e.currentTarget.value })}
+          />
+        </div>
+      </div>
+      {#if showReadOnly}
+        <p class="show-info-hint">Purchase to edit show details.</p>
+      {/if}
+    </section>
+
+    {/if}
   </div>
 
   <footer class="modal-footer">
@@ -868,6 +911,55 @@
     justify-content: space-between;
     padding: var(--space-4) var(--space-5) var(--space-3);
     gap: var(--space-3);
+  }
+
+
+  .show-info-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .show-info-dates {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+  }
+
+  .show-info-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+  }
+
+  .show-info-input {
+    font: inherit;
+    font-size: 0.9375rem;
+    padding: var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    width: 100%;
+  }
+
+  .show-info-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .show-info-input:focus {
+    outline: none;
+    border-color: var(--color-teal);
+  }
+
+  .show-info-hint {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    margin-top: var(--space-2);
   }
 
   .tab-nav {

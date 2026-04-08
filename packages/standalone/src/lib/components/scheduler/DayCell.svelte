@@ -30,6 +30,15 @@
   } from "@rehearsal-block/core";
   import CastChip from "./CastChip.svelte";
   import GroupChip from "./GroupChip.svelte";
+  import InlineEditor from "./InlineEditor.svelte";
+
+  type InlineField = "description" | "time" | "endTime" | "notes";
+
+  interface InlineEditState {
+    date: string;
+    callId?: string;
+    field: InlineField;
+  }
 
   interface Props {
     cell: CalendarCell;
@@ -38,36 +47,18 @@
     selected: boolean;
     onselect: (date: string, shiftKey?: boolean, ctrlKey?: boolean) => void;
     rangeSelected?: boolean;
-    /**
-     * Remove an actor from a specific call on this day (from a direct
-     * cast chip's × button).
-     */
     onremoveactor?: (date: string, callId: string, actorId: string) => void;
-    /**
-     * Remove a group from a specific call on this day (from a group
-     * chip's × button). Group chips are rendered as single units, so
-     * the user removes the whole group instead of expanding it.
-     */
     onremovegroup?: (date: string, callId: string, groupId: string) => void;
-    /**
-     * Clear the allCalled flag on a specific call (from the All Called
-     * chip's × button).
-     */
     onremoveallcalled?: (date: string, callId: string) => void;
-    /**
-     * Drop handlers for the sidebar chips. Day cells become drop targets;
-     * these fire after the drop event is validated.
-     */
-    /**
-     * Drop handlers. When the day has multiple populated calls, the
-     * drop target is the individual `.call-block` div, so the chip
-     * lands on the specific call the user aimed at. When the day is
-     * blank or has only skeleton calls, the whole cell is the target
-     * and `callId` is undefined (parent creates a call to put it in).
-     */
     ondropactor?: (date: string, actorId: string, callId?: string) => void;
     ondropgroup?: (date: string, groupId: string, callId?: string) => void;
     ondropallcalled?: (date: string, callId?: string) => void;
+    inlineEdit?: InlineEditState | null;
+    onstartinlineedit?: (date: string, field: InlineField, callId?: string) => void;
+    oninlinechange?: (patch: Partial<ScheduleDay>) => void;
+    oninlinecallchange?: (callId: string, patch: Partial<Call>) => void;
+    oncommitinline?: () => void;
+    oncancelinline?: () => void;
   }
 
   const {
@@ -83,7 +74,90 @@
     ondropactor,
     ondropgroup,
     ondropallcalled,
+    inlineEdit = null,
+    onstartinlineedit,
+    oninlinechange,
+    oninlinecallchange,
+    oncommitinline,
+    oncancelinline,
   }: Props = $props();
+
+  function isInlineEditing(field: InlineField, callId?: string): boolean {
+    if (!inlineEdit) return false;
+    if (inlineEdit.field !== field) return false;
+    // Exact match on callId
+    if (callId && inlineEdit.callId === callId) return true;
+    // Day-level edit (no callId in inlineEdit): match the no-callId case
+    // or the first populated call (when a blank cell promotes to have calls)
+    if (!inlineEdit.callId) {
+      if (!callId) return true;
+      if (callId === populatedCalls[0]?.id) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Handle double-click on the cell. Use composedPath to determine what
+   * element was targeted - the Svelte 5 rerender from the first click
+   * may have replaced the original element by the time dblclick fires.
+   */
+  function handleCellDblClick(e: MouseEvent) {
+    // Cancel the pending single-click so the editor panel doesn't open
+    // and shift the grid layout mid-double-click.
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    if (!cell.inRange || !onstartinlineedit) return;
+    const path = (e.composedPath?.() ?? [e.target]) as EventTarget[];
+    for (const node of path) {
+      if (!(node instanceof Element)) continue;
+      // Find the call-block ancestor to get the callId (regular or dress/perf)
+      const callBlock = node.closest?.(".call-block") ?? node.closest?.(".dp-cell-call");
+      const callId = callBlock ? findCallIdFromBlock(callBlock) : undefined;
+
+      // Curtain time (dress/perf)
+      if (node.classList?.contains("curtain-time")) {
+        onstartinlineedit(cell.date, "time", undefined);
+        return;
+      }
+      if (node.classList?.contains("time") || node.classList?.contains("dp-cell-time")) {
+        onstartinlineedit(cell.date, "time", callId);
+        return;
+      }
+      if (node.classList?.contains("dp-cell-suffix")) {
+        dpLabelPart = "suffix";
+        onstartinlineedit(cell.date, "description", callId);
+        return;
+      }
+      if (node.classList?.contains("call-desc") || node.classList?.contains("description") || node.classList?.contains("dp-cell-label")) {
+        dpLabelPart = "label";
+        onstartinlineedit(cell.date, "description", callId);
+        return;
+      }
+      if (node.classList?.contains("notes-line") || node.classList?.contains("notes-text")) {
+        onstartinlineedit(cell.date, "notes");
+        return;
+      }
+      // Stop at the cell boundary
+      if (node.classList?.contains("cell")) break;
+    }
+    // Double-click on empty area of the cell - edit day description.
+    // Works for blank cells too (startInlineEdit creates a draft).
+    const firstCall = populatedCalls[0];
+    onstartinlineedit(cell.date, "description", firstCall?.id);
+  }
+
+  function findCallIdFromBlock(el: Element): string | undefined {
+    const parent = el.parentElement;
+    if (!parent) return undefined;
+    // Regular call blocks or dress/perf call blocks
+    const selector = el.classList.contains("dp-cell-call") ? ":scope > .dp-cell-call" : ":scope > .call-block";
+    const blocks = parent.querySelectorAll(selector);
+    for (let i = 0; i < blocks.length; i++) {
+      if (blocks[i] === el) {
+        return populatedCalls[i]?.id;
+      }
+    }
+    return undefined;
+  }
 
   const locPresets = $derived(show.locationPresetsV2);
 
@@ -176,6 +250,9 @@
    */
   const isDressPerf = $derived(eventType?.isDressPerf ?? false);
 
+  /** Tracks which part of a dress/perf label was clicked: "label" or "suffix". */
+  let dpLabelPart = $state<"label" | "suffix">("label");
+
   function isCallPopulated(call: Call): boolean {
     // Dress/perf calls are "populated" as soon as they have a time set -
     // the label + time is all they need to render in the grid.
@@ -232,9 +309,20 @@
     return out;
   });
 
+  // Delay single-click so a double-click can cancel it. Without this,
+  // the first click opens the DayEditor panel which shifts the grid
+  // layout, causing the second click of a double-click to miss.
+  let clickTimer: ReturnType<typeof setTimeout> | null = null;
+
   function handleClick(e: MouseEvent) {
     if (!cell.inRange) return;
-    onselect(cell.date, e.shiftKey, e.ctrlKey || e.metaKey);
+    const shift = e.shiftKey;
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (clickTimer) clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      clickTimer = null;
+      onselect(cell.date, shift, ctrl);
+    }, 250);
   }
 
   function handleKey(e: KeyboardEvent) {
@@ -374,6 +462,7 @@
   role={cell.inRange ? "button" : "presentation"}
   tabindex={cell.inRange ? 0 : undefined}
   onclick={handleClick}
+  ondblclick={handleCellDblClick}
   onkeydown={handleKey}
   ondragenter={handleCellDragEnter}
   ondragover={handleCellDragOver}
@@ -383,7 +472,7 @@
   aria-hidden={cell.inRange ? undefined : "true"}
 >
   <div class="cell-header">
-    <span class="day-number">{cell.dayOfMonth}</span>
+    <span class="day-number">{cell.dayOfMonth}{#if cell.dayOfMonth === 1 || cell.date === show.show.startDate} <span class="day-month">{["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][cell.month]}</span>{/if}</span>
     <div class="badge-group">
       {#if eventType}
         <span
@@ -411,10 +500,26 @@
     </div>
   </div>
 
-  {#if cell.inRange && day?.curtainTime && eventType?.isDressPerf}
-    <div class="curtain-time" style:color={eventType.textColor}>
-      {fmtTime(day.curtainTime)} <span class="curtain-label">CURTAIN</span>
-    </div>
+  {#if cell.inRange && eventType?.isDressPerf}
+    {#if isInlineEditing("time") && !inlineEdit?.callId}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="curtain-time" onclick={(e) => e.stopPropagation()} ondblclick={(e) => e.stopPropagation()}>
+        <InlineEditor
+          field="time"
+          value={day?.curtainTime ?? ""}
+          {show}
+          onchange={(v) => oninlinechange?.({ curtainTime: v })}
+          oncommit={() => oncommitinline?.()}
+          oncancel={() => oncancelinline?.()}
+        />
+        <span class="curtain-label">CURTAIN</span>
+      </div>
+    {:else if day?.curtainTime}
+      <div class="curtain-time" style:color={eventType.textColor}>
+        {fmtTime(day.curtainTime)} <span class="curtain-label">CURTAIN</span>
+      </div>
+    {/if}
   {/if}
 
   {#if cell.inRange}
@@ -423,14 +528,32 @@
         <!-- No populated calls: day may still show a day-level description
              (content) and/or notes. Times + locations stay hidden until the
              director adds actors / descriptions to individual calls. -->
-        {#if day.description}
+        {#if isInlineEditing("description")}
+          <InlineEditor
+            field="description"
+            value={day.description}
+            {show}
+            onchange={(v) => oninlinechange?.({ description: v })}
+            oncommit={() => oncommitinline?.()}
+            oncancel={() => oncancelinline?.()}
+            onnextfield={() => onstartinlineedit?.(cell.date, "notes")}
+          />
+        {:else if day.description}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="description">{day.description}</div>
         {/if}
-        {#if notesPlain}
+        {#if isInlineEditing("notes") && !populatedCalls.length}
+          <InlineEditor
+            field="notes"
+            value={day.notes ?? ""}
+            {show}
+            onchange={(v) => oninlinechange?.({ notes: v })}
+            oncommit={() => oncommitinline?.()}
+            oncancel={() => oncancelinline?.()}
+          />
+        {:else if notesPlain}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="notes-line" title={notesPlain}>
-            <!-- Trust: day.notes is written locally by the director via
-                 the editor's contenteditable. Never sourced from another
-                 user, so {@html} is safe here. -->
             <span class="notes-text">{@html day.notes}</span>
           </div>
         {/if}
@@ -449,12 +572,57 @@
             ondrop={(e) => handleCallDrop(e, call.id)}
           >
             <div class="dp-cell-header">
-              <span class="dp-cell-label">{call.label ? `${call.label} ${suffix}` : suffix}</span>
-              <span class="dp-cell-time">{fmtTime(call.time)}</span>
+              {#if isInlineEditing("description", call.id)}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span class="dp-inline-labels" onclick={(e) => e.stopPropagation()} ondblclick={(e) => e.stopPropagation()}>
+                  <InlineEditor
+                    field="description"
+                    value={call.label ?? ""}
+                    {show}
+                    active={dpLabelPart === "label"}
+                    onchange={(v) => oninlinecallchange?.(call.id, { label: v })}
+                    oncommit={() => oncommitinline?.()}
+                    oncancel={() => oncancelinline?.()}
+                  />
+                  <InlineEditor
+                    field="description"
+                    value={call.suffix ?? "Call"}
+                    {show}
+                    active={dpLabelPart === "suffix"}
+                    onchange={(v) => oninlinecallchange?.(call.id, { suffix: v || "Call" })}
+                    oncommit={() => oncommitinline?.()}
+                    oncancel={() => oncancelinline?.()}
+                  />
+                </span>
+              {:else}
+                <span class="dp-cell-label">{call.label ? call.label : ""}<span class="dp-cell-suffix">{suffix}</span></span>
+              {/if}
+              {#if isInlineEditing("time", call.id)}
+                <InlineEditor
+                  field="time"
+                  value={call.time}
+                  {show}
+                  onchange={(v) => oninlinecallchange?.(call.id, { time: v })}
+                  oncommit={() => oncommitinline?.()}
+                  oncancel={() => oncancelinline?.()}
+                />
+              {:else}
+                <span class="dp-cell-time">{fmtTime(call.time)}</span>
+              {/if}
             </div>
           </div>
         {/each}
-        {#if notesPlain}
+        {#if isInlineEditing("notes")}
+          <InlineEditor
+            field="notes"
+            value={day.notes ?? ""}
+            {show}
+            onchange={(v) => oninlinechange?.({ notes: v })}
+            oncommit={() => oncommitinline?.()}
+            oncancel={() => oncancelinline?.()}
+          />
+        {:else if notesPlain}
           <div class="notes-line" title={notesPlain}>
             <span class="notes-text">{@html day.notes}</span>
           </div>
@@ -530,9 +698,56 @@
             ondragleave={() => handleCallDragLeave(call.id)}
             ondrop={(e) => handleCallDrop(e, call.id)}
           >
-            <div class="time">{#if show.settings.showLocationShapes && loc}<span class="loc-shape" style:color={color}>{locShape(loc)}</span>{/if}{timeRange(call)}</div>
-            {#if desc}
+            {#if isInlineEditing("time", call.id) || isInlineEditing("endTime", call.id)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="inline-time-row" onclick={(e) => e.stopPropagation()} ondblclick={(e) => e.stopPropagation()}>
+                <InlineEditor
+                  field="time"
+                  value={call.time}
+                  {show}
+                  active={isInlineEditing("time", call.id)}
+                  onchange={(v) => oninlinecallchange?.(call.id, { time: v })}
+                  oncommit={() => onstartinlineedit?.(cell.date, "endTime", call.id)}
+                  oncancel={() => oncancelinline?.()}
+                />
+                <span class="inline-time-sep">&ndash;</span>
+                <InlineEditor
+                  field="endTime"
+                  value={call.endTime ?? ""}
+                  {show}
+                  active={isInlineEditing("endTime", call.id)}
+                  minTime={call.time}
+                  onchange={(v) => oninlinecallchange?.(call.id, { endTime: v || undefined })}
+                  oncommit={() => oncommitinline?.()}
+                  oncancel={() => oncancelinline?.()}
+                />
+              </div>
+            {:else}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="time">{#if show.settings.showLocationShapes && loc}<span class="loc-shape" style:color={color}>{locShape(loc)}</span>{/if}{timeRange(call)}</div>
+            {/if}
+            {#if isInlineEditing("description", call.id)}
+              <InlineEditor
+                field="description"
+                value={desc}
+                {show}
+                onchange={(v) => {
+                  if (inlineEdit?.callId) {
+                    oninlinecallchange?.(call.id, { description: v });
+                  } else {
+                    oninlinechange?.({ description: v });
+                  }
+                }}
+                oncommit={() => oncommitinline?.()}
+                oncancel={() => oncancelinline?.()}
+                onnextfield={() => onstartinlineedit?.(cell.date, "time", call.id)}
+              />
+            {:else if desc}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div class="call-desc">{desc}</div>
+            {:else}
+              <div class="call-desc call-desc-empty"></div>
             {/if}
             {#if call.allCalled}
               <div class="chips">
@@ -580,11 +795,18 @@
             {/if}
           </div>
         {/each}
-        {#if notesPlain}
+        {#if isInlineEditing("notes")}
+          <InlineEditor
+            field="notes"
+            value={day.notes ?? ""}
+            {show}
+            onchange={(v) => oninlinechange?.({ notes: v })}
+            oncommit={() => oncommitinline?.()}
+            oncancel={() => oncancelinline?.()}
+          />
+        {:else if notesPlain}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="notes-line" title={notesPlain}>
-            <!-- Trust: day.notes is written locally by the director via
-                 the editor's contenteditable. Never sourced from another
-                 user, so {@html} is safe here. -->
             <span class="notes-text">{@html day.notes}</span>
           </div>
         {/if}
@@ -602,6 +824,17 @@
           </div>
         {/if}
       {/if}
+    {:else if isInlineEditing("description")}
+      <!-- Blank cell with inline edit active: show description input -->
+      <InlineEditor
+        field="description"
+        value=""
+        {show}
+        onchange={(v) => oninlinechange?.({ description: v })}
+        oncommit={() => oncommitinline?.()}
+        oncancel={() => oncancelinline?.()}
+        onnextfield={() => onstartinlineedit?.(cell.date, "notes")}
+      />
     {/if}
 
     <!-- Conflicts are sourced from doc.conflicts, independent of whether
@@ -651,6 +884,7 @@
     cursor: default;
     opacity: 0.45;
   }
+
 
   .cell.selected {
     border-color: var(--color-plum);
@@ -772,6 +1006,13 @@
     font-size: 0.875rem;
   }
 
+  .day-month {
+    font-weight: 500;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    margin-left: 5px;
+  }
+
   .placeholder .day-number {
     color: var(--color-text-subtle);
     font-weight: 500;
@@ -822,13 +1063,25 @@
     gap: var(--space-2);
   }
 
+  .dp-inline-labels {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+  }
+
   .dp-cell-label {
     font-weight: 700;
     white-space: nowrap;
   }
 
+  .dp-cell-suffix {
+    font-weight: 700;
+    white-space: nowrap;
+    margin-left: 0.25em;
+  }
+
   .dp-cell-time {
-    font-weight: 600;
+    font-weight: 500;
     white-space: nowrap;
   }
 
@@ -875,6 +1128,21 @@
     line-height: 1.25;
     opacity: 0.85;
     word-break: break-word;
+  }
+
+  .call-desc-empty {
+    min-height: 0.5rem;
+  }
+
+  .inline-time-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .inline-time-sep {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
   }
 
   .description {

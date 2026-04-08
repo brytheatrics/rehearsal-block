@@ -2,6 +2,7 @@
   import { PaywallError } from "$lib/storage";
   import { demoStorage } from "$lib/storage/demo";
   import CalendarGrid from "$lib/components/scheduler/CalendarGrid.svelte";
+  import ListView from "$lib/components/scheduler/ListView.svelte";
   import Sidebar from "$lib/components/scheduler/Sidebar.svelte";
   import DayEditor from "$lib/components/scheduler/DayEditor.svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
@@ -141,6 +142,85 @@
   const hasUnpublishedChanges = $derived(
     shareId ? JSON.stringify(doc) !== lastPublishedJson : false,
   );
+  let viewMode = $state<"calendar" | "list">("calendar");
+  let dateFilterStart = $state<IsoDate | "">("");
+  let dateFilterEnd = $state<IsoDate | "">("");
+  let dateFilterOpen = $state(false);
+  const hasDateFilter = $derived(!!(dateFilterStart || dateFilterEnd));
+  // Inline editing state
+  interface InlineEditState {
+    date: IsoDate;
+    callId?: string;
+    field: "description" | "time" | "endTime" | "notes";
+  }
+  let inlineEdit = $state<InlineEditState | null>(null);
+
+  /** Guard: skip the next window-click commit (set when inline edit starts). */
+  let inlineEditJustStarted = false;
+
+  function startInlineEdit(date: IsoDate, field: InlineEditState["field"], callId?: string) {
+    // Ensure the day is selected first
+    if (selectedDate !== date) {
+      selectedDates = new Set();
+      if (doc.schedule[date]) {
+        draftDay = null;
+      } else {
+        draftDay = emptyDay(date);
+      }
+      selectedDate = date;
+    }
+    inlineEdit = { date, callId, field };
+    // Prevent the window click handler (which runs after this) from
+    // immediately committing the inline edit we just started.
+    inlineEditJustStarted = true;
+    queueMicrotask(() => { inlineEditJustStarted = false; });
+  }
+
+  function commitInlineEdit() {
+    inlineEdit = null;
+    // Also deselect so the DayEditor doesn't flash open between
+    // committing one inline edit and starting another.
+    selectedDate = null;
+    draftDay = null;
+  }
+
+  function cancelInlineEdit() {
+    inlineEdit = null;
+    selectedDate = null;
+    draftDay = null;
+  }
+
+  function inlineChange(patch: Partial<ScheduleDay>) {
+    if (!inlineEdit) return;
+    updateSelectedDay(patch);
+  }
+
+  function inlineCallChange(callId: string, callPatch: Partial<Call>) {
+    if (!inlineEdit || !selectedDate) return;
+    const day = doc.schedule[selectedDate] ?? draftDay;
+    if (!day) return;
+    const next = day.calls.map((c) =>
+      c.id === callId ? { ...c, ...callPatch } : c,
+    );
+    updateSelectedDay({ calls: next });
+  }
+
+  let stickyBarEl = $state<HTMLDivElement | null>(null);
+
+  // Set --sticky-bar-height CSS variable so child sticky elements
+  // (weekday headers) can position below the toolbar.
+  $effect(() => {
+    if (!stickyBarEl) return;
+    const update = () => {
+      const h = stickyBarEl!.getBoundingClientRect().height;
+      stickyBarEl!.parentElement?.style.setProperty("--sticky-bar-height", h + "px");
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(stickyBarEl);
+    return () => ro.disconnect();
+  });
+
   let exportDropdownOpen = $state(false);
   let csvPickerOpen = $state(false);
   let csvEndTimeWarningOpen = $state(false);
@@ -340,6 +420,21 @@
     // Close dropdowns on any outside click
     if (exportDropdownOpen) exportDropdownOpen = false;
     if (shareDropdownOpen) shareDropdownOpen = false;
+    if (dateFilterOpen) dateFilterOpen = false;
+    if (inlineEdit && !inlineEditJustStarted) {
+      // Don't commit if the click was inside an inline editor element
+      const path = (e.composedPath?.() ?? [e.target]) as EventTarget[];
+      const clickedInline = path.some((n) =>
+        n instanceof Element && (
+          n.classList?.contains("inline-desc") ||
+          n.classList?.contains("inline-notes") ||
+          n.classList?.contains("inline-time") ||
+          n.classList?.contains("picker") ||
+          n.classList?.contains("list")
+        )
+      );
+      if (!clickedInline) commitInlineEdit();
+    }
     if (!selectedDate) return;
     if (defaultsOpen || paywallOpen || clearConfirmOpen || conflictToDelete || pasteConflict || castEditorOpen || showEditorOpen || dateEditorOpen || exportOpen)
       return;
@@ -384,6 +479,12 @@
   function onWindowKey(e: KeyboardEvent) {
     // Ctrl/Cmd shortcuts (gated: not inside rich-text contenteditable).
     if ((e.ctrlKey || e.metaKey) && !isEditingRichText()) {
+      // Save
+      if (e.key === "s") {
+        e.preventDefault();
+        tryToSave();
+        return;
+      }
       // Undo/Redo
       if (e.key === "z" && !e.shiftKey) {
         e.preventDefault();
@@ -437,6 +538,10 @@
         defaultsOpen = false;
         return;
       }
+      if (inlineEdit) {
+        cancelInlineEdit();
+        return;
+      }
       if (selectedDate) {
         closeEditor();
       }
@@ -468,13 +573,13 @@
 
     // . = collapse all calls, , = expand all calls.
     // Only when the editor is open and the user isn't typing in a field.
-    if (e.key === "." || e.key === ",") {
+    if (e.key === ">" || e.key === "<") {
       if (isEditingText()) return;
       if (!selectedDate) return;
       if (paywallOpen || defaultsOpen || clearConfirmOpen || conflictToDelete)
         return;
       e.preventDefault();
-      editorAllCollapsed = e.key === ".";
+      editorAllCollapsed = e.key === ">";
       // Reset after a tick so the same key can trigger the $effect again.
       queueMicrotask(() => {
         editorAllCollapsed = undefined;
@@ -1315,6 +1420,12 @@
     });
   }
 
+  /** Map font names to CSS values with appropriate fallbacks. */
+  function cssFont(name: string): string {
+    if (name === "Century Gothic") return '"Century Gothic", "CenturyGothic", Questrial, sans-serif';
+    return name;
+  }
+
   function formatHeaderDate(iso: string) {
     const [y, m, d] = iso.split("-").map(Number);
     const dt = new Date(Date.UTC(y!, m! - 1, d!));
@@ -1329,6 +1440,9 @@
 
 <svelte:head>
   <title>Demo - Rehearsal Block</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Roboto:wght@400;500;700&family=Lato:wght@400;700&family=Merriweather:wght@400;700&family=Open+Sans:wght@400;600;700&family=Questrial&display=swap" />
   {#if doc.settings.theme === "dark"}
     {@html '<style>body{background:#1e1429 !important}.app-header{background:#362242 !important;color:#e0e0e0 !important;border-bottom:none !important}.app-header .brand-logo{filter:brightness(0) saturate(100%) invert(86%) sepia(5%) saturate(400%) hue-rotate(230deg) brightness(98%) !important}[class*="nav-link"]{color:#e0e0e0 !important}[class*="nav-link"]:hover{color:#4a9490 !important}.app-header [class*="btn-primary"]{background:#38817D !important;color:#e0e0e0 !important}.app-footer{background:#1e1429 !important;color:#e0e0e0 !important}.app-footer a,.app-footer strong,.app-footer span{color:#e0e0e0 !important}</style>'}
   {/if}
@@ -1342,10 +1456,10 @@
     class:theme-dark={doc.settings.theme === "dark"}
     class:size-compact={doc.settings.fontSizeScale === "compact"}
     class:size-large={doc.settings.fontSizeScale === "large"}
-    style:--font-main={doc.settings.fontFamily ?? "Inter"}
-    style:--font-heading={doc.settings.fontHeading ?? "Playfair Display"}
-    style:--font-time={doc.settings.fontTime ?? "Inter"}
-    style:--font-notes={doc.settings.fontNotes ?? "Inter"}
+    style:--font-main={cssFont(doc.settings.fontFamily ?? "Inter")}
+    style:--font-heading={cssFont(doc.settings.fontHeading ?? "Playfair Display")}
+    style:--font-time={cssFont(doc.settings.fontTime ?? "Inter")}
+    style:--font-notes={cssFont(doc.settings.fontNotes ?? "Inter")}
   >
     <div class="demo-banner">
       <div class="banner-text">
@@ -1354,78 +1468,184 @@
       <span class="btn btn-primary disabled-link" title="Coming soon">Buy Rehearsal Block - $50</span>
     </div>
 
-    <header class="show-header">
-      <div>
-        <div class="show-title-row">
-          <h1>{doc.show.name}</h1>
-          <button
-            type="button"
-            class="edit-btn"
-            aria-label="Edit show name"
-            title="Edit show name"
-            onclick={tryToEdit}
-          >
-            ✎
-          </button>
-        </div>
-        <div class="show-dates-row">
-          <p class="show-dates">
-            {formatHeaderDate(doc.show.startDate)} - {formatHeaderDate(doc.show.endDate)}
-          </p>
-          <button
-            type="button"
-            class="edit-btn"
-            aria-label="Edit show dates"
-            title="Edit show dates"
-            onclick={tryToEdit}
-          >
-            ✎
-          </button>
-        </div>
+    <div class="sticky-bar" bind:this={stickyBarEl}>
+      <div class="show-title-line">
+        <h1>{doc.show.name}</h1>
+        <span class="title-sep" aria-hidden="true">&middot;</span>
+        <span class="show-dates">{formatHeaderDate(doc.show.startDate)} - {formatHeaderDate(doc.show.endDate)}</span>
       </div>
-      <div class="show-actions">
-        <div class="undo-redo">
+
+      <div class="toolbar">
+        <!-- View toggle -->
+        <div class="toolbar-group">
           <button
             type="button"
-            class="icon-btn"
+            class="toolbar-btn"
+            class:active={viewMode === "calendar"}
+            title="Calendar view"
+            aria-label="Calendar view"
+            onclick={() => (viewMode = "calendar")}
+          >
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <line x1="1" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5"/>
+              <line x1="5.5" y1="3" x2="5.5" y2="15" stroke="currentColor" stroke-width="1"/>
+              <line x1="10.5" y1="3" x2="10.5" y2="15" stroke="currentColor" stroke-width="1"/>
+              <line x1="1" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1"/>
+              <line x1="4" y1="1" x2="4" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="12" y1="1" x2="12" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="toolbar-btn"
+            class:active={viewMode === "list"}
+            title="List view"
+            aria-label="List view"
+            onclick={() => (viewMode = "list")}
+          >
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <line x1="5" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="5" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="5" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="2" cy="3" r="1.25" fill="currentColor"/>
+              <circle cx="2" cy="8" r="1.25" fill="currentColor"/>
+              <circle cx="2" cy="13" r="1.25" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Filter -->
+        <div class="toolbar-group">
+          <div class="date-filter-wrap">
+            <button
+              type="button"
+              class="toolbar-btn toolbar-btn-wide"
+              class:filter-active={hasDateFilter}
+              title="Filter by date range"
+              aria-label="Filter dates"
+              onclick={(e) => {
+                e.stopPropagation();
+                dateFilterOpen = !dateFilterOpen;
+                exportDropdownOpen = false;
+                shareDropdownOpen = false;
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <line x1="1" y1="3.5" x2="13" y2="3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="1" y1="10.5" x2="13" y2="10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="4" cy="3.5" r="1.5" fill="currentColor"/>
+                <circle cx="10" cy="7" r="1.5" fill="currentColor"/>
+                <circle cx="6" cy="10.5" r="1.5" fill="currentColor"/>
+              </svg>
+              <span class="filter-range-label">
+                {new Date((dateFilterStart || doc.show.startDate) + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+                &ndash;
+                {new Date((dateFilterEnd || doc.show.endDate) + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+              </span>
+            </button>
+            {#if dateFilterOpen}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="date-filter-dropdown" onclick={(e) => e.stopPropagation()}>
+                <div class="filter-row">
+                  <label class="filter-field">
+                    <span>From</span>
+                    <input
+                      type="date"
+                      value={dateFilterStart}
+                      min={doc.show.startDate}
+                      max={doc.show.endDate}
+                      onchange={(e) => (dateFilterStart = e.currentTarget.value as IsoDate)}
+                    />
+                  </label>
+                  <label class="filter-field">
+                    <span>To</span>
+                    <input
+                      type="date"
+                      value={dateFilterEnd}
+                      min={doc.show.startDate}
+                      max={doc.show.endDate}
+                      onchange={(e) => (dateFilterEnd = e.currentTarget.value as IsoDate)}
+                    />
+                  </label>
+                </div>
+                {#if hasDateFilter}
+                  <button
+                    type="button"
+                    class="filter-clear-btn"
+                    onclick={() => { dateFilterStart = ""; dateFilterEnd = ""; }}
+                  >
+                    Clear filter
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Undo / Redo -->
+        <div class="toolbar-group">
+          <button
+            type="button"
+            class="toolbar-btn"
             disabled={!canUndo}
             title="Undo (Ctrl+Z)"
             aria-label="Undo"
             onclick={undo}
           >
-            ↩
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4 6l-3 3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              <path d="M1 9h9a4 4 0 0 1 0 8H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+            </svg>
           </button>
           <button
             type="button"
-            class="icon-btn"
+            class="toolbar-btn"
             disabled={!canRedo}
             title="Redo (Ctrl+Y)"
             aria-label="Redo"
             onclick={redo}
           >
-            ↪
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M12 6l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              <path d="M15 9H6a4 4 0 0 0 0 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+            </svg>
           </button>
         </div>
-        <button
-          type="button"
-          class="btn btn-secondary"
-          onclick={() => (defaultsOpen = true)}
-        >
-          <span class="gear" aria-hidden="true">⚙</span> Defaults
-        </button>
-        <button type="button" class="btn btn-primary" onclick={tryToSave}>Save</button>
-        <div class="export-dropdown-wrap">
+
+        <!-- Settings / Save / Export / Share -->
+        <div class="toolbar-group">
           <button
             type="button"
-            class="btn btn-secondary"
-            onclick={(e) => {
-              e.stopPropagation();
-              exportDropdownOpen = !exportDropdownOpen;
-              shareDropdownOpen = false;
-            }}
+            class="toolbar-btn"
+            title="Default Settings"
+            aria-label="Default Settings"
+            onclick={() => (defaultsOpen = true)}
           >
-            Export ▾
+            <svg width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
+              <path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z" fill="currentColor"/>
+            </svg>
           </button>
+          <div class="export-dropdown-wrap">
+            <button
+              type="button"
+              class="toolbar-btn"
+              title="Export"
+              aria-label="Export"
+              onclick={(e) => {
+                e.stopPropagation();
+                exportDropdownOpen = !exportDropdownOpen;
+                shareDropdownOpen = false;
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 10v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <line x1="8" y1="10" x2="8" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M5.5 4.5L8 2l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+            </button>
           {#if exportDropdownOpen}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1469,15 +1689,20 @@
         <div class="export-dropdown-wrap">
           <button
             type="button"
-            class="btn btn-secondary"
-            class:share-has-changes={hasUnpublishedChanges}
+            class="toolbar-btn"
+            class:needs-attention={hasUnpublishedChanges}
+            title={hasUnpublishedChanges ? "Share (unpublished changes)" : "Share"}
+            aria-label="Share"
             onclick={(e) => {
               e.stopPropagation();
               shareDropdownOpen = !shareDropdownOpen;
               exportDropdownOpen = false;
             }}
           >
-            Share{hasUnpublishedChanges ? " *" : ""} ▾
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M14 2L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M14 2l-4 13-2.5-5.5L2 7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none"/>
+            </svg>
           </button>
           {#if shareDropdownOpen}
             <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1507,12 +1732,24 @@
             </div>
           {/if}
         </div>
-      </div>
-    </header>
+          <button
+            type="button"
+            class="toolbar-btn"
+            title="Save"
+            aria-label="Save"
+            onclick={tryToSave}
+          >
+            <svg width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
+              <path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H520q-33 0-56.5-23.5T440-240v-206l-64 62-56-56 160-160 160 160-56 56-64-62v206h220q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41h100v80H260Zm220-280Z" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+    </div>
+    </div>
 
     <div
       class="scheduler"
-      class:editor-open={!!(selectedDate && selectedDay)}
+      class:editor-open={!!(selectedDate && selectedDay && !inlineEdit)}
     >
       <div class="scheduler-sidebar">
         <Sidebar
@@ -1526,20 +1763,51 @@
         />
       </div>
       <div class="scheduler-grid">
-        <CalendarGrid
-          show={doc}
-          {selectedDate}
-          {selectedDates}
-          onselectday={selectDay}
-          onremoveactor={removeActorFromCall}
-          onremovegroup={removeGroupFromCall}
-          onremoveallcalled={removeAllCalledFromCall}
-          ondropactor={dropActorOnDate}
-          ondropgroup={dropGroupOnDate}
-          ondropallcalled={dropAllCalledOnDate}
-        />
+        {#if viewMode === "calendar"}
+          <CalendarGrid
+            show={doc}
+            {selectedDate}
+            {selectedDates}
+            onselectday={selectDay}
+            onremoveactor={removeActorFromCall}
+            onremovegroup={removeGroupFromCall}
+            onremoveallcalled={removeAllCalledFromCall}
+            ondropactor={dropActorOnDate}
+            ondropgroup={dropGroupOnDate}
+            ondropallcalled={dropAllCalledOnDate}
+            filterStart={dateFilterStart || undefined}
+            filterEnd={dateFilterEnd || undefined}
+            {inlineEdit}
+            onstartinlineedit={startInlineEdit}
+            oninlinechange={inlineChange}
+            oninlinecallchange={inlineCallChange}
+            oncommitinline={commitInlineEdit}
+            oncancelinline={cancelInlineEdit}
+          />
+        {:else}
+          <ListView
+            show={doc}
+            {selectedDate}
+            {selectedDates}
+            onselectday={selectDay}
+            onremoveactor={removeActorFromCall}
+            onremovegroup={removeGroupFromCall}
+            onremoveallcalled={removeAllCalledFromCall}
+            ondropactor={dropActorOnDate}
+            ondropgroup={dropGroupOnDate}
+            ondropallcalled={dropAllCalledOnDate}
+            filterStart={dateFilterStart || undefined}
+            filterEnd={dateFilterEnd || undefined}
+            {inlineEdit}
+            onstartinlineedit={startInlineEdit}
+            oninlinechange={inlineChange}
+            oninlinecallchange={inlineCallChange}
+            oncommitinline={commitInlineEdit}
+            oncancelinline={cancelInlineEdit}
+          />
+        {/if}
       </div>
-      {#if selectedDate && selectedDay}
+      {#if selectedDate && selectedDay && !inlineEdit}
         <DayEditor
           date={selectedDate}
           day={selectedDay}
@@ -1575,6 +1843,8 @@
     onclose={() => (defaultsOpen = false)}
     onconvertgroups={convertGroups}
     onupdatelocationpreset={updateLocationPreset}
+    showReadOnly={typeof window !== "undefined" && window.location.hostname !== "localhost"}
+    onupdateshow={(patch) => { pushUndoImmediate(); doc.show = { ...doc.show, ...patch }; }}
   />
 {/if}
 
@@ -1971,108 +2241,202 @@
     font-size: 0.875rem;
   }
 
-  .show-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-bottom: var(--space-5);
-  }
-
-  .show-header h1 {
-    margin: 0;
-    font-family: var(--font-heading, var(--font-display));
-  }
-
-  .show-title-row,
-  .show-dates-row {
+  .sticky-bar {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--color-bg, #fff);
+    padding: var(--space-3) 0;
+    margin-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
   }
 
-  .show-title-row {
-    margin-bottom: var(--space-1);
+  .show-title-line {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .sticky-bar h1 {
+    margin: 0;
+    font-family: var(--font-heading, var(--font-display));
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .title-sep {
+    color: var(--color-text-muted);
+    font-size: 1.25rem;
   }
 
   .show-dates {
     color: var(--color-text-muted);
-    font-size: 1rem;
+    font-size: 0.9375rem;
     margin: 0;
   }
 
-  .edit-btn {
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-right: var(--space-2);
+    margin-right: var(--space-1);
+    border-right: 1px solid var(--color-border);
+  }
+
+  .toolbar-group:last-child {
+    border-right: none;
+    padding-right: 0;
+    margin-right: 0;
+  }
+
+  .toolbar-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
-    width: 1.5rem;
-    height: 1.5rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--color-text-muted);
-    font-size: 0.75rem;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-    transition:
-      background var(--transition-fast),
-      color var(--transition-fast),
-      border-color var(--transition-fast);
-  }
-  .edit-btn:hover {
-    background: var(--color-bg-alt);
-    color: var(--color-plum);
-    border-color: var(--color-plum);
-  }
-
-  .show-actions {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .undo-redo {
-    display: flex;
-    gap: 2px;
-    margin-right: var(--space-2);
-  }
-
-  .icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: 2.5rem;
+    height: 2.5rem;
     padding: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 1rem;
+    color: var(--color-text-muted);
     cursor: pointer;
     transition:
       background var(--transition-fast),
       color var(--transition-fast),
       border-color var(--transition-fast);
   }
-  .icon-btn:hover:not(:disabled) {
-    background: var(--color-bg-alt);
-    border-color: var(--color-plum);
-    color: var(--color-plum);
+
+  .toolbar-btn:hover:not(:disabled) {
+    border-color: var(--color-teal);
+    color: var(--color-text);
   }
-  .icon-btn:disabled {
+
+  .toolbar-btn:disabled {
     opacity: 0.3;
     cursor: not-allowed;
   }
 
-  .export-dropdown-wrap {
+  .toolbar-btn.active {
+    background: var(--color-plum);
+    color: var(--color-text-inverse);
+    border-color: var(--color-plum);
+  }
+
+  .toolbar-btn.filter-active {
+    border-color: var(--color-teal) !important;
+    color: var(--color-teal) !important;
+  }
+
+  .toolbar-btn.needs-attention {
+    background: var(--color-teal);
+    color: #fff;
+    border-color: var(--color-teal);
+  }
+
+  .toolbar-btn.needs-attention:hover {
+    background: var(--color-teal-dark, #2e6b68);
+    border-color: var(--color-teal-dark, #2e6b68);
+    color: #fff;
+  }
+
+  .toolbar-btn-wide {
+    width: auto;
+    padding: 0 var(--space-2);
+    gap: var(--space-1);
+  }
+
+  .date-filter-wrap {
     position: relative;
   }
 
-  .share-has-changes {
-    border-color: var(--color-teal) !important;
-    color: var(--color-teal) !important;
+  .filter-range-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .date-filter-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: var(--space-2);
+    padding: var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 20;
+    min-width: 280px;
+  }
+
+  .filter-row {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    flex: 1;
+  }
+
+  .filter-field span {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+  }
+
+  .filter-field input[type="date"] {
+    font: inherit;
+    font-size: 0.8125rem;
+    padding: var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    width: 100%;
+  }
+
+  .filter-clear-btn {
+    all: unset;
+    cursor: pointer;
+    display: block;
+    width: 100%;
+    margin-top: var(--space-3);
+    padding: var(--space-2);
+    text-align: center;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-danger, #dc2626);
+    border-radius: var(--radius-sm);
+  }
+
+  .filter-clear-btn:hover {
+    background: color-mix(in srgb, var(--color-danger, #dc2626) 8%, transparent);
+  }
+
+  .export-dropdown-wrap {
+    position: relative;
   }
 
   .export-dropdown {
@@ -2179,11 +2543,6 @@
     color: var(--color-text-muted);
   }
 
-  .gear {
-    display: inline-block;
-    margin-right: 2px;
-  }
-
   .scheduler {
     display: grid;
     grid-template-columns: 240px minmax(0, 1fr);
@@ -2213,9 +2572,6 @@
     font-family: var(--font-main), system-ui, sans-serif;
   }
 
-  .demo-inner :global(.month-header h3) {
-    font-family: var(--font-heading), Georgia, serif;
-  }
 
   .demo-inner :global(.time),
   .demo-inner :global(.dp-cell-time),
@@ -2302,6 +2658,10 @@
     background: #2d1f3d;
     border-color: #4a3860;
   }
+  .demo-inner.theme-dark :global(.weekday-headers) {
+    background: #1e1429;
+    border-bottom-color: #4a3860;
+  }
   .demo-inner.theme-dark :global(.weekday) {
     color: #7a7088;
   }
@@ -2316,7 +2676,10 @@
     background: #1e2d2b;
     color: #e8e4ed;
   }
-  .demo-inner.theme-dark :global(.show-header h1) {
+  .demo-inner.theme-dark .sticky-bar {
+    background: #1e1429;
+  }
+  .demo-inner.theme-dark .sticky-bar h1 {
     color: #d0c8d8;
   }
   .demo-inner.theme-dark :global(.show-dates) {
@@ -2330,20 +2693,8 @@
     background: #2e9a8f;
     color: #e8e4ed;
   }
-  .demo-inner.theme-dark :global(.icon-btn) {
-    background: #362848;
-    border-color: #4a3860;
-    color: #e8e4ed;
-  }
   .demo-inner.theme-dark :global(.loc-pill) {
     opacity: 0.85;
-  }
-  .demo-inner.theme-dark :global(.month-header h3) {
-    color: #d0c8d8;
-  }
-  .demo-inner.theme-dark :global(.edit-btn) {
-    border-color: #4a3860;
-    color: #a8a0b4;
   }
   .demo-inner.theme-dark :global(.sidebar) {
     color: #e8e4ed;
@@ -2373,6 +2724,63 @@
   }
   .demo-inner.theme-dark :global(.notes-line) {
     color: #a8a0b4;
+  }
+  .demo-inner.theme-dark :global(.list-day) {
+    border-bottom-color: #4a3860;
+  }
+  .demo-inner.theme-dark :global(.list-day:hover) {
+    background: color-mix(in srgb, #2e9a8f 10%, transparent);
+  }
+  .demo-inner.theme-dark :global(.list-day.selected) {
+    background: color-mix(in srgb, #2e9a8f 15%, transparent);
+  }
+  .demo-inner.theme-dark :global(.day-date) {
+    color: #d0c8d8;
+  }
+  .demo-inner.theme-dark :global(.day-notes) {
+    background: #2d1f3d;
+    color: #a8a0b4;
+  }
+  .demo-inner.theme-dark :global(.list-call) {
+    border-left-color: #4a3860;
+  }
+  .demo-inner.theme-dark .toolbar-btn {
+    background: #362848;
+    border-color: #4a3860;
+    color: #a8a0b4;
+  }
+  .demo-inner.theme-dark .toolbar-btn:hover:not(:disabled) {
+    border-color: #2e9a8f;
+    color: #e8e4ed;
+  }
+  .demo-inner.theme-dark .toolbar-btn.active {
+    background: #d0c8d8;
+    color: #1e1429;
+    border-color: #d0c8d8;
+  }
+  .demo-inner.theme-dark .toolbar-btn.filter-active {
+    border-color: #2e9a8f !important;
+    color: #2e9a8f !important;
+  }
+  .demo-inner.theme-dark .toolbar-btn.needs-attention {
+    background: #2e9a8f;
+    color: #fff;
+    border-color: #2e9a8f;
+  }
+  .demo-inner.theme-dark .toolbar-group {
+    border-right-color: #4a3860;
+  }
+  .demo-inner.theme-dark .title-sep {
+    color: #7a7088;
+  }
+  .demo-inner.theme-dark .date-filter-dropdown {
+    background: #362848;
+    border-color: #4a3860;
+  }
+  .demo-inner.theme-dark .filter-field input[type="date"] {
+    background: #2d1f3d;
+    border-color: #4a3860;
+    color: #e8e4ed;
   }
 
   .modal-backdrop {
@@ -2456,8 +2864,7 @@
       position: static;
       max-height: none;
     }
-    .demo-banner,
-    .show-header {
+    .demo-banner {
       flex-direction: column;
       align-items: stretch;
     }

@@ -48,6 +48,13 @@ export interface CalendarCell {
   inRange: boolean;
   /** Matches the user's local calendar day (see `todayIso`). */
   isToday: boolean;
+  /**
+   * False for days that belong to a different month than the section
+   * they appear in. Straddling weeks are duplicated: once at the end
+   * of the old month (new-month days have inMonth: false) and once at
+   * the start of the new month (old-month days have inMonth: false).
+   */
+  inMonth: boolean;
 }
 
 export interface CalendarWeekRow {
@@ -118,28 +125,16 @@ export function buildCalendarGrid(
 
   const rows: CalendarRow[] = [];
   let currentWeek: CalendarCell[] = [];
-  let lastEmittedMonthKey = "";
 
   let cursor: IsoDate = calStart;
   while (cursor <= calEnd) {
     const dow = dayOfWeek(cursor);
     const positionInWeek = (dow - weekStartsOn + 7) % 7;
 
-    // At the start of every week, check whether we're crossing into a new
-    // calendar month and, if so, emit a month-header row before the week.
+    // At the start of every week, start a new row. No month headers -
+    // months are indicated by "1 JUN" style labels on the 1st of each
+    // month inside the cell itself.
     if (positionInWeek === 0) {
-      const m = monthOf(cursor);
-      const y = yearOf(cursor);
-      const key = `${y}-${m}`;
-      if (key !== lastEmittedMonthKey) {
-        rows.push({
-          kind: "month-header",
-          label: monthLabel(cursor),
-          month: m,
-          year: y,
-        });
-        lastEmittedMonthKey = key;
-      }
       currentWeek = [];
       rows.push({ kind: "week", cells: currentWeek });
     }
@@ -153,6 +148,7 @@ export function buildCalendarGrid(
       dayOfWeek: dow,
       inRange: isInRange(cursor, show.startDate, show.endDate),
       isToday: cursor === today,
+      inMonth: true,
     });
 
     cursor = addDays(cursor, 1);

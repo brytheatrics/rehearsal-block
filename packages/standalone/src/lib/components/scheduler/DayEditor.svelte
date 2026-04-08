@@ -623,21 +623,25 @@
                   oninput={(e) =>
                     patchCall(callIndex, { label: e.currentTarget.value })}
                 />
-                <span
+                <input
                   class="dp-call-suffix"
-                  contenteditable="true"
-                  spellcheck="false"
-                  role="textbox"
+                  type="text"
+                  value={call.suffix ?? "Call"}
                   title="Click to edit (default: Call)"
+                  spellcheck="false"
+                  size={Math.max(3, (call.suffix ?? "Call").length)}
                   oninput={(e) => {
-                    const text = (e.currentTarget as HTMLElement).textContent?.trim() || "Call";
+                    const raw = e.currentTarget.value;
+                    const text = raw.trim() || "Call";
+                    // Prevent Svelte from overwriting cursor by setting value back immediately
+                    e.currentTarget.value = raw;
                     patchCall(callIndex, { suffix: text === "Call" ? undefined : text });
                   }}
                   onblur={(e) => {
-                    const el = e.currentTarget as HTMLElement;
-                    if (!el.textContent?.trim()) el.textContent = "Call";
+                    if (!e.currentTarget.value.trim()) e.currentTarget.value = "Call";
                   }}
-                >{call.suffix ?? "Call"}</span>
+                  onfocus={(e) => e.currentTarget.select()}
+                />
                 <TimePicker
                   value={call.time}
                   minuteStep={show.settings.timeIncrementMinutes ?? 15}
@@ -1392,11 +1396,14 @@
   }
 
   .dp-call-suffix {
+    font: inherit;
     font-size: 0.875rem;
     font-weight: 700;
     color: var(--color-text-muted);
     flex-shrink: 0;
+    border: none;
     border-bottom: 1px dashed transparent;
+    background: transparent;
     padding: 0 2px;
     cursor: text;
     outline: none;

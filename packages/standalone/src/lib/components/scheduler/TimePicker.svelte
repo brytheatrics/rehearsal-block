@@ -35,6 +35,8 @@
     maxTime?: string;
     /** "12h" or "24h" display. Defaults to "12h". */
     timeFormat?: "12h" | "24h";
+    /** Auto-open the dropdown on mount (used for inline editing). */
+    autoOpen?: boolean;
   }
 
   const {
@@ -48,12 +50,21 @@
     minTime,
     maxTime,
     timeFormat = "12h",
+    autoOpen = false,
   }: Props = $props();
 
   let open = $state(false);
   let buttonEl = $state<HTMLButtonElement | null>(null);
   let listEl = $state<HTMLUListElement | null>(null);
   let highlighted = $state(-1);
+  let didAutoOpen = false;
+
+  $effect(() => {
+    if (autoOpen && buttonEl && !didAutoOpen) {
+      didAutoOpen = true;
+      queueMicrotask(() => openDropdown());
+    }
+  });
 
   function toMins(hhmm: string): number {
     const [h, m] = hhmm.split(":").map(Number);

@@ -6,12 +6,22 @@
    */
   import {
     buildCalendarGrid,
-    isMonthHeaderRow,
     isWeekRow,
+    type Call,
+    type CalendarRow,
     type IsoDate,
+    type ScheduleDay,
     type ScheduleDoc,
   } from "@rehearsal-block/core";
   import DayCell from "./DayCell.svelte";
+
+  type InlineField = "description" | "time" | "endTime" | "notes";
+
+  interface InlineEditState {
+    date: IsoDate;
+    callId?: string;
+    field: InlineField;
+  }
 
   interface Props {
     show: ScheduleDoc;
@@ -24,6 +34,14 @@
     ondropactor?: (date: IsoDate, actorId: string, callId?: string) => void;
     ondropgroup?: (date: IsoDate, groupId: string, callId?: string) => void;
     ondropallcalled?: (date: IsoDate, callId?: string) => void;
+    filterStart?: IsoDate;
+    filterEnd?: IsoDate;
+    inlineEdit?: InlineEditState | null;
+    onstartinlineedit?: (date: IsoDate, field: InlineField, callId?: string) => void;
+    oninlinechange?: (patch: Partial<ScheduleDay>) => void;
+    oninlinecallchange?: (callId: string, patch: Partial<Call>) => void;
+    oncommitinline?: () => void;
+    oncancelinline?: () => void;
   }
 
   const {
@@ -37,6 +55,14 @@
     ondropactor,
     ondropgroup,
     ondropallcalled,
+    filterStart,
+    filterEnd,
+    inlineEdit,
+    onstartinlineedit,
+    oninlinechange,
+    oninlinecallchange,
+    oncommitinline,
+    oncancelinline,
   }: Props = $props();
 
   const grid = $derived(
@@ -44,20 +70,30 @@
       weekStartsOn: show.settings.weekStartsOn,
     }),
   );
+
+  /**
+   * When a date filter is active, keep only weeks that contain at least
+   * one in-range cell within [filterStart, filterEnd].
+   */
+  const filteredRows = $derived.by<CalendarRow[]>(() => {
+    if (!filterStart && !filterEnd) return grid.rows;
+    const lo = filterStart ?? show.show.startDate;
+    const hi = filterEnd ?? show.show.endDate;
+    return grid.rows.filter((row) => {
+      if (!isWeekRow(row)) return false;
+      return row.cells.some((c) => c.inRange && c.date >= lo && c.date <= hi);
+    });
+  });
 </script>
 
 <div class="calendar">
-  {#each grid.rows as row, i (i)}
-    {#if isMonthHeaderRow(row)}
-      <div class="month-header">
-        <h3>{row.label}</h3>
-        <div class="weekday-headers">
-          {#each grid.weekdayHeaders as label (label)}
-            <div class="weekday">{label}</div>
-          {/each}
-        </div>
-      </div>
-    {:else if isWeekRow(row)}
+  <div class="weekday-headers">
+    {#each grid.weekdayHeaders as label (label)}
+      <div class="weekday">{label}</div>
+    {/each}
+  </div>
+  {#each filteredRows as row, i (i)}
+    {#if isWeekRow(row)}
       <div class="week">
         {#each row.cells as cell (cell.date)}
           <DayCell
@@ -73,6 +109,12 @@
             {ondropactor}
             {ondropgroup}
             {ondropallcalled}
+            inlineEdit={inlineEdit?.date === cell.date ? inlineEdit : null}
+            {onstartinlineedit}
+            {oninlinechange}
+            {oninlinecallchange}
+            {oncommitinline}
+            {oncancelinline}
           />
         {/each}
       </div>
@@ -88,18 +130,21 @@
     min-width: 0;
   }
 
-  .month-header h3 {
-    font-family: var(--font-heading, var(--font-display));
-    color: var(--color-plum);
-    margin: var(--space-4) 0 var(--space-2);
-    font-size: 1.25rem;
-  }
-
   .weekday-headers,
   .week {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: var(--space-2);
+  }
+
+  .weekday-headers {
+    position: sticky;
+    top: var(--sticky-bar-height, 56px);
+    z-index: 5;
+    background: var(--color-bg, #fff);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--space-1);
   }
 
   .weekday {

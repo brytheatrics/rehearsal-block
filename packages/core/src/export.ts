@@ -361,13 +361,16 @@ function googleFontsLink(doc: ScheduleDoc): string {
     "Georgia",
     "Garamond",
     "system-ui",
-    "'Century Gothic', sans-serif",
+    "Century Gothic",
   ]);
   const needed = new Set<string>();
   const s = doc.settings;
+  let usesCenturyGothic = false;
   for (const f of [s.fontFamily, s.fontHeading, s.fontTime, s.fontNotes]) {
+    if (f === "Century Gothic") { usesCenturyGothic = true; continue; }
     if (f && !webSafe.has(f)) needed.add(f);
   }
+  if (usesCenturyGothic) needed.add("Questrial");
   if (needed.size === 0) return "";
   const families = Array.from(needed)
     .map((f) => `family=${encodeURIComponent(f)}:wght@400;600;700`)
@@ -415,10 +418,15 @@ export function buildPrintHtml(
   const margin = isCalendar ? "0.4in" : "0.5in";
   const fontsLink = googleFontsLink(doc);
 
-  const fontMain = s.fontFamily ?? "Inter";
-  const fontHeading = s.fontHeading ?? "Playfair Display";
-  const fontTime = s.fontTime ?? "Inter";
-  const fontNotes = s.fontNotes ?? "Inter";
+  /** Map Century Gothic to include Questrial as a web fallback. */
+  function cssFontName(name: string): string {
+    if (name === "Century Gothic") return '"Century Gothic", "CenturyGothic", Questrial';
+    return name;
+  }
+  const fontMain = cssFontName(s.fontFamily ?? "Inter");
+  const fontHeading = cssFontName(s.fontHeading ?? "Playfair Display");
+  const fontTime = cssFontName(s.fontTime ?? "Inter");
+  const fontNotes = cssFontName(s.fontNotes ?? "Inter");
 
   const css = `
     * { box-sizing: border-box; margin: 0; padding: 0; }
