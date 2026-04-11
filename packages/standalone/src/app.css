@@ -83,6 +83,66 @@ select {
   font-size: inherit;
 }
 
+/* --- Custom checkbox: round, plum fill when checked ---
+   Removes the browser-default blue square and replaces it with a
+   round outline that fills with plum and shows a white check when
+   checked. Applied globally so settings, day editor, modals, and
+   filter dropdowns all share the same look. Sized in em so it
+   scales with the surrounding text. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.125em;
+  height: 1.125em;
+  min-width: 1.125em;
+  margin: 0;
+  border: 1.5px solid var(--color-border-strong, #9ca3af);
+  border-radius: 50%;
+  background: var(--color-surface, #fff);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--color-plum);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--color-plum);
+  border-color: var(--color-plum);
+}
+
+/* CSS-only check glyph: a rotated rectangle with two borders forms an
+   L that, when rotated 45deg, looks like a checkmark. Sized in em so
+   the glyph scales with the box. */
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  width: 0.3em;
+  height: 0.6em;
+  border: solid #fff;
+  border-width: 0 0.15em 0.15em 0;
+  transform: translate(-50%, -55%) rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--color-plum);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* --- Utility classes used across the app --- */
 .btn {
   display: inline-flex;

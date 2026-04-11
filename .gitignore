@@ -33,3 +33,9 @@ yarn-error.log*
 # Temp
 *.tmp
 *.bak
+
+# Debug script outputs
+packages/standalone/scripts/out/
+
+# Claude Code local config
+.claude/

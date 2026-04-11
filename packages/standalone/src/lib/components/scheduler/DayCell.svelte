@@ -19,6 +19,7 @@
   import {
     blockingConflictsFor,
     castDisplayNames,
+    crewFirstNameLabels,
     effectiveDescription,
     effectiveLocation,
     expandCalledActorIds,
@@ -27,6 +28,7 @@
     locationShape,
     effectiveLocationColor,
     effectiveLocationShape,
+    overlappingCallsByActor,
   } from "@rehearsal-block/core";
   import CastChip from "./CastChip.svelte";
   import GroupChip from "./GroupChip.svelte";
@@ -48,17 +50,44 @@
     onselect: (date: string, shiftKey?: boolean, ctrlKey?: boolean) => void;
     rangeSelected?: boolean;
     onremoveactor?: (date: string, callId: string, actorId: string) => void;
+    onremovecrew?: (date: string, callId: string, crewId: string) => void;
     onremovegroup?: (date: string, callId: string, groupId: string) => void;
     onremoveallcalled?: (date: string, callId: string) => void;
     ondropactor?: (date: string, actorId: string, callId?: string) => void;
+    ondropcrew?: (date: string, crewId: string, callId?: string) => void;
     ondropgroup?: (date: string, groupId: string, callId?: string) => void;
     ondropallcalled?: (date: string, callId?: string) => void;
+    ondropeventtype?: (date: string, typeId: string) => void;
+    ondroplocation?: (date: string, locName: string, callId?: string) => void;
+    ondropcall?: (date: string) => void;
+    ondropnote?: (date: string) => void;
+    /** Move an actor/crew/group/allCalled from one call to another
+     *  within the same day. Wired by dragging an in-cell chip onto a
+     *  different call block and dropping. The demo handler removes
+     *  from source + adds to target in one undo step. */
+    onmoveactor?: (date: string, sourceCallId: string, targetCallId: string, actorId: string) => void;
+    onmovecrew?: (date: string, sourceCallId: string, targetCallId: string, crewId: string) => void;
+    onmovegroup?: (date: string, sourceCallId: string, targetCallId: string, groupId: string) => void;
+    onmoveallcalled?: (date: string, sourceCallId: string, targetCallId: string) => void;
+    /** Hover-to-show ✕ on event type badges removes that type from
+     *  the day. Removing the primary promotes the first secondary. */
+    onremoveeventtype?: (date: string, typeId: string) => void;
+    /** ✕ on a call block removes that call from the day. */
+    onremovecall?: (date: string, callId: string) => void;
+    /** ✕ on the notes line clears `day.notes`. */
+    onremovenotes?: (date: string) => void;
+    /** ✕ on a location pill removes that location everywhere on the
+     *  day: clears `day.location` if matched, removes from
+     *  `extraLocations`, and clears any `call.location` matches. */
+    onremovedaylocation?: (date: string, locName: string) => void;
     inlineEdit?: InlineEditState | null;
     onstartinlineedit?: (date: string, field: InlineField, callId?: string) => void;
     oninlinechange?: (patch: Partial<ScheduleDay>) => void;
     oninlinecallchange?: (callId: string, patch: Partial<Call>) => void;
     oncommitinline?: () => void;
     oncancelinline?: () => void;
+    /** Map of ISO date to holiday name, computed by parent. */
+    holidayNames?: Map<string, string>;
   }
 
   const {
@@ -69,17 +98,32 @@
     onselect,
     rangeSelected = false,
     onremoveactor,
+    onremovecrew,
     onremovegroup,
     onremoveallcalled,
     ondropactor,
+    ondropcrew,
     ondropgroup,
     ondropallcalled,
+    ondropeventtype,
+    ondroplocation,
+    ondropcall,
+    ondropnote,
+    onmoveactor,
+    onmovecrew,
+    onmovegroup,
+    onmoveallcalled,
+    onremoveeventtype,
+    onremovecall,
+    onremovenotes,
+    onremovedaylocation,
     inlineEdit = null,
     onstartinlineedit,
     oninlinechange,
     oninlinecallchange,
     oncommitinline,
     oncancelinline,
+    holidayNames,
   }: Props = $props();
 
   function isInlineEditing(field: InlineField, callId?: string): boolean {
@@ -173,16 +217,64 @@
     day ? show.eventTypes.find((t) => t.id === day.eventTypeId) : undefined,
   );
 
+  /** Whether this date was assigned via the Defaults mini-calendar picker. */
+  const isDefaultsAssigned = $derived(
+    show.settings.defaultsAssignedDates?.includes(cell.date) ?? false,
+  );
+
+  /**
+   * For defaults-assigned dates, hide the event type badge until the user
+   * adds real content (actors, crew, groups, description, notes). This
+   * prevents bare "pre-tagged" cells from cluttering the grid.
+   * Non-defaults dates always show the badge.
+   */
+  const showEventBadge = $derived.by(() => {
+    if (!day) return false;
+    if (!isDefaultsAssigned) return true;
+    if (day.calls?.some(c => c.calledActorIds.length > 0 || c.calledCrewIds?.length || c.calledGroupIds?.length || c.allCalled || c.label)) return true;
+    if (day.description) return true;
+    if (day.notes) return true;
+    return false;
+  });
+
   /** Current cast display mode, applied to every chip in the cell. */
   const displayMode = $derived(show.settings.castDisplayMode ?? "actor");
+  const crewDisplayMode = $derived(show.settings.crewDisplayMode ?? "both");
+
+  /** Customized All Called label + color from settings, with defaults. */
+  const allCalledLabel = $derived(
+    show.settings.allCalledLabel?.trim() || "All Called",
+  );
+  const allCalledColor = $derived(
+    show.settings.allCalledColor || "#5b1a2b",
+  );
 
   /**
    * Disambiguated display names for every cast member. Computed once
    * per day cell render and looked up per chip; the map respects the
    * current display mode so the grid shows actor, character, or both
-   * labels consistently.
+   * labels consistently. Cross-pool aware: first-name collisions with
+   * crew members trigger last-initial disambiguation on the cast side.
    */
-  const displayNames = $derived(castDisplayNames(show.cast, displayMode));
+  const displayNames = $derived(castDisplayNames(show.cast, displayMode, show.crew));
+
+  /**
+   * Disambiguated first-name labels for crew members. Cross-pool aware
+   * with cast so "Marcus Chen" (cast) and "Marcus Webb" (crew) both
+   * render as "Marcus C." / "Marcus W.".
+   */
+  const crewLabels = $derived(crewFirstNameLabels(show.cast, show.crew));
+
+  function crewChipLabel(cm: { id: string; firstName: string; lastName: string; role: string }): string {
+    const name = crewLabels.get(cm.id) ?? cm.firstName;
+    // "role" mode shows the role (with name fallback when role is empty).
+    // "name" and "both" BOTH show just the disambiguated name in cells to
+    // keep chips compact - the sidebar still renders role alongside name
+    // in "both" mode, but cells save space by hiding it. Matches the cast
+    // chip behavior in "both" mode, which also only shows the name in cells.
+    if (crewDisplayMode === "role") return cm.role || name;
+    return name;
+  }
 
   const timeFmt = $derived(show.settings.timeFormat ?? "12h");
 
@@ -223,6 +315,15 @@
     );
   }
 
+  /** Crew members called on this call. */
+  function calledCrew(call: Call): { id: string; firstName: string; lastName: string; role: string; color: string }[] {
+    const ids = call.calledCrewIds ?? [];
+    if (ids.length === 0) return [];
+    return show.crew
+      .filter((m) => ids.includes(m.id))
+      .map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName, role: m.role, color: m.color }));
+  }
+
   /** Groups called on this call, in calledGroupIds order. */
   function callGroups(call: Call): Group[] {
     if (call.allCalled) return [];
@@ -231,11 +332,24 @@
       .filter((g): g is Group => !!g);
   }
 
-  /** Cast members with at least one conflict today (any kind). */
+  /** People with at least one conflict today, filtered by visibility settings. */
   const conflictedMembers = $derived.by<CastMember[]>(() => {
     if (dayConflicts.length === 0) return [];
-    const ids = new Set(dayConflicts.map((c) => c.actorId));
-    return show.cast.filter((m) => ids.has(m.id));
+    const showCast = show.settings.showCastConflicts ?? true;
+    const showCrew = show.settings.showCrewConflicts ?? false;
+    const castIds = new Set(show.cast.map((m) => m.id));
+    const crewIds = new Set(show.crew.map((m) => m.id));
+    const visibleIds = new Set(
+      dayConflicts
+        .filter((c) => (showCast && castIds.has(c.actorId)) || (showCrew && crewIds.has(c.actorId)))
+        .map((c) => c.actorId),
+    );
+    if (visibleIds.size === 0) return [];
+    // Return cast members + crew-as-cast for display
+    const result: CastMember[] = [];
+    if (showCast) result.push(...show.cast.filter((m) => visibleIds.has(m.id)));
+    if (showCrew) result.push(...show.crew.filter((m) => visibleIds.has(m.id)).map((m) => ({ ...m, character: m.role })));
+    return result;
   });
 
   /**
@@ -257,8 +371,12 @@
     // Dress/perf calls are "populated" as soon as they have a time set -
     // the label + time is all they need to render in the grid.
     if (isDressPerf) return call.time !== "";
+    // User-dropped Call chips render even when empty so the drop has
+    // immediate visual feedback.
+    if (call.manuallyAdded) return true;
     if (call.allCalled) return true;
     if (call.calledActorIds.length > 0) return true;
+    if ((call.calledCrewIds ?? []).length > 0) return true;
     if (call.calledGroupIds.length > 0) return true;
     if ((call.description ?? "").trim() !== "") return true;
     if ((day?.description ?? "").trim() !== "") return true;
@@ -295,15 +413,54 @@
    * bulk-assigned event types) don't contribute - their locations stay
    * hidden until the director adds real content.
    */
+  /**
+   * Cast members who appear in two or more calls on this day with
+   * overlapping times. Drives the small amber warning indicator. Drag
+   * & drop into the grid doesn't block double-bookings (the day editor
+   * has a fuller warning UI), so this surface lets the director know
+   * to investigate without opening the editor.
+   */
+  const doubleBookedNames = $derived.by<string[]>(() => {
+    if (!day || day.calls.length < 2) return [];
+    const overlaps = overlappingCallsByActor(day, show.groups, show.cast);
+    if (overlaps.size === 0) return [];
+    const out: string[] = [];
+    for (const actorId of overlaps.keys()) {
+      const member = show.cast.find((m) => m.id === actorId);
+      if (member) out.push(displayNames.get(member.id) ?? member.firstName);
+    }
+    return out;
+  });
+
   const uniqueLocations = $derived.by<string[]>(() => {
     if (!day) return [];
     const seen = new Set<string>();
     const out: string[] = [];
+    // 1. Locations from populated calls (effectiveLocation includes the
+    //    day-level fallback, so any call without an explicit override
+    //    contributes day.location here).
     for (const call of populatedCalls) {
       const loc = effectiveLocation(day, call).trim();
       if (loc && !seen.has(loc)) {
         seen.add(loc);
         out.push(loc);
+      }
+    }
+    // 2. day.location, in case there were no populated calls to surface
+    //    it (blank cells, dress/perf pre-populate, etc).
+    const dayLoc = (day.location ?? "").trim();
+    if (dayLoc && !seen.has(dayLoc)) {
+      seen.add(dayLoc);
+      out.push(dayLoc);
+    }
+    // 3. Day-level extras (additional locations dragged onto the cell
+    //    after the primary was set, NOT yet bound to a call). These
+    //    appear in the footer without coloring any existing call.
+    for (const loc of day.extraLocations ?? []) {
+      const trimmed = loc.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        out.push(trimmed);
       }
     }
     return out;
@@ -327,6 +484,12 @@
 
   function handleKey(e: KeyboardEvent) {
     if (!cell.inRange) return;
+    // Only handle Enter / Space as a cell-activation when the focus is
+    // on the cell button itself. If a child input (e.g. an inline
+    // description editor) is focused, the keydown bubbles up here and
+    // we MUST let it through, otherwise typing a space in the editor
+    // gets swallowed by preventDefault.
+    if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onselect(cell.date);
@@ -350,9 +513,56 @@
     if (!types) return false;
     return (
       types.includes("text/rb-actor") ||
+      types.includes("text/rb-crew") ||
       types.includes("text/rb-group") ||
-      types.includes("text/rb-all-called")
+      types.includes("text/rb-all-called") ||
+      types.includes("text/rb-event-type") ||
+      types.includes("text/rb-location") ||
+      types.includes("text/rb-call") ||
+      types.includes("text/rb-note") ||
+      types.includes("text/rb-move-actor") ||
+      types.includes("text/rb-move-crew") ||
+      types.includes("text/rb-move-group") ||
+      types.includes("text/rb-move-all-called")
     );
+  }
+
+  // --- Move dragstart helpers -----------------------------------------
+  // When a chip inside a cell is dragged, we record the source call id
+  // alongside the actor/crew/group id so the drop target knows where
+  // to remove from. Payload is "sourceCallId|id" (pipe-delimited to
+  // dodge the colons that sometimes appear in ids).
+  function dragMoveActor(e: DragEvent, sourceCallId: string, actorId: string) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("text/rb-move-actor", `${sourceCallId}|${actorId}`);
+    // "copyMove" so the drop target's dropEffect = "copy" is still
+    // compatible with our move source - otherwise the browser refuses
+    // the drop with incompatible effects.
+    e.dataTransfer.effectAllowed = "copyMove";
+  }
+  function dragMoveCrew(e: DragEvent, sourceCallId: string, crewId: string) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("text/rb-move-crew", `${sourceCallId}|${crewId}`);
+    // "copyMove" so the drop target's dropEffect = "copy" is still
+    // compatible with our move source - otherwise the browser refuses
+    // the drop with incompatible effects.
+    e.dataTransfer.effectAllowed = "copyMove";
+  }
+  function dragMoveGroup(e: DragEvent, sourceCallId: string, groupId: string) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("text/rb-move-group", `${sourceCallId}|${groupId}`);
+    // "copyMove" so the drop target's dropEffect = "copy" is still
+    // compatible with our move source - otherwise the browser refuses
+    // the drop with incompatible effects.
+    e.dataTransfer.effectAllowed = "copyMove";
+  }
+  function dragMoveAllCalled(e: DragEvent, sourceCallId: string) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("text/rb-move-all-called", sourceCallId);
+    // "copyMove" so the drop target's dropEffect = "copy" is still
+    // compatible with our move source - otherwise the browser refuses
+    // the drop with incompatible effects.
+    e.dataTransfer.effectAllowed = "copyMove";
   }
 
   // Shake animation state for rejected drops.
@@ -373,6 +583,41 @@
   }
 
   function dispatchDrop(dt: DataTransfer, callId?: string) {
+    // Move types first: reparenting an in-cell chip to another call
+    // on the same day. Only fires when the drop lands on a specific
+    // call block (`callId` present) that's different from the source.
+    // Cell-level drops of move types are ignored.
+    const moveActorPayload = dt.getData("text/rb-move-actor");
+    if (moveActorPayload) {
+      const [sourceCallId, actorId] = moveActorPayload.split("|");
+      if (callId && sourceCallId && actorId && callId !== sourceCallId) {
+        onmoveactor?.(cell.date, sourceCallId, callId, actorId);
+      }
+      return;
+    }
+    const moveCrewPayload = dt.getData("text/rb-move-crew");
+    if (moveCrewPayload) {
+      const [sourceCallId, crewId] = moveCrewPayload.split("|");
+      if (callId && sourceCallId && crewId && callId !== sourceCallId) {
+        onmovecrew?.(cell.date, sourceCallId, callId, crewId);
+      }
+      return;
+    }
+    const moveGroupPayload = dt.getData("text/rb-move-group");
+    if (moveGroupPayload) {
+      const [sourceCallId, groupId] = moveGroupPayload.split("|");
+      if (callId && sourceCallId && groupId && callId !== sourceCallId) {
+        onmovegroup?.(cell.date, sourceCallId, callId, groupId);
+      }
+      return;
+    }
+    const moveAllCalledSource = dt.getData("text/rb-move-all-called");
+    if (moveAllCalledSource) {
+      if (callId && callId !== moveAllCalledSource) {
+        onmoveallcalled?.(cell.date, moveAllCalledSource, callId);
+      }
+      return;
+    }
     const actorId = dt.getData("text/rb-actor");
     if (actorId) {
       if (actorHasConflict(actorId)) {
@@ -382,6 +627,11 @@
       ondropactor?.(cell.date, actorId, callId);
       return;
     }
+    const crewId = dt.getData("text/rb-crew");
+    if (crewId) {
+      ondropcrew?.(cell.date, crewId, callId);
+      return;
+    }
     const groupId = dt.getData("text/rb-group");
     if (groupId) {
       ondropgroup?.(cell.date, groupId, callId);
@@ -389,6 +639,25 @@
     }
     if (dt.getData("text/rb-all-called") === "1") {
       ondropallcalled?.(cell.date, callId);
+      return;
+    }
+    const eventTypeId = dt.getData("text/rb-event-type");
+    if (eventTypeId) {
+      ondropeventtype?.(cell.date, eventTypeId);
+      return;
+    }
+    const locName = dt.getData("text/rb-location");
+    if (locName) {
+      ondroplocation?.(cell.date, locName, callId);
+      return;
+    }
+    if (dt.getData("text/rb-call") === "1") {
+      ondropcall?.(cell.date);
+      return;
+    }
+    if (dt.getData("text/rb-note") === "1") {
+      ondropnote?.(cell.date);
+      return;
     }
   }
 
@@ -474,31 +743,58 @@
   <div class="cell-header">
     <span class="day-number">{cell.dayOfMonth}{#if cell.dayOfMonth === 1 || cell.date === show.show.startDate} <span class="day-month">{["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][cell.month]}</span>{/if}</span>
     <div class="badge-group">
-      {#if eventType}
+      {#if eventType && (show.settings.showEventTypes ?? true) && showEventBadge}
         <span
           class="badge badge-primary"
+          class:removable={!!onremoveeventtype}
           style:background={eventType.bgColor}
           style:color={eventType.textColor}
         >
           {eventType.name}
+          {#if onremoveeventtype}
+            <button
+              type="button"
+              class="badge-remove"
+              aria-label={`Remove ${eventType.name}`}
+              title={`Remove ${eventType.name}`}
+              onclick={(e) => { e.stopPropagation(); onremoveeventtype?.(cell.date, eventType.id); }}
+            >
+              ×
+            </button>
+          {/if}
         </span>
       {/if}
-      {#if day?.secondaryTypeIds}
+      {#if day?.secondaryTypeIds && (show.settings.showEventTypes ?? true)}
         {#each day.secondaryTypeIds as secId (secId)}
           {@const secType = show.eventTypes.find((t) => t.id === secId)}
           {#if secType}
             <span
               class="badge"
+              class:removable={!!onremoveeventtype}
               style:background={secType.bgColor}
               style:color={secType.textColor}
             >
               {secType.name}
+              {#if onremoveeventtype}
+                <button
+                  type="button"
+                  class="badge-remove"
+                  aria-label={`Remove ${secType.name}`}
+                  title={`Remove ${secType.name}`}
+                  onclick={(e) => { e.stopPropagation(); onremoveeventtype?.(cell.date, secType.id); }}
+                >
+                  ×
+                </button>
+              {/if}
             </span>
           {/if}
         {/each}
       {/if}
     </div>
   </div>
+  {#if (show.settings.showHolidays ?? true) && holidayNames?.get(cell.date)}
+    <span class="holiday-badge">{holidayNames.get(cell.date)}</span>
+  {/if}
 
   {#if cell.inRange && eventType?.isDressPerf}
     {#if isInlineEditing("time") && !inlineEdit?.callId}
@@ -553,8 +849,44 @@
           />
         {:else if notesPlain}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="notes-line" title={notesPlain}>
+          <div class="notes-line" class:removable={!!onremovenotes} title={notesPlain}>
             <span class="notes-text">{@html day.notes}</span>
+            {#if onremovenotes}
+              <button
+                type="button"
+                class="notes-remove"
+                aria-label="Remove notes"
+                title="Remove notes"
+                onclick={(e) => { e.stopPropagation(); onremovenotes?.(cell.date); }}
+              >
+                ×
+              </button>
+            {/if}
+          </div>
+        {/if}
+        {#if uniqueLocations.length > 0 && (show.settings.showLocations ?? true)}
+          <div class="location-footer">
+            {#each uniqueLocations as loc (loc)}
+              {@const color = locColor(loc)}
+              <span
+                class="loc-pill"
+                class:removable={!!onremovedaylocation}
+                style:--loc-color={color ?? "var(--color-text-muted)"}
+              >
+                <span class="loc-shape">{locShape(loc)}</span>{loc}
+                {#if onremovedaylocation}
+                  <button
+                    type="button"
+                    class="loc-remove"
+                    aria-label={`Remove ${loc}`}
+                    title={`Remove ${loc}`}
+                    onclick={(e) => { e.stopPropagation(); onremovedaylocation?.(cell.date, loc); }}
+                  >
+                    ×
+                  </button>
+                {/if}
+              </span>
+            {/each}
           </div>
         {/if}
       {:else if isDressPerf}
@@ -566,11 +898,23 @@
           <div
             class="dp-cell-call"
             class:call-drag-hot={isCallDragHot(call.id)}
+            class:removable={!!onremovecall}
             ondragenter={(e) => handleCallDragEnter(e, call.id)}
             ondragover={handleCallDragOver}
             ondragleave={() => handleCallDragLeave(call.id)}
             ondrop={(e) => handleCallDrop(e, call.id)}
           >
+            {#if onremovecall}
+              <button
+                type="button"
+                class="call-remove"
+                aria-label="Remove call"
+                title="Remove call"
+                onclick={(e) => { e.stopPropagation(); onremovecall?.(cell.date, call.id); }}
+              >
+                ×
+              </button>
+            {/if}
             <div class="dp-cell-header">
               {#if isInlineEditing("description", call.id)}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -623,8 +967,19 @@
             oncancel={() => oncancelinline?.()}
           />
         {:else if notesPlain}
-          <div class="notes-line" title={notesPlain}>
+          <div class="notes-line" class:removable={!!onremovenotes} title={notesPlain}>
             <span class="notes-text">{@html day.notes}</span>
+            {#if onremovenotes}
+              <button
+                type="button"
+                class="notes-remove"
+                aria-label="Remove notes"
+                title="Remove notes"
+                onclick={(e) => { e.stopPropagation(); onremovenotes?.(cell.date); }}
+              >
+                ×
+              </button>
+            {/if}
           </div>
         {/if}
         <!-- Consolidated chips row for dress/perf: groups, actors, and
@@ -636,9 +991,9 @@
         {#if anyAllCalled || allDpGroups.length > 0 || allDpIndividuals.length > 0}
           <div class="chips dp-chips-row">
             {#if anyAllCalled}
-              <span class="all-called-mini">
+              <span class="all-called-mini" style:background={allCalledColor}>
                 <span class="all-mini-dot" aria-hidden="true"></span>
-                All Called
+                {allCalledLabel}
               </span>
             {/if}
             {#each allDpGroups as group (group.id)}
@@ -669,15 +1024,29 @@
             {/each}
           </div>
         {/if}
-        {#if day.location}
-          {@const color = locColor(day.location)}
+        {#if uniqueLocations.length > 0 && (show.settings.showLocations ?? true)}
           <div class="location-footer">
-            <span
-              class="loc-pill"
-              style:--loc-color={color ?? "var(--color-text-muted)"}
-            >
-              <span class="loc-shape">{locShape(day.location)}</span>{day.location}
-            </span>
+            {#each uniqueLocations as loc (loc)}
+              {@const color = locColor(loc)}
+              <span
+                class="loc-pill"
+                class:removable={!!onremovedaylocation}
+                style:--loc-color={color ?? "var(--color-text-muted)"}
+              >
+                <span class="loc-shape">{locShape(loc)}</span>{loc}
+                {#if onremovedaylocation}
+                  <button
+                    type="button"
+                    class="loc-remove"
+                    aria-label={`Remove ${loc}`}
+                    title={`Remove ${loc}`}
+                    onclick={(e) => { e.stopPropagation(); onremovedaylocation?.(cell.date, loc); }}
+                  >
+                    ×
+                  </button>
+                {/if}
+              </span>
+            {/each}
           </div>
         {/if}
       {:else}
@@ -687,17 +1056,30 @@
           {@const color = loc ? locColor(loc) : null}
           {@const groupsForCall = callGroups(call)}
           {@const individuals = directMembers(call)}
+          {@const crewMembers = calledCrew(call)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="call-block"
             class:multi={day.calls.length > 1}
             class:call-drag-hot={isCallDragHot(call.id)}
+            class:removable={!!onremovecall}
             style:--time-color={color ?? "var(--color-text)"}
             ondragenter={(e) => handleCallDragEnter(e, call.id)}
             ondragover={handleCallDragOver}
             ondragleave={() => handleCallDragLeave(call.id)}
             ondrop={(e) => handleCallDrop(e, call.id)}
           >
+            {#if onremovecall}
+              <button
+                type="button"
+                class="call-remove"
+                aria-label="Remove call"
+                title="Remove call"
+                onclick={(e) => { e.stopPropagation(); onremovecall?.(cell.date, call.id); }}
+              >
+                ×
+              </button>
+            {/if}
             {#if isInlineEditing("time", call.id) || isInlineEditing("endTime", call.id)}
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -723,7 +1105,7 @@
                   oncancel={() => oncancelinline?.()}
                 />
               </div>
-            {:else}
+            {:else if timeRange(call)}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div class="time">{#if show.settings.showLocationShapes && loc}<span class="loc-shape" style:color={color}>{locShape(loc)}</span>{/if}{timeRange(call)}</div>
             {/if}
@@ -751,9 +1133,15 @@
             {/if}
             {#if call.allCalled}
               <div class="chips">
-                <span class="all-called-mini">
+                <span
+                  class="all-called-mini"
+                  class:grabbable={!!onmoveallcalled}
+                  style:background={allCalledColor}
+                  draggable={onmoveallcalled ? "true" : undefined}
+                  ondragstart={onmoveallcalled ? (e) => dragMoveAllCalled(e, call.id) : undefined}
+                >
                   <span class="all-mini-dot" aria-hidden="true"></span>
-                  All Called
+                  {allCalledLabel}
                   {#if onremoveallcalled}
                     <button
                       type="button"
@@ -768,13 +1156,36 @@
                     </button>
                   {/if}
                 </span>
+                {#each crewMembers as cm (cm.id)}
+                  <span
+                    class="crew-chip"
+                    class:grabbable={!!onmovecrew}
+                    style:--crew-color={cm.color}
+                    draggable={onmovecrew ? "true" : undefined}
+                    ondragstart={onmovecrew ? (e) => dragMoveCrew(e, call.id, cm.id) : undefined}
+                  >
+                    <span class="crew-chip-square" style:background={cm.color}></span>
+                    <span class="crew-chip-name">{crewChipLabel(cm)}</span>
+                    <button
+                      type="button"
+                      class="crew-chip-x"
+                      aria-label="Remove {cm.firstName}"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        onremovecrew?.(cell.date, call.id, cm.id);
+                      }}
+                    >×</button>
+                  </span>
+                {/each}
               </div>
-            {:else if groupsForCall.length > 0 || individuals.length > 0}
+            {:else if groupsForCall.length > 0 || individuals.length > 0 || crewMembers.length > 0}
               <div class="chips">
                 {#each groupsForCall as group (group.id)}
                   <GroupChip
                     {group}
                     compact
+                    draggable={!!onmovegroup}
+                    ondragstart={onmovegroup ? (e) => dragMoveGroup(e, call.id, group.id) : undefined}
                     onremove={onremovegroup
                       ? () => onremovegroup(cell.date, call.id, group.id)
                       : undefined}
@@ -786,10 +1197,33 @@
                     compact
                     mode={displayMode}
                     displayName={displayNames.get(member.id)}
+                    draggable={!!onmoveactor}
+                    ondragstart={onmoveactor ? (e) => dragMoveActor(e, call.id, member.id) : undefined}
                     onremove={onremoveactor
                       ? () => onremoveactor(cell.date, call.id, member.id)
                       : undefined}
                   />
+                {/each}
+                {#each crewMembers as cm (cm.id)}
+                  <span
+                    class="crew-chip"
+                    class:grabbable={!!onmovecrew}
+                    style:--crew-color={cm.color}
+                    draggable={onmovecrew ? "true" : undefined}
+                    ondragstart={onmovecrew ? (e) => dragMoveCrew(e, call.id, cm.id) : undefined}
+                  >
+                    <span class="crew-chip-square" style:background={cm.color}></span>
+                    <span class="crew-chip-name">{crewChipLabel(cm)}</span>
+                    <button
+                      type="button"
+                      class="crew-chip-x"
+                      aria-label="Remove {cm.firstName}"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        onremovecrew?.(cell.date, call.id, cm.id);
+                      }}
+                    >×</button>
+                  </span>
                 {/each}
               </div>
             {/if}
@@ -806,19 +1240,42 @@
           />
         {:else if notesPlain}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="notes-line" title={notesPlain}>
+          <div class="notes-line" class:removable={!!onremovenotes} title={notesPlain}>
             <span class="notes-text">{@html day.notes}</span>
+            {#if onremovenotes}
+              <button
+                type="button"
+                class="notes-remove"
+                aria-label="Remove notes"
+                title="Remove notes"
+                onclick={(e) => { e.stopPropagation(); onremovenotes?.(cell.date); }}
+              >
+                ×
+              </button>
+            {/if}
           </div>
         {/if}
-        {#if uniqueLocations.length > 0}
+        {#if uniqueLocations.length > 0 && (show.settings.showLocations ?? true)}
           <div class="location-footer">
             {#each uniqueLocations as loc (loc)}
               {@const color = locColor(loc)}
               <span
                 class="loc-pill"
+                class:removable={!!onremovedaylocation}
                 style:--loc-color={color ?? "var(--color-text-muted)"}
               >
                 <span class="loc-shape">{locShape(loc)}</span>{loc}
+                {#if onremovedaylocation}
+                  <button
+                    type="button"
+                    class="loc-remove"
+                    aria-label={`Remove ${loc}`}
+                    title={`Remove ${loc}`}
+                    onclick={(e) => { e.stopPropagation(); onremovedaylocation?.(cell.date, loc); }}
+                  >
+                    ×
+                  </button>
+                {/if}
               </span>
             {/each}
           </div>
@@ -843,7 +1300,7 @@
          "this actor is unavailable" context on the grid. -->
     {#if conflictedMembers.length > 0}
       <div class="conflict-footer">
-        <span class="conflict-icon">🚫</span>
+        <span class="conflict-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM480-160q54 0 104-17.5t92-50.5L228-676q-33 42-50.5 92T160-480q0 134 93 227t227 93Zm252-124q33-42 50.5-92T800-480q0-134-93-227t-227-93q-54 0-104 17.5T284-732l448 448ZM480-480Z"/></svg></span>
         <span class="conflict-names">
           {conflictedMembers
             .map((m) => displayNames.get(m.id) ?? m.firstName)
@@ -851,20 +1308,33 @@
         </span>
       </div>
     {/if}
+    {#if doubleBookedNames.length > 0}
+      <span
+        class="overlap-warning"
+        title={`Double-booked: ${doubleBookedNames.join(", ")}. Open the day editor to fix.`}
+        aria-label={`Double-booked: ${doubleBookedNames.join(", ")}`}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
+          <path d="m40-120 440-760 440 760H40Zm138-80h604L480-720 178-200Zm302-40q17 0 28.5-11.5T520-280q0-17-11.5-28.5T480-320q-17 0-28.5 11.5T440-280q0 17 11.5 28.5T480-240Zm-40-120h80v-200h-80v200Zm40-100Z"/>
+        </svg>
+      </span>
+    {/if}
   {/if}
 </div>
 
 <style>
   .cell {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    min-height: 7rem;
-    padding: var(--space-2);
+    gap: calc(var(--space-1) * var(--cell-scale, 1));
+    min-height: var(--cell-min-height, 7rem);
+    padding: calc(var(--space-2) * var(--cell-scale, 1));
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     cursor: pointer;
+    font-size: calc(1rem * var(--cell-scale, 1));
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
     text-align: left;
   }
@@ -921,15 +1391,84 @@
     90% { transform: translateX(2px); }
   }
 
+  .crew-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--size-cast-badge, 0.6875em);
+    font-weight: 600;
+    color: var(--color-text);
+    padding: 2px var(--space-1) 2px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-left: 2px solid var(--crew-color);
+    border-radius: var(--radius-full, 999px);
+    background: var(--color-surface);
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+  .crew-chip.grabbable,
+  .all-called-mini.grabbable {
+    cursor: grab;
+  }
+  .crew-chip.grabbable:active,
+  .all-called-mini.grabbable:active {
+    cursor: grabbing;
+  }
+
+  .crew-chip-square {
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .crew-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .crew-chip .crew-chip-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    margin-left: 2px;
+    border: none;
+    background: transparent;
+    color: var(--crew-color);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: var(--radius-full);
+    opacity: 0;
+    transition: opacity var(--transition-fast), background var(--transition-fast);
+  }
+
+  .crew-chip:hover .crew-chip-x {
+    opacity: 1;
+  }
+
+  .crew-chip .crew-chip-x:hover {
+    background: var(--color-danger);
+    color: var(--color-text-inverse);
+  }
+
   .all-called-mini {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
     padding: 1px var(--space-2);
+    /* background is set inline via style:background from settings */
     background: #5b1a2b;
     color: var(--color-text-inverse);
     border-radius: var(--radius-sm);
-    font-size: 0.625rem;
+    font-size: 0.625em;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -952,7 +1491,7 @@
     border: none;
     background: transparent;
     color: var(--color-text-inverse);
-    font-size: 0.75rem;
+    font-size: 0.75em;
     line-height: 1;
     cursor: pointer;
     border-radius: var(--radius-full);
@@ -1000,16 +1539,29 @@
     direction: ltr;
   }
 
+  .holiday-badge {
+    display: inline-block;
+    font-size: 0.5625em;
+    font-weight: 600;
+    color: #b45309;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-full);
+    padding: 0 0.4em;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+
   .day-number {
     font-weight: 700;
     color: var(--color-plum);
-    font-size: 0.875rem;
+    font-size: 0.875em;
   }
 
   .day-month {
     font-weight: 500;
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-size: 0.8125em;
     margin-left: 5px;
   }
 
@@ -1019,9 +1571,11 @@
   }
 
   .badge {
+    display: inline-flex;
+    align-items: center;
     padding: 1px var(--space-2);
     border-radius: var(--radius-sm);
-    font-size: var(--size-event-type, 0.625rem);
+    font-size: var(--size-event-type, 0.625em);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -1030,9 +1584,46 @@
     text-overflow: ellipsis;
   }
 
+  /* The ✕ remove button: completely collapsed when not hovered so it
+   * doesn't reserve any right-side padding on the badge. Smoothly
+   * expands in-place when the badge is hovered. */
+  .badge-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0;
+    height: 11px;
+    margin-left: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 0.85em;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: var(--radius-full);
+    opacity: 0;
+    overflow: hidden;
+    transition:
+      opacity var(--transition-fast),
+      width var(--transition-fast),
+      margin-left var(--transition-fast),
+      background var(--transition-fast);
+    flex-shrink: 0;
+  }
+  .badge.removable:hover .badge-remove,
+  .badge-remove:focus-visible {
+    width: 11px;
+    margin-left: 2px;
+    opacity: 1;
+  }
+  .badge-remove:hover {
+    background: rgba(0, 0, 0, 0.18);
+  }
+
 
   .curtain-time {
-    font-size: 0.6875rem;
+    font-size: 0.6875em;
     font-weight: 700;
     letter-spacing: 0.02em;
   }
@@ -1042,19 +1633,61 @@
   }
 
   .dp-cell-call {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 1px;
-    font-size: 0.6875rem;
+    font-size: 0.6875em;
     line-height: 1.3;
     color: var(--color-text);
-    padding-top: var(--space-1);
-    border-top: 1px dashed var(--color-border);
+
   }
 
-  .dp-cell-call:first-of-type {
-    border-top: none;
-    padding-top: 0;
+  /* Hover-to-show ✕ buttons on day-level items: calls, notes, locations.
+   * All share the same opacity / hover treatment as the cast chip ✕. */
+  .call-remove,
+  .notes-remove,
+  .loc-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border: none;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: var(--radius-full);
+    opacity: 0;
+    transition: opacity var(--transition-fast), background var(--transition-fast);
+    flex-shrink: 0;
+  }
+  .call-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
+  .notes-remove,
+  .loc-remove {
+    margin-left: 2px;
+  }
+  .call-block.removable:hover .call-remove,
+  .dp-cell-call.removable:hover .call-remove,
+  .notes-line.removable:hover .notes-remove,
+  .loc-pill.removable:hover .loc-remove,
+  .call-remove:focus-visible,
+  .notes-remove:focus-visible,
+  .loc-remove:focus-visible {
+    opacity: 1;
+  }
+  .call-remove:hover,
+  .notes-remove:hover,
+  .loc-remove:hover {
+    background: var(--color-danger);
+    color: var(--color-text-inverse);
   }
 
   .dp-cell-header {
@@ -1090,19 +1723,15 @@
   }
 
   .call-block {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 1px;
   }
 
-  .call-block.multi {
+  .call-block.multi + .call-block.multi {
     padding-top: var(--space-1);
-    border-top: 1px dashed var(--color-border);
-  }
-
-  .call-block.multi:first-of-type {
-    border-top: none;
-    padding-top: 0;
+    border-top: 1px solid var(--color-border);
   }
 
   .call-block.call-drag-hot {
@@ -1118,13 +1747,13 @@
   }
 
   .time {
-    font-size: var(--size-time, 0.6875rem);
+    font-size: var(--size-time, 0.6875em);
     font-weight: 700;
     white-space: nowrap;
   }
 
   .call-desc {
-    font-size: var(--size-description, 0.6875rem);
+    font-size: var(--size-description, 0.6875em);
     line-height: 1.25;
     opacity: 0.85;
     word-break: break-word;
@@ -1141,12 +1770,12 @@
   }
 
   .inline-time-sep {
-    font-size: 0.6875rem;
+    font-size: 0.6875em;
     color: var(--color-text-muted);
   }
 
   .description {
-    font-size: 0.75rem;
+    font-size: 0.75em;
     color: var(--color-text-muted);
     line-height: 1.3;
     word-break: break-word;
@@ -1162,7 +1791,7 @@
     display: flex;
     align-items: flex-start;
     gap: var(--space-1);
-    font-size: var(--size-notes, 0.625rem);
+    font-size: var(--size-notes, 0.625em);
     color: var(--color-text-muted);
     font-style: italic;
     line-height: 1.3;
@@ -1231,7 +1860,7 @@
   }
 
   .loc-pill {
-    font-size: var(--size-location, 0.625rem);
+    font-size: var(--size-location, 0.625em);
     font-weight: 700;
     color: var(--loc-color);
     text-transform: uppercase;
@@ -1253,13 +1882,19 @@
     background: var(--color-danger-bg);
     border-radius: var(--radius-sm);
     padding: var(--space-1) var(--space-2);
-    font-size: var(--size-conflicts, 0.625rem);
+    font-size: var(--size-conflicts, 0.625em);
     color: var(--color-danger);
     font-weight: 700;
   }
 
   .conflict-icon {
     flex-shrink: 0;
+    display: flex;
+  }
+
+  .conflict-icon svg {
+    width: 1em;
+    height: 1em;
   }
 
   .conflict-names {
@@ -1267,5 +1902,29 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+
+  /* Small amber triangle in the cell when any actor is in two
+   * overlapping calls on this day. The day editor's full warning UI
+   * is the source of truth; this just nudges the user to look. */
+  .overlap-warning {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #b45309;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-full);
+    width: 16px;
+    height: 16px;
+    pointer-events: auto;
+    cursor: help;
+  }
+  .overlap-warning svg {
+    width: 11px;
+    height: 11px;
   }
 </style>

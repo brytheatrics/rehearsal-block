@@ -341,6 +341,69 @@ export function downloadCsv(doc: ScheduleDoc, options: ExportOptions & { csvForm
 }
 
 // -------------------------------------------------------------------
+// Contact Sheet exports
+// -------------------------------------------------------------------
+
+export interface ContactSheetOptions {
+  includeCast: boolean;
+  includeCrew: boolean;
+}
+
+export function buildContactSheetCsv(doc: ScheduleDoc, opts: ContactSheetOptions): string {
+  const lines: string[] = [];
+
+  lines.push("First Name,Middle Name,Last Name,Suffix,Pronouns,Character/Role,Phone,Email");
+
+  if (opts.includeCast) {
+    for (const m of doc.cast) {
+      lines.push([
+        csvEscape(m.firstName),
+        csvEscape(m.middleName ?? ""),
+        csvEscape(m.lastName),
+        csvEscape(m.suffix ?? ""),
+        csvEscape(m.pronouns ?? ""),
+        csvEscape(m.character ?? ""),
+        csvEscape(m.phone ?? ""),
+        csvEscape(m.email ?? ""),
+      ].join(","));
+    }
+  }
+
+  if (opts.includeCrew) {
+    for (const m of doc.crew) {
+      lines.push([
+        csvEscape(m.firstName),
+        csvEscape(m.middleName ?? ""),
+        csvEscape(m.lastName),
+        csvEscape(m.suffix ?? ""),
+        csvEscape(m.pronouns ?? ""),
+        csvEscape(m.role ?? ""),
+        csvEscape(m.phone ?? ""),
+        csvEscape(m.email ?? ""),
+      ].join(","));
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function downloadContactSheetCsv(doc: ScheduleDoc, opts: ContactSheetOptions): void {
+  const csv = buildContactSheetCsv(doc, opts);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (doc.show.name || "Show").replace(/\s+/g, "_") + "_Contact_Sheet.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// NOTE: contact sheet PDF rendering moved to packages/standalone/src/lib/contact-sheet-pdf.ts
+// (pdfkit-based, vector lines for uniform thickness, draws to /api/contact-sheet-pdf).
+
+// -------------------------------------------------------------------
 // Print HTML builder
 // -------------------------------------------------------------------
 
@@ -447,7 +510,7 @@ export function buildPrintHtml(
       justify-content: space-between;
       margin-bottom: 14px;
       padding-bottom: 10px;
-      border-bottom: 3px solid #38817D;
+      border-bottom: 3px solid #4b5563;
     }
     .print-header h1 {
       font-family: ${fontHeading}, Georgia, serif;
@@ -561,8 +624,11 @@ export function buildPrintHtml(
       margin-top: 3px;
       padding-top: 2px;
     }
+    /* Solid 1px separator between adjacent call blocks, matching the
+       grid view's DayCell styling. Used to be a dashed line which
+       didn't match the calendar's appearance. */
     .call-block + .call-block {
-      border-top: 1px dashed #e5e7eb;
+      border-top: 1px solid #e5e7eb;
     }
     .call-time {
       font-family: ${fontTime}, system-ui, sans-serif;
@@ -978,23 +1044,18 @@ function buildCalendarBody(
     const finalPages = hasFooter ? injectPageNumbers(pages) : pages;
     return finalPages.join("");
   } else {
-    // Continuous mode: flat output, pagination handled by ExportModal/browser
-    let html = "";
-    let lastMonthKey = "";
+    // Continuous (auto) mode: single flow with weekday headers once at top
+    // and "1 JUN" style month labels inside day cells (no month headers).
+    // No .print-page / .page-content wrapper here - the body's direct
+    // children stay flat (.weekday-row + many .week-row) so the in-modal
+    // preview's pagination algorithm can measure block heights and split
+    // content across pages. The server-side PDF renderer scales via a
+    // font-size regex that catches every class regardless of nesting,
+    // so it doesn't need the wrapper either.
+    let html = weekdayRowHtml;
     for (const row of grid.rows) {
       if (!isWeekRow(row)) continue;
-      // Check if we need a month label before this week
-      const firstInRange = row.cells.find((c) => c.inRange);
-      if (firstInRange) {
-        const key = `${firstInRange.year}-${firstInRange.month}`;
-        if (key !== lastMonthKey) {
-          currentMonthLabel = `${MONTH_NAMES[firstInRange.month]} ${firstInRange.year}`;
-          html += `<div class="month-label">${escapeHtml(currentMonthLabel)}</div>`;
-          html += weekdayRowHtml;
-          lastMonthKey = key;
-        }
-      }
-      html += buildWeekRowHtml(row, doc, names, timeFmt, currentMonthLabel);
+      html += buildWeekRowHtml(row, doc, names, timeFmt, "", undefined, doc.show.startDate as IsoDate);
     }
     return html;
   }
@@ -1014,7 +1075,10 @@ function buildWeekRowHtml(
   timeFmt: "12h" | "24h",
   monthLabel: string,
   activeMonth?: number,
+  /** When set, show month abbreviation on the 1st of each month and on this start date. */
+  showStartDate?: IsoDate,
 ): string {
+  const MONTH_ABBR = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   let html = `<div class="week-row" data-month-label="${escapeHtml(monthLabel)}">`;
   for (const cell of row.cells) {
     const outsideActiveMonth = activeMonth !== undefined && cell.month !== undefined && cell.month !== activeMonth;
@@ -1028,9 +1092,11 @@ function buildWeekRowHtml(
       ? doc.eventTypes.find((t) => t.id === day.eventTypeId)
       : undefined;
 
-    // Cell header: day number + badges
+    // Cell header: day number (with month on 1st or start date) + badges
+    const showMonth = showStartDate && (cell.dayOfMonth === 1 || cell.date === showStartDate);
+    const monthAbbr = showMonth && cell.month !== undefined ? ` <span style="font-weight:400;color:#6b7280;font-size:0.8em;margin-left:2px">${MONTH_ABBR[cell.month]}</span>` : "";
     html += `<div class="cell-header">`;
-    html += `<span class="day-num">${cell.dayOfMonth}</span>`;
+    html += `<span class="day-num">${cell.dayOfMonth}${monthAbbr}</span>`;
     if (day) {
       html += `<div class="badge-group">`;
       if (day.secondaryTypeIds) {
@@ -1244,7 +1310,9 @@ function buildListBody(
     return finalPages.join("");
   }
 
-  // Continuous mode: flat output
+  // Continuous mode: flat output of list day blocks as direct body
+  // children so the in-modal preview's pagination algorithm can split
+  // content across pages by measuring each block's height.
   let html = "";
   for (const iso of eachDayOfRange(options.startDate, options.endDate)) {
     const day = doc.schedule[iso];

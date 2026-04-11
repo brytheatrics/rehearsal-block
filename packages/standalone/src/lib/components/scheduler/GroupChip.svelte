@@ -13,6 +13,7 @@
    */
   import type { Group } from "@rehearsal-block/core";
   import { locationColor } from "@rehearsal-block/core";
+  import { fadeWhenClipped } from "$lib/fade-when-clipped";
 
   interface Props {
     group: Group;
@@ -24,9 +25,12 @@
      * editor.
      */
     onremove?: () => void;
+    /** Makes the chip an HTML5 drag source. */
+    draggable?: boolean;
+    ondragstart?: (e: DragEvent) => void;
   }
 
-  const { group, compact = false, onremove }: Props = $props();
+  const { group, compact = false, onremove, draggable = false, ondragstart }: Props = $props();
 
   // Use the explicit color if set; otherwise derive a stable color
   // from the group id via the location-color hash function.
@@ -42,15 +46,19 @@
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <span
   class="group-chip"
   class:compact
   class:removable={!!onremove}
+  class:grabbable={draggable}
   style:--group-color={color}
   title={`${group.name} (${group.memberIds.length} ${group.memberIds.length === 1 ? "member" : "members"})`}
+  draggable={draggable ? "true" : undefined}
+  ondragstart={ondragstart}
 >
   <span class="group-icon" aria-hidden="true">★</span>
-  <span class="group-name">{group.name}</span>
+  <span class="group-name" use:fadeWhenClipped>{group.name}</span>
   {#if onremove}
     <button
       type="button"
@@ -84,6 +92,13 @@
   .group-chip.compact {
     padding: 1px var(--space-1);
     font-size: var(--size-group-badge, 0.625rem);
+  }
+
+  .group-chip.grabbable {
+    cursor: grab;
+  }
+  .group-chip.grabbable:active {
+    cursor: grabbing;
   }
 
   .group-icon {

@@ -5,4 +5,6 @@ export * from "./cast.js";
 export * from "./schedule.js";
 export * from "./time.js";
 export * from "./export.js";
+export * from "./holidays.js";
+export * from "./csv-import.js";
 export { sampleShow } from "./sample-show.js";

@@ -5,6 +5,7 @@
    * presentation; no drag logic yet (Phase 3).
    */
   import type { CastDisplayMode, CastMember } from "@rehearsal-block/core";
+  import { fadeWhenClipped } from "$lib/fade-when-clipped";
 
   interface Props {
     member: CastMember;
@@ -32,6 +33,13 @@
      * editor.
      */
     onremove?: () => void;
+    /**
+     * Makes the chip an HTML5 drag source. The cell uses this so an
+     * actor chip can be dragged between calls on the same day (the
+     * dragstart handler sets a `text/rb-move-actor` payload).
+     */
+    draggable?: boolean;
+    ondragstart?: (e: DragEvent) => void;
   }
 
   const {
@@ -40,6 +48,8 @@
     displayName,
     mode = "actor",
     onremove,
+    draggable = false,
+    ondragstart,
   }: Props = $props();
   const label = $derived(displayName ?? member.firstName);
   const showCharacterLine = $derived(!compact && mode === "both");
@@ -54,17 +64,21 @@
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <span
   class="chip"
   class:compact
   class:removable={!!onremove}
+  class:grabbable={draggable}
   style:--chip-color={member.color}
   title={`${member.firstName} ${member.lastName} - ${member.character}`}
+  draggable={draggable ? "true" : undefined}
+  ondragstart={ondragstart}
 >
   <span class="chip-dot" aria-hidden="true"></span>
   <span class="chip-name">{label}</span>
   {#if showCharacterLine}
-    <span class="chip-character">{member.character}</span>
+    <span class="chip-character" use:fadeWhenClipped>{member.character}</span>
   {/if}
   {#if onremove}
     <button
@@ -93,6 +107,48 @@
     font-size: 0.8125rem;
     line-height: 1.2;
     max-width: 100%;
+  }
+
+  /* "Both" mode (chip has both name + character on the row): the
+     character text often overflows the sidebar's narrow width. Instead
+     of clipping with "...", force the chip to fill its row, hide the
+     overflow, and lay a gradient overlay across the rightmost ~24px
+     so the text fades into the chip's background while the border,
+     border-radius, and colored left stripe stay fully intact. */
+  .chip:has(.chip-character) {
+    display: flex;
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+  /* Fade overlay only renders when the chip is actually overflowing.
+     The .is-overflowing class is toggled by the fadeWhenClipped action
+     on .chip-character via a ResizeObserver - when the character text
+     fits naturally, no class is set and no fade artifacts appear on
+     the chip's right edge. The :global() wrapper on the dynamic class
+     lets Svelte's static analysis see the rule as used. */
+  .chip:has(.chip-character):global(.is-overflowing)::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    /* 22px fade zone running right up to the chip border with no
+       solid buffer. The full overlay is the smooth gradient. */
+    width: 22px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-surface)
+    );
+    pointer-events: none;
+  }
+
+  .chip.grabbable {
+    cursor: grab;
+  }
+  .chip.grabbable:active {
+    cursor: grabbing;
   }
 
   .chip.compact {
@@ -126,6 +182,13 @@
     font-size: 0.6875rem;
     margin-left: auto;
     white-space: nowrap;
+    /* Ellipsis + fade combo: when the row is too narrow, the character
+       text shrinks (min-width: 0 lets it go below content size) and
+       text-overflow shows "..." within its own box. The chip's ::after
+       overlay then sits on top of that ellipsis, fading the right edge
+       smoothly. The combination reads as a soft fade with a tiny dot
+       trail at the end. */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }

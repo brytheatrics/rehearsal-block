@@ -15,10 +15,10 @@
   import type { ScheduleDoc, IsoDate } from "@rehearsal-block/core";
   import {
     buildPrintHtml,
-    buildPageFooter,
+    formatUsDateRange,
     weekStartOf,
   } from "@rehearsal-block/core";
-  import type { FooterOpts } from "@rehearsal-block/core";
+  import { buildPdfHeaderHtml, buildPdfFooterHtml } from "$lib/pdf-templates";
 
   let previewContainerEl = $state<HTMLDivElement | null>(null);
   let previewScale = $state(0.5);
@@ -126,8 +126,8 @@
 
   let measuredPageChunks = $state<string[]>([]);
 
-  /** Footer options for continuous mode injection. */
-  const footerOpts = $derived<FooterOpts>({
+  /** Footer options for the in-preview footer rendering. */
+  const footerOpts = $derived({
     showFooterLogo,
     showPageNumbers,
     showDownloadDate,
@@ -143,7 +143,6 @@
   $effect(() => {
     const _mode = pageBreakMode;
     const _body = bodyContent;
-    const _head = headContent;
     const _bodyClass = bodyClass;
     const _margin = marginValues[marginPreset];
     const _marginPx = Math.round(_margin * (96 / 25.4));
@@ -153,23 +152,51 @@
     const _footerOpts = footerOpts;
     const _repeatHeaders = repeatHeaders;
     const _repeatTitle = repeatTitle;
+    const _showName = show.show.name || "Schedule";
+    const _showRunDates = showRunDates
+      ? formatUsDateRange(startDate, endDate)
+      : "";
 
-    const userScale = scale / 100;
+    const s = scale / 100;
+    /* Match the server-side PDF behavior exactly so the preview iframe
+       shows what the user will actually download. We do this in two
+       parts:
+         1. Rewrite every `font-size: Npx` in the original <style>
+            (inside _head) by multiplying by the user scale. This is
+            the same regex the server uses.
+         2. Inject override CSS that bumps .day-cell min-height
+            proportionally and restores .print-header h1/.dates back
+            to their original (un-scaled) sizes so the show title at
+            the top of page 1 stays normal-sized.
+       Plus the structural overrides (display:block on .print-page so
+       page breaks work, flex:none on .page-content). */
+    let _head = headContent;
+    if (s !== 1) {
+      _head = _head.replace(
+        /font-size:\s*(\d+(?:\.\d+)?)px/g,
+        (_m, px) => `font-size:${(parseFloat(px) * s).toFixed(2)}px`,
+      );
+    }
+    const cellHeightOverride =
+      s !== 1 ? `.day-cell{min-height:${Math.round(70 * s)}px}` : "";
+    const headerRestore =
+      s !== 1
+        ? `.print-header h1{font-size:22px}.print-header .dates{font-size:11px}`
+        : "";
     const extraCss = `
-      html, body { margin: 0; padding: 0; overflow: hidden; }
+      html, body { margin: 0; padding: 0; }
       body {
         padding: ${_marginPx}px;
-        transform: scale(${userScale});
-        transform-origin: top left;
-        width: ${100 / userScale}%;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         box-sizing: border-box;
       }
-      .print-page { break-after: auto; page-break-after: auto; display: flex; flex-direction: column; flex: 1; }
-      .page-content { flex: 1; }
+      .print-page { break-after: auto; page-break-after: auto; display: block !important; flex: 1; }
+      .page-content { flex: none !important; }
       .page-footer { margin-top: auto; }
+      ${cellHeightOverride}
+      ${headerRestore}
     `;
 
     if (_mode === "months") {
@@ -282,11 +309,36 @@
         measuredPageChunks = [`<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}">${_body}</body></html>`];
       } else {
         const total = pages.length;
+        /* Render header + footer using the SAME shared template
+           builders the server uses for the actual PDF download, so
+           the preview iframe matches the downloaded file:
+           - .print-header (the bold Playfair-style title from the
+             source HTML) is stripped from EVERY page chunk
+           - The Puppeteer-style header (Georgia 14px) is injected on
+             every page when repeatTitle is on, or page 1 only otherwise
+           - The Puppeteer-style footer is injected on every page when
+             any footer toggle is on
+           - Body uses flex column so the footer pins to the bottom of
+             the visible page area, mirroring Puppeteer's bottom margin
+             reservation. */
         measuredPageChunks = pages.map((blocks, idx) => {
-          const footerHtml = _hasFooter
-            ? buildPageFooter(_footerOpts, idx + 1, total)
+          const pageBlocks = blocks
+            .filter(
+              (b) => !b.startsWith('<div class="print-header"'),
+            )
+            .join("");
+          const showHeaderOnThisPage = _repeatTitle || idx === 0;
+          const headerHtml = showHeaderOnThisPage
+            ? buildPdfHeaderHtml({
+                repeatTitle: true,
+                showName: _showName,
+                showRunDates: _showRunDates,
+              })
             : "";
-          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}">${blocks.join("")}${footerHtml}</body></html>`;
+          const footerHtml = _hasFooter
+            ? buildPdfFooterHtml(_footerOpts, idx + 1, total)
+            : "";
+          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${headerHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${headerHtml}</div>` : ""}<div style="flex:1;padding:0 ${_marginPx}px">${pageBlocks}</div>${footerHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${footerHtml}</div>` : ""}</body></html>`;
         });
       }
     });
@@ -369,9 +421,10 @@
         repeatTitle,
         showName: show.show.name || "Schedule",
         fontHeading: show.settings.fontHeading ?? "Playfair Display",
-        showRunDates: showRunDates
-          ? `${new Date(startDate + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })} - ${new Date(endDate + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}`
-          : "",
+        // formatUsDateRange truncates the redundant first year when
+        // start and end share a year ("May 4 - Jun 14, 2026" instead
+        // of "May 4, 2026 - Jun 14, 2026").
+        showRunDates: showRunDates ? formatUsDateRange(startDate, endDate) : "",
       }),
       signal: AbortSignal.timeout(25_000),
     });

@@ -1,0 +1,22 @@
+<!--
+  Netlify Forms detector stub. Netlify scans deployed HTML at build
+  time to register forms it should accept submissions for. With
+  adapter-netlify, real SvelteKit pages aren't static HTML at build
+  time, so this file exists solely to declare every form used by the
+  app. The actual UI is rendered by Svelte components which POST to
+  "/" with form-encoded data and the matching "form-name" field.
+
+  DO NOT REMOVE FIELDS HERE without also updating the component that
+  submits to the same form-name - Netlify will reject unknown fields.
+-->
+<!doctype html>
+<html>
+  <body>
+    <form name="launch-signup" netlify netlify-honeypot="bot-field" hidden>
+      <input type="text" name="bot-field" />
+      <input type="text" name="name" />
+      <input type="email" name="email" />
+      <input type="text" name="source" />
+    </form>
+  </body>
+</html>

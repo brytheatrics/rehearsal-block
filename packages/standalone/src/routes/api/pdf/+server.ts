@@ -12,9 +12,7 @@
 
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { dev } from "$app/environment";
-
-/** Grey logo SVG for footer - must be self-contained with no external refs. */
-const FOOTER_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2159.11 307.82" height="10"><g><path fill="#c0c0c0" d="M193.15,183.97v98.55l137.13-74.51,4.69-80.76-141.81,56.72ZM288.45,164.14c-1.08,3.13-3,3.97-3,3.97l-29.68,12.86s-1.62.45-2.52-.6c-.22-.26-2.14-2.05-.24-7.21.87-2.36,4.09-4.21,4.09-4.21l28.6-11.9s1.55-.52,2.28.36c.14.16,2.1,2.02.48,6.73Z"/><polygon fill="#c0c0c0" points="42.21 127.25 46.89 208.01 184.02 282.52 184.02 183.97 42.21 127.25"/><polygon fill="#c0c0c0" points="305.16 114.03 188.59 156.69 72.01 114.03 46.89 120.76 188.59 175.92 330.28 120.76 305.16 114.03"/><path fill="#c0c0c0" d="M193.15,88.31v58.05l108.04-38.22,2.52-49.99-110.57,30.17ZM269.95,85.55c-1.08,3.13-3,3.85-3,3.85l-29.2,9.01s-2.1.21-3-.84c-.22-.26-2.14-2.29-.24-7.45.87-2.36,3.61-3.37,3.61-3.37l28-8.17s2.15-.64,2.88.24c.14.16,2.58,2.02.96,6.73Z"/><polygon fill="#c0c0c0" points="73.45 58.15 75.98 108.14 184.02 146.36 184.02 88.31 73.45 58.15"/><polygon fill="#c0c0c0" points="188.59 31.71 77.78 52.02 188.59 81.22 299.39 52.02 188.59 31.71"/><text fill="#c0c0c0" font-family="'Century Gothic',sans-serif" font-weight="700" font-size="200" transform="translate(1479.92 217.96)">BLOCK</text><text fill="#c0c0c0" font-family="'Century Gothic',sans-serif" font-size="200" transform="translate(363.35 217.96)">REHEARSAL</text></g></svg>`;
+import { buildPdfHeaderHtml, buildPdfFooterHtml, hasPdfFooter } from "$lib/pdf-templates";
 
 interface PdfRequest {
   html: string;
@@ -35,57 +33,6 @@ interface PdfRequest {
   fontHeading?: string;
 }
 
-/** Web-safe fonts that don't need a Google Fonts link. */
-const WEB_SAFE_FONTS = new Set(["Georgia", "Garamond", "system-ui", "'Century Gothic', sans-serif"]);
-
-function buildGoogleFontsTag(fonts: string[]): string {
-  const needed = fonts.filter((f) => f && !WEB_SAFE_FONTS.has(f));
-  if (needed.length === 0) return "";
-  const families = needed
-    .map((f) => `family=${encodeURIComponent(f)}:wght@400;600;700`)
-    .join("&");
-  return `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${families}&display=swap">`;
-}
-
-function buildHeaderTemplate(opts: PdfRequest): string {
-  if (!opts.repeatTitle || !opts.showName) return "<span></span>";
-  const name = opts.showName;
-  const dates = opts.showRunDates ?? "";
-  const headingFont = opts.fontHeading ?? "Playfair Display";
-  const fontsTag = buildGoogleFontsTag([headingFont]);
-  return `${fontsTag}
-  <div style="display:flex;align-items:baseline;justify-content:space-between;margin:0 auto;width:calc(100% - 4mm);border-bottom:3px solid #38817D;padding-bottom:8px;font-family:'${headingFont}',Georgia,serif">
-    <span style="font-size:18px;font-weight:700;color:#2d1f3d">${name}</span>
-    ${dates ? `<span style="font-size:9px;color:#6b7280;font-family:system-ui,sans-serif">${dates}</span>` : ""}
-  </div>`;
-}
-
-function buildFooterTemplate(opts: PdfRequest): string {
-  const parts: string[] = [];
-
-  if (opts.showFooterLogo) {
-    parts.push(`<span style="flex:1;text-align:left">${FOOTER_LOGO_SVG}</span>`);
-  } else {
-    parts.push(`<span style="flex:1"></span>`);
-  }
-
-  if (opts.showPageNumbers) {
-    parts.push(`<span style="flex:1;text-align:center;font-size:7px;color:#c0c0c0">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>`);
-  } else {
-    parts.push(`<span style="flex:1"></span>`);
-  }
-
-  if (opts.showDownloadDate) {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-    parts.push(`<span style="flex:1;text-align:right;font-size:7px;color:#c0c0c0">Downloaded ${dateStr}</span>`);
-  } else {
-    parts.push(`<span style="flex:1"></span>`);
-  }
-
-  return `<div style="width:100%;display:flex;align-items:center;padding:0 10mm;font-family:sans-serif;border-top:1px solid #e5e7eb;margin:0 10mm">${parts.join("")}</div>`;
-}
-
 export const POST: RequestHandler = async ({ request }) => {
   const body = (await request.json()) as PdfRequest;
 
@@ -93,7 +40,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return error(400, "Invalid or oversized HTML payload");
   }
 
-  const hasFooter = body.showFooterLogo || body.showPageNumbers || body.showDownloadDate;
+  const hasFooter = hasPdfFooter(body);
 
   let browser;
   try {
@@ -147,12 +94,111 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // When repeatTitle is on, Puppeteer's headerTemplate handles the title
     // on every page. Strip the HTML .print-header so it doesn't double up.
+    //
+    // Why a custom strip instead of a non-greedy regex: .print-header
+    // contains a nested `<div class="dates">` when showRunDates is on
+    // (the default), and a non-greedy `[\s\S]*?</div>` would match the
+    // first `</div>` (the dates closer), leaving the actual print-header
+    // closing `</div>` orphaned in the body HTML. That malformed HTML
+    // makes Puppeteer fall over with "PDF generation failed". Walking
+    // div depth properly handles any number of nested children.
     if (body.repeatTitle && body.showName) {
-      html = html.replace(/<div class="print-header">[\s\S]*?<\/div>/, "");
+      const startMarker = '<div class="print-header">';
+      const startIdx = html.indexOf(startMarker);
+      if (startIdx >= 0) {
+        let depth = 1;
+        let i = startIdx + startMarker.length;
+        while (i < html.length && depth > 0) {
+          const nextOpen = html.indexOf("<div", i);
+          const nextClose = html.indexOf("</div>", i);
+          if (nextClose < 0) break;
+          if (nextOpen >= 0 && nextOpen < nextClose) {
+            depth++;
+            i = nextOpen + 4;
+          } else {
+            depth--;
+            i = nextClose + 6;
+          }
+        }
+        if (depth === 0) {
+          html = html.slice(0, startIdx) + html.slice(i);
+        }
+      }
     }
 
-    // Inject basic body reset
-    html = html.replace("</head>", `<style>body{margin:0!important;padding:0!important}</style></head>`);
+    // User-driven scale (1.0 = 100%). Clamped to a safe range. We
+    // apply this via CSS `zoom` on the inner `.page-content` element
+    // ONLY - NOT on the body and NOT via Puppeteer's page.pdf scale
+    // option.
+    //
+    // Why .page-content specifically: the body contains three things -
+    //   1. .print-header (the show title row, first page only)
+    //   2. .print-page > .page-content (the calendar/list grid)
+    //   3. .print-page > .page-footer (stripped further down so
+    //      Puppeteer's footerTemplate renders the footer in the
+    //      bottom margin instead)
+    // Zooming the body scales the title and bleeds the grid into the
+    // footer's margin reservation, visually pushing the footer off
+    // the page. Zooming only .page-content leaves the title and
+    // footer at their natural size while the grid grows - which is
+    // exactly the user's intent ("make my calendar cells bigger").
+    const userScale = Math.max(0.1, Math.min(2.0, (body.scale ?? 100) / 100));
+
+    // Scale via regex rewrite of every `font-size: Npx` in the
+    // embedded <style> block, plus a proportional min-height bump on
+    // .day-cell. After scaling, we restore the .print-header font
+    // sizes back to their natural values so the show title at the top
+    // of page 1 stays the same size regardless of user scale. The
+    // page footer is rendered separately by Puppeteer's footerTemplate
+    // so it never sees this CSS.
+    //
+    // Why this approach instead of CSS zoom or Puppeteer's scale:
+    //   - CSS zoom interacts badly with `page-break-inside: avoid` on
+    //     .week-row, causing Chromium to put just one row per page
+    //   - Puppeteer's page.pdf({scale}) scales body content but doesn't
+    //     expand the bottom margin reservation, so the body bleeds
+    //     into the footer area and visually pushes the footer off the
+    //     page
+    // Plain font-size scaling lets cells grow naturally (the .week-row
+    // grid auto-sizes to the tallest cell) and Chromium's normal page
+    // break algorithm splits week rows across pages without surprises.
+    //
+    // We also override .print-page from display:flex to block - the
+    // source uses flex so the in-body .page-footer can be pushed to
+    // the bottom via margin-top:auto, but we strip those footers
+    // below and let Puppeteer's footerTemplate render the footer in
+    // the bottom margin instead, so the flex would just keep
+    // .print-page glued together as one unbreakable block.
+    const s = userScale;
+    if (s !== 1) {
+      // Rewrite every `font-size: Npx` in the embedded <style> tag.
+      html = html.replace(
+        /(<style[^>]*>)([\s\S]*?)(<\/style>)/,
+        (_match, open, css, close) => {
+          const scaled = css.replace(
+            /font-size:\s*(\d+(?:\.\d+)?)px/g,
+            (_m: string, px: string) =>
+              `font-size:${(parseFloat(px) * s).toFixed(2)}px`,
+          );
+          return open + scaled + close;
+        },
+      );
+    }
+
+    // Body reset + structural overrides + (when scaling) min-height
+    // bump on day cells + restore .print-header sizes to original.
+    const cellHeightOverride =
+      s !== 1
+        ? `.day-cell{min-height:${(70 * s).toFixed(0)}px}`
+        : "";
+    const headerRestore =
+      s !== 1
+        ? `.print-header h1{font-size:22px}.print-header .dates{font-size:11px}`
+        : "";
+    html = html.replace(
+      "</head>",
+      `<style>body{margin:0!important;padding:0!important}.print-page{display:block!important}.page-content{flex:none!important}${cellHeightOverride}${headerRestore}</style></head>`,
+    );
 
     // Use networkidle2 (allows 2 outstanding connections) instead of
     // networkidle0 to reduce memory/time waiting for all resources.
@@ -170,20 +216,16 @@ export const POST: RequestHandler = async ({ request }) => {
     const topMargin = hasRepeatTitle ? `${m + 12}mm` : margin;
     const bottomMargin = hasFooter ? `${m + 8}mm` : margin;
 
-    // Puppeteer's scale option (0.1 to 2.0) scales the content
-    // while respecting page breaks, unlike CSS transform which overflows.
-    const pdfScale = Math.max(0.1, Math.min(2.0, (body.scale ?? 100) / 100));
-
     const pdfBuffer = await page.pdf({
       format: body.pageSize ?? "letter",
       landscape: body.orientation === "landscape",
       margin: { top: topMargin, right: margin, bottom: bottomMargin, left: margin },
       printBackground: body.printBackground !== false,
       preferCSSPageSize: false,
-      scale: pdfScale,
+      // scale: 1 (default) - we apply user scale via CSS zoom above
       displayHeaderFooter: useHeaderFooter,
-      headerTemplate: hasRepeatTitle ? buildHeaderTemplate(body) : "<span></span>",
-      footerTemplate: hasFooter ? buildFooterTemplate(body) : "<span></span>",
+      headerTemplate: hasRepeatTitle ? buildPdfHeaderHtml(body) : "<span></span>",
+      footerTemplate: hasFooter ? buildPdfFooterHtml(body) : "<span></span>",
     });
 
     await browser.close();

@@ -38,6 +38,19 @@ export interface CastMember {
   color: string; // hex, e.g. "#1565c0"
 }
 
+export interface CrewMember {
+  id: string;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  suffix?: string;
+  role: string; // "Stage Manager", "Lighting Designer", etc.
+  pronouns?: string;
+  email?: string;
+  phone?: string;
+  color: string;
+}
+
 export interface Group {
   id: string;
   name: string; // e.g. "Ensemble", "Leads", "Dancers"
@@ -89,6 +102,7 @@ export interface Call {
   /** Per-call override; falls back to ScheduleDay.location when blank. */
   location?: string;
   calledActorIds: string[];
+  calledCrewIds?: string[];
   calledGroupIds: string[];
   /**
    * The word after the label on dress/perf calls. Defaults to "Call"
@@ -107,6 +121,13 @@ export interface Call {
    * they later un-toggle all-called.
    */
   allCalled?: boolean;
+  /**
+   * Set when the user explicitly added this call via the right-side
+   * day-tool sidebar's Call chip. Forces the call to render in the grid
+   * even when otherwise empty (no actors, no description), so the user
+   * gets immediate visual feedback after the drop.
+   */
+  manuallyAdded?: boolean;
 }
 
 export interface ScheduleDay {
@@ -126,6 +147,17 @@ export interface ScheduleDay {
   notes: string; // HTML from contenteditable editor
   /** Day-level default location; each call can override. */
   location: string;
+  /**
+   * Additional locations to display in the day's location footer beyond
+   * `location` and any per-call locations. Used when the user drags a
+   * second (or third...) location chip onto the day at the cell level
+   * after `location` is already set: the new location is added here so
+   * it appears in the footer without recoloring any existing calls. The
+   * user can then drag any of these locations onto a specific call to
+   * assign it. Deduped against `location` and call locations at render
+   * time.
+   */
+  extraLocations?: string[];
   /**
    * Curtain time for dress/performance days. "HH:MM" format, displayed
    * below the event badge in the grid and at the top of the editor
@@ -161,6 +193,7 @@ export interface Conflict {
 }
 
 export type CastDisplayMode = "actor" | "character" | "both";
+export type CrewDisplayMode = "name" | "role" | "both";
 
 /**
  * Per-weekday call-time default. One entry per weekday (0 = Sunday). When
@@ -182,11 +215,14 @@ export interface WeekdayDefault {
 export interface Settings {
   fontFamily: string;
   castDisplayMode: CastDisplayMode;
+  crewDisplayMode: CrewDisplayMode;
   weekStartsOn: 0 | 1; // 0 = Sunday, 1 = Monday
   /** Length 7, indexed by JS weekday (0 = Sunday). */
   weekdayDefaults: WeekdayDefault[];
   /** Show-wide default location inherited by new days; "" for none. */
   defaultLocation: string;
+  /** Show-wide default event type inherited by new days; "" for none (uses first). */
+  defaultEventType: string;
   /**
    * Granularity of the time picker dropdowns, in minutes. Controls how
    * many options appear in every TimePicker across the app (call times,
@@ -212,17 +248,25 @@ export interface Settings {
   fontTime: string;
   /** Print/display font for notes. */
   fontNotes: string;
-  /** Per-element font size overrides. "sm" | "md" | "lg". Default is "md". */
-  sizeEventType: "sm" | "md" | "lg";
-  sizeTime: "sm" | "md" | "lg";
-  sizeDescription: "sm" | "md" | "lg";
-  sizeCastBadge: "sm" | "md" | "lg";
-  sizeGroupBadge: "sm" | "md" | "lg";
-  sizeNotes: "sm" | "md" | "lg";
-  sizeLocation: "sm" | "md" | "lg";
-  sizeConflicts: "sm" | "md" | "lg";
+  /** Per-element font size overrides. "xs" | "sm" | "md" | "lg" | "xl". Default is "md". */
+  sizeEventType: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeTime: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeDescription: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeCastBadge: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeGroupBadge: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeNotes: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeLocation: "xs" | "sm" | "md" | "lg" | "xl";
+  sizeConflicts: "xs" | "sm" | "md" | "lg" | "xl";
   /** Color scheme. "light" is default, "dark" is for directors who
    *  don't want to stare at a white screen during rehearsal. */
+  /** Show cast member conflicts on the calendar grid. */
+  showCastConflicts: boolean;
+  /** Show production team conflicts on the calendar grid. */
+  showCrewConflicts: boolean;
+  /** Show event type badges on the calendar grid. */
+  showEventTypes: boolean;
+  /** Show location labels on the calendar grid. */
+  showLocations: boolean;
   theme: "light" | "dark";
   /**
    * ISO dates explicitly assigned an event type via the Defaults mini-
@@ -244,6 +288,56 @@ export interface Settings {
   groupDropMode?: "group" | "expand";
   /** Show location shapes next to call times and in location footers. */
   showLocationShapes?: boolean;
+  /** Show US federal holidays as amber badges on the calendar. */
+  showUsHolidays?: boolean;
+  /** Show holiday badges on the calendar grid. */
+  showHolidays?: boolean;
+  /** User-defined custom holidays. */
+  customHolidays?: Array<{ date: string; name: string }>;
+  /** Holiday names that have been individually hidden. */
+  hiddenHolidays?: string[];
+  /**
+   * Deadline (inclusive) for actors to add or edit conflicts via the
+   * actor-facing conflict submission page. If unset, actors can edit
+   * forever. If set to an ISO date, actors can submit/edit through the
+   * end of that day (local time). Starting midnight of the next day,
+   * the actor-facing page enters read-only mode showing their previously
+   * submitted conflicts without the ability to modify them.
+   */
+  conflictLockoutDate?: string;
+  /**
+   * Custom label for the built-in "All Called" sidebar chip. Defaults
+   * to "All Called" when unset. Editable via the pencil button on the
+   * chip itself.
+   */
+  allCalledLabel?: string;
+  /**
+   * Custom color for the "All Called" chip background. Defaults to
+   * "#5b1a2b" when unset.
+   */
+  allCalledColor?: string;
+  /**
+   * Whether the "All Called" chip is visible in the sidebar. Defaults
+   * to true. Set to false via the chip's delete (×) button. Once
+   * hidden, the user has to create their own group to restore the
+   * "everyone is called" workflow.
+   */
+  allCalledVisible?: boolean;
+  /**
+   * Show text labels next to each icon in the top toolbar. Defaults
+   * to false (icons only). When true, each button shows its label
+   * inline so infrequent users can identify buttons without hovering.
+   * Takes up more horizontal space - the toolbar will wrap to multiple
+   * rows on narrow screens.
+   */
+  showToolbarLabels?: boolean;
+  /**
+   * Hide days with no calls, description, or notes from the list
+   * view. Defaults to false (blank days shown) so the list mirrors
+   * the calendar grid. Toggle on to get a compact "only days with
+   * content" list.
+   */
+  hideBlankListDays?: boolean;
 }
 
 // ------------------------------------------------------------------
@@ -266,6 +360,7 @@ export interface ScheduleDoc {
   version: typeof DOCUMENT_VERSION;
   show: Show;
   cast: CastMember[];
+  crew: CrewMember[];
   groups: Group[];
   eventTypes: EventType[];
   /** Keyed by ISO date "YYYY-MM-DD". */

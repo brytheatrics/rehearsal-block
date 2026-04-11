@@ -131,6 +131,38 @@ export function monthLabel(iso: IsoDate, locale = "en-US"): string {
   }).format(d);
 }
 
+/** US-style date like "May 4, 2026". Short month name, UTC-safe. */
+export function formatUsDate(iso: IsoDate): string {
+  const d = parseIsoDate(iso);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(d);
+}
+
+/**
+ * US-style date range. When start and end share the same calendar year
+ * the year is only printed once at the end, e.g. "May 4 - Jun 14, 2026".
+ * When they differ, both dates carry their own year,
+ * e.g. "Dec 30, 2026 - Jan 5, 2027". UTC-safe.
+ */
+export function formatUsDateRange(start: IsoDate, end: IsoDate): string {
+  const startD = parseIsoDate(start);
+  const endD = parseIsoDate(end);
+  const sameYear = startD.getUTCFullYear() === endD.getUTCFullYear();
+  const withoutYear = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  if (sameYear) {
+    return `${withoutYear.format(startD)} - ${formatUsDate(end)}`;
+  }
+  return `${formatUsDate(start)} - ${formatUsDate(end)}`;
+}
+
 /**
  * Weekday header labels, rotated so index 0 matches `weekStartsOn`.
  * Stable, locale-agnostic short names; UI can restyle casing as needed.

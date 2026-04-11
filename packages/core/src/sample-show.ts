@@ -29,6 +29,15 @@ export const sampleShow: ScheduleDoc = {
     { id: "c7", character: "Benvolio", firstName: "Riley", lastName: "Kim", pronouns: "he/they", color: "#00838f" },
     { id: "c8", character: "Lord Capulet", firstName: "Michael", lastName: "Thompson", suffix: "Jr.", pronouns: "he/him", color: "#424242" },
   ],
+  crew: [
+    { id: "cr1", firstName: "Sarah", lastName: "Mitchell", role: "Director", color: "#6a1b9a" },
+    { id: "cr2", firstName: "Jordan", lastName: "Lee", role: "Stage Manager", pronouns: "they/them", email: "jordan.lee@email.com", phone: "555-0201", color: "#00695c" },
+    { id: "cr3", firstName: "Patricia", lastName: "Hernandez", role: "Scenic Designer", email: "p.hernandez@email.com", color: "#4527a0" },
+    { id: "cr4", firstName: "David", lastName: "Kowalski", role: "Lighting Designer", color: "#e65100" },
+    { id: "cr5", firstName: "Angela", lastName: "Brooks", role: "Costume Designer", pronouns: "she/her", color: "#ad1457" },
+    { id: "cr6", firstName: "Tyler", lastName: "Nguyen", role: "Sound Designer", email: "t.nguyen@email.com", phone: "555-0206", color: "#1565c0" },
+    { id: "cr7", firstName: "Marcus", lastName: "Webb", role: "Fight Choreographer", color: "#bf360c" },
+  ],
   groups: [
     {
       id: "g1",
@@ -221,6 +230,7 @@ export const sampleShow: ScheduleDoc = {
     fontTime: "Inter",
     fontNotes: "Inter",
     castDisplayMode: "actor",
+    crewDisplayMode: "both",
     weekStartsOn: 0,
     weekdayDefaults: [
       { enabled: false, startTime: "19:00", endTime: "21:30" }, // Sun
@@ -231,7 +241,8 @@ export const sampleShow: ScheduleDoc = {
       { enabled: true, startTime: "19:00", endTime: "21:30" }, // Fri
       { enabled: true, startTime: "10:00", endTime: "14:00" }, // Sat
     ],
-    defaultLocation: "Main Stage",
+    defaultLocation: "",
+    defaultEventType: "",
     timeIncrementMinutes: 15,
     dressCallWindowMinutes: 150,
     timeFormat: "12h",
@@ -244,7 +255,14 @@ export const sampleShow: ScheduleDoc = {
     sizeNotes: "md",
     sizeLocation: "md",
     sizeConflicts: "md",
+    showCastConflicts: true,
+    showCrewConflicts: false,
+    showEventTypes: true,
+    showLocations: true,
     theme: "light",
     defaultsAssignedDates: [],
+    showUsHolidays: true,
+    showHolidays: true,
+    customHolidays: [],
   },
 };

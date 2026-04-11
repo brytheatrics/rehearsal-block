@@ -11,6 +11,10 @@
   --color-plum: #2d1f3d;
   --color-plum-light: #3d2d52;
   --color-plum-dark: #1e1429;
+  /** Medium plum used for pill fills (cast/team toggle, Day Tools
+   *  label, etc.) - sits between --color-plum-light and a light
+   *  pastel tint. White text reads well on top. */
+  --color-plum-tint: #6b5482;
   --color-teal: #38817D;
   --color-teal-light: #4a9490;
   --color-teal-dark: #2d6b68;
@@ -38,7 +42,7 @@
 
   /* --- Fonts --- */
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-display: "Jost", "Century Gothic", "Futura", "Avenir Next", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
 
   /* --- Spacing (8pt scale) --- */

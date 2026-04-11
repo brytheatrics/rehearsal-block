@@ -23,11 +23,14 @@
     effectiveLocation,
     locationColor,
     formatTime,
+    eachDayOfRange,
+    parseIsoDate,
   } from "@rehearsal-block/core";
 
   let doc = $state<ScheduleDoc | null>(null);
   let error = $state("");
   let selectedActorId = $state<string | null>(null);
+  let viewMode = $state<"calendar" | "list">("calendar");
 
   // Load schedule from URL: either ?id=xxx (server-stored) or #d=xxx (hash-encoded)
   $effect(() => {
@@ -74,25 +77,89 @@
   );
 
   const displayNames = $derived(
-    doc ? castDisplayNames(doc.cast, doc.settings.castDisplayMode ?? "actor") : new Map(),
+    doc
+      ? castDisplayNames(doc.cast, doc.settings.castDisplayMode ?? "actor", doc.crew)
+      : new Map(),
   );
 
   const timeFmt = $derived(doc?.settings.timeFormat ?? "12h");
+  const allCalledLabel = $derived(
+    doc?.settings.allCalledLabel?.trim() || "All Called",
+  );
+  const allCalledColor = $derived(
+    doc?.settings.allCalledColor || "#5b1a2b",
+  );
 
-  /** Set of ISO dates where the selected actor is called. */
+  /**
+   * Filter value conventions:
+   * - null / "" = "Everyone" (no filter)
+   * - "cast:all" = any cast member is called
+   * - "team:all" = any crew member is called
+   * - a cast member id = that specific cast member is called
+   * - a crew member id = that specific crew member is called
+   */
+  function isCastId(id: string): boolean {
+    return !!doc?.cast.some((m) => m.id === id);
+  }
+  function isCrewId(id: string): boolean {
+    return !!doc?.crew.some((m) => m.id === id);
+  }
+
+  /** Set of ISO dates where the current filter matches. */
   const calledDates = $derived.by(() => {
     if (!doc || !selectedActorId) return null; // null = no filter active
+    const filter = selectedActorId;
     const dates = new Set<string>();
+
     for (const [iso, day] of Object.entries(doc.schedule)) {
       for (const call of day.calls) {
-        if (call.allCalled) {
-          dates.add(iso);
-          break;
+        // "cast:all" matches if allCalled OR any cast member is called
+        // (directly or via group).
+        if (filter === "cast:all") {
+          if (call.allCalled) {
+            dates.add(iso);
+            break;
+          }
+          const hasCast =
+            (call.calledActorIds?.length ?? 0) > 0 ||
+            expandCalledActorIds(call, doc.groups).size > 0;
+          if (hasCast) {
+            dates.add(iso);
+            break;
+          }
+          continue;
         }
-        const called = expandCalledActorIds(call, doc.groups);
-        if (called.has(selectedActorId)) {
-          dates.add(iso);
-          break;
+
+        // "team:all" matches if any crew member is called.
+        if (filter === "team:all") {
+          if ((call.calledCrewIds?.length ?? 0) > 0) {
+            dates.add(iso);
+            break;
+          }
+          continue;
+        }
+
+        // Individual cast member.
+        if (isCastId(filter)) {
+          if (call.allCalled) {
+            dates.add(iso);
+            break;
+          }
+          const called = expandCalledActorIds(call, doc.groups);
+          if (called.has(filter)) {
+            dates.add(iso);
+            break;
+          }
+          continue;
+        }
+
+        // Individual crew member.
+        if (isCrewId(filter)) {
+          if ((call.calledCrewIds ?? []).includes(filter)) {
+            dates.add(iso);
+            break;
+          }
+          continue;
         }
       }
     }
@@ -166,6 +233,45 @@
     </header>
 
     <div class="filter-bar">
+      <div class="view-toggle" role="group" aria-label="View mode">
+        <button
+          type="button"
+          class="view-toggle-btn"
+          class:active={viewMode === "calendar"}
+          title="Calendar view"
+          aria-label="Calendar view"
+          aria-pressed={viewMode === "calendar"}
+          onclick={() => (viewMode = "calendar")}
+        >
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <line x1="1" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="5.5" y1="3" x2="5.5" y2="15" stroke="currentColor" stroke-width="1"/>
+            <line x1="10.5" y1="3" x2="10.5" y2="15" stroke="currentColor" stroke-width="1"/>
+            <line x1="1" y1="11" x2="15" y2="11" stroke="currentColor" stroke-width="1"/>
+            <line x1="4" y1="1" x2="4" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="12" y1="1" x2="12" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="view-toggle-btn"
+          class:active={viewMode === "list"}
+          title="List view"
+          aria-label="List view"
+          aria-pressed={viewMode === "list"}
+          onclick={() => (viewMode = "list")}
+        >
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <line x1="5" y1="3" x2="14" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="5" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="5" y1="13" x2="14" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="2" cy="3" r="1.25" fill="currentColor"/>
+            <circle cx="2" cy="8" r="1.25" fill="currentColor"/>
+            <circle cx="2" cy="13" r="1.25" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
       <label class="filter-label" for="cast-filter">Show schedule for</label>
       <select
         id="cast-filter"
@@ -177,9 +283,26 @@
         }}
       >
         <option value="">Everyone</option>
-        {#each doc.cast as member (member.id)}
-          <option value={member.id}>{displayNames.get(member.id) ?? member.firstName}</option>
-        {/each}
+        {#if doc.cast.length > 0}
+          <optgroup label="Cast">
+            <option value="cast:all">All Cast</option>
+            {#each doc.cast as member (member.id)}
+              <option value={member.id}>
+                {member.firstName} {member.lastName}{member.character ? ` (${member.character})` : ""}
+              </option>
+            {/each}
+          </optgroup>
+        {/if}
+        {#if doc.crew.length > 0}
+          <optgroup label="Production Team">
+            <option value="team:all">All Team</option>
+            {#each doc.crew as member (member.id)}
+              <option value={member.id}>
+                {member.firstName} {member.lastName}{member.role ? ` (${member.role})` : ""}
+              </option>
+            {/each}
+          </optgroup>
+        {/if}
       </select>
       {#if selectedActorId && calledDates}
         <span class="filter-count">
@@ -188,6 +311,7 @@
       {/if}
     </div>
 
+    {#if viewMode === "calendar"}
     <div class="calendar">
       {#each grid.rows as row, i (i)}
         {#if isMonthHeaderRow(row)}
@@ -265,12 +389,12 @@
                       <!-- Chips for dress/perf -->
                       {#each day.calls as call (call.id)}
                         {#if call.allCalled}
-                          <span class="all-called-chip">All Called</span>
+                          <span class="all-called-chip" style:background={allCalledColor}>{allCalledLabel}</span>
                         {:else}
                           {#each call.calledGroupIds as gid (gid)}
                             {@const g = doc.groups.find((x) => x.id === gid)}
                             {#if g}
-                              <span class="group-chip" style:background={g.color ?? '#6a1b9a'}>
+                              <span class="group-chip" style:background={g.color ?? locationColor(g.id) ?? '#6a1b9a'}>
                                 {g.name}
                               </span>
                             {/if}
@@ -301,12 +425,12 @@
 
                             <!-- Called chips -->
                             {#if call.allCalled}
-                              <span class="all-called-chip">All Called</span>
+                              <span class="all-called-chip" style:background={allCalledColor}>{allCalledLabel}</span>
                             {:else}
                               {#each call.calledGroupIds as gid (gid)}
                                 {@const g = doc.groups.find((x) => x.id === gid)}
                                 {#if g}
-                                  <span class="group-chip" style:background={g.color ?? '#6a1b9a'}>
+                                  <span class="group-chip" style:background={g.color ?? locationColor(g.id) ?? '#6a1b9a'}>
                                     {g.name}
                                   </span>
                                 {/if}
@@ -370,6 +494,134 @@
         {/if}
       {/each}
     </div>
+    {:else}
+      <!-- List view: vertical list of days with their calls. Respects
+           the current person filter - uncalled days are dimmed. -->
+      <div class="list-view">
+        {#each eachDayOfRange(doc.show.startDate, doc.show.endDate) as iso (iso)}
+          {@const day = doc.schedule[iso]}
+          {@const called = isCalled(iso)}
+          {@const et = day ? doc.eventTypes.find((t) => t.id === day.eventTypeId) : undefined}
+          {@const isDressPerf = et?.isDressPerf ?? false}
+          {@const isBlank = !day || (day.calls.length === 0 && !day.description && !day.notes && !day.eventTypeId)}
+          <div
+            class="list-day"
+            class:blank={isBlank}
+            class:called={called === true}
+            class:uncalled={called === false}
+          >
+            <div class="list-day-header">
+              <span class="list-day-date">{formatDateLong(iso)}</span>
+              {#if et}
+                <span
+                  class="badge"
+                  style:background={et.bgColor}
+                  style:color={et.textColor}
+                >
+                  {et.name}
+                </span>
+              {/if}
+              {#if day?.secondaryTypeIds}
+                {#each day.secondaryTypeIds as sid (sid)}
+                  {@const st = doc.eventTypes.find((t) => t.id === sid)}
+                  {#if st}
+                    <span class="badge" style:background={st.bgColor} style:color={st.textColor}>{st.name}</span>
+                  {/if}
+                {/each}
+              {/if}
+            </div>
+
+            {#if day}
+              {#if isDressPerf && day.curtainTime}
+                <div class="list-curtain" style:color={et?.textColor ?? '#1a1a1a'}>
+                  {formatTime(day.curtainTime, timeFmt)} CURTAIN
+                </div>
+              {/if}
+
+              {#if isDressPerf}
+                {#each day.calls as call (call.id)}
+                  {#if call.time}
+                    {@const suffix = call.suffix ?? "Call"}
+                    {@const label = call.label ? `${call.label} ${suffix}` : suffix}
+                    <div class="list-dp-line">
+                      <span class="list-dp-label">{label}</span>
+                      <span class="list-dp-time">{formatTime(call.time, timeFmt)}</span>
+                    </div>
+                  {/if}
+                {/each}
+                <div class="list-chips">
+                  {#each day.calls as call (call.id)}
+                    {#if call.allCalled}
+                      <span class="all-called-chip" style:background={allCalledColor}>{allCalledLabel}</span>
+                    {:else}
+                      {#each call.calledGroupIds as gid (gid)}
+                        {@const g = doc.groups.find((x) => x.id === gid)}
+                        {#if g}
+                          <span class="group-chip" style:background={g.color ?? locationColor(g.id) ?? '#6a1b9a'}>{g.name}</span>
+                        {/if}
+                      {/each}
+                    {/if}
+                  {/each}
+                </div>
+              {:else}
+                {#each day.calls as call (call.id)}
+                  {@const hasContent =
+                    call.allCalled ||
+                    call.calledActorIds.length > 0 ||
+                    call.calledGroupIds.length > 0 ||
+                    (call.description ?? "").trim() !== "" ||
+                    (day.description ?? "").trim() !== ""}
+                  {#if hasContent}
+                    {@const tr = fmtTimeRange(call)}
+                    {@const loc = effectiveLocation(day, call).trim()}
+                    {@const locColor = loc ? locationColor(loc) : null}
+                    {@const desc = effectiveDescription(day, call).trim()}
+                    <div class="list-call" style:border-left-color={locColor ?? "var(--color-border)"}>
+                      <div class="list-call-meta">
+                        {#if tr}<span class="list-call-time" style:color={locColor}>{tr}</span>{/if}
+                        {#if desc}<span class="list-call-desc">{desc}</span>{/if}
+                        {#if loc}<span class="list-call-loc" style:color={locColor}>@ {loc}</span>{/if}
+                      </div>
+                      <div class="list-chips">
+                        {#if call.allCalled}
+                          <span class="all-called-chip" style:background={allCalledColor}>{allCalledLabel}</span>
+                        {:else}
+                          {#each call.calledGroupIds as gid (gid)}
+                            {@const g = doc.groups.find((x) => x.id === gid)}
+                            {#if g}
+                              <span class="group-chip" style:background={g.color ?? locationColor(g.id) ?? '#6a1b9a'}>{g.name}</span>
+                            {/if}
+                          {/each}
+                          {#each call.calledActorIds as aid (aid)}
+                            {@const member = doc?.cast.find((m) => m.id === aid)}
+                            {#if member}
+                              {@const covered = call.calledGroupIds.some((gid) => {
+                                const g = doc?.groups.find((x) => x.id === gid);
+                                return g?.memberIds.includes(aid) ?? false;
+                              })}
+                              {#if !covered}
+                                <span class="actor-chip">
+                                  <span class="chip-dot" style:background={member.color}></span>
+                                  {displayNames.get(aid) ?? member.firstName}
+                                </span>
+                              {/if}
+                            {/if}
+                          {/each}
+                        {/if}
+                      </div>
+                    </div>
+                  {/if}
+                {/each}
+              {/if}
+
+              {#if day.notes && day.notes.replace(/<[^>]*>/g, "").trim()}
+                <div class="list-notes">{@html sanitizeHtml(day.notes)}</div>
+              {/if}
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
 
     <footer class="view-footer">
       <span class="footer-brand">Shared from Rehearsal Block</span>
@@ -459,11 +711,139 @@
     color: var(--color-teal);
   }
 
+  /* ---- View mode toggle (calendar / list) ---- */
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--color-surface);
+  }
+  .view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition:
+      background var(--transition-fast),
+      color var(--transition-fast);
+  }
+  .view-toggle-btn + .view-toggle-btn {
+    border-left: 1px solid var(--color-border);
+  }
+  .view-toggle-btn:hover:not(.active) {
+    color: var(--color-plum);
+  }
+  .view-toggle-btn.active {
+    background: var(--color-plum);
+    color: var(--color-text-inverse);
+  }
+
   /* ---- Calendar grid ---- */
   .calendar {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  /* ---- List view ---- */
+  .list-view {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .list-day {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    border-left: 3px solid transparent;
+  }
+  .list-day.blank {
+    padding: var(--space-2) var(--space-4);
+    opacity: 0.5;
+  }
+  .list-day.called {
+    border-left-color: var(--color-teal);
+    background: color-mix(in srgb, var(--color-teal) 5%, transparent);
+  }
+  .list-day.uncalled {
+    opacity: 0.35;
+  }
+  .list-day-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-1);
+  }
+  .list-day-date {
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-plum);
+  }
+  .list-day.blank .list-day-date {
+    font-weight: 500;
+    color: var(--color-text-muted);
+    font-family: inherit;
+  }
+  .list-curtain {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: var(--space-1);
+  }
+  .list-dp-line {
+    display: flex;
+    gap: var(--space-3);
+    font-size: 0.8125rem;
+    margin-bottom: 2px;
+  }
+  .list-dp-label {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+  .list-dp-time {
+    color: var(--color-text-muted);
+  }
+  .list-call {
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--color-border);
+    margin: var(--space-1) 0 var(--space-1) var(--space-2);
+  }
+  .list-call-meta {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    align-items: baseline;
+    font-size: 0.8125rem;
+  }
+  .list-call-time {
+    font-weight: 700;
+  }
+  .list-call-desc {
+    color: var(--color-text);
+  }
+  .list-call-loc {
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .list-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+  }
+  .list-notes {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin-top: var(--space-2);
+    padding-left: var(--space-3);
+    border-left: 2px solid var(--color-border);
   }
 
   .month-header h3 {

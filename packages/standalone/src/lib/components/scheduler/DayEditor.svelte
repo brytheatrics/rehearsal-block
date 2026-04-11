@@ -33,6 +33,7 @@
     effectiveDescription,
     formatTime,
     getDefaultCallTimes,
+    locationColor,
     overlappingCallsByActor,
   } from "@rehearsal-block/core";
   import LocationChips from "./LocationChips.svelte";
@@ -47,6 +48,8 @@
     onaddlocationpreset: (name: string) => void;
     onaddconflict: (conflict: Conflict) => void;
     onrequestremoveconflict: (id: string) => void;
+    /** Replace a conflict without confirmation (used by inline edit). */
+    onreplaceconflict?: (oldId: string, newConflict: Conflict) => void;
     onrequestclear: () => void;
     /**
      * Add a new event type to the show's `eventTypes` list. Same
@@ -77,6 +80,7 @@
     onaddlocationpreset,
     onaddconflict,
     onrequestremoveconflict,
+    onreplaceconflict,
     onrequestclear,
     onaddeventtype,
     oncopy,
@@ -182,6 +186,48 @@
   let newEnd = $state("");
   let newLabel = $state("");
 
+  // Editing existing conflict
+  let editingConflictId = $state<string | null>(null);
+  let editKind = $state<"all-day" | "timed">("all-day");
+  let editStart = $state("");
+  let editEnd = $state("");
+  let editLabel = $state("");
+
+  function startEditConflict(c: Conflict) {
+    editingConflictId = c.id;
+    editKind = c.startTime ? "timed" : "all-day";
+    editStart = c.startTime ?? "";
+    editEnd = c.endTime ?? "";
+    editLabel = c.label ?? "";
+  }
+
+  function cancelEditConflict() {
+    editingConflictId = null;
+  }
+
+  function saveEditConflict() {
+    if (!editingConflictId) return;
+    const old = dayConflicts.find((c) => c.id === editingConflictId);
+    if (!old) return;
+    const updated: Conflict = {
+      id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      actorId: old.actorId,
+      date,
+      label: editLabel.trim(),
+      ...(editKind === "timed" && editStart && editEnd
+        ? { startTime: editStart, endTime: editEnd }
+        : {}),
+    };
+    if (onreplaceconflict) {
+      onreplaceconflict(editingConflictId, updated);
+    } else {
+      // Fallback: remove + add (may trigger confirmation)
+      onrequestremoveconflict(editingConflictId);
+      onaddconflict(updated);
+    }
+    editingConflictId = null;
+  }
+
   function openConflictForm() {
     conflictFormOpen = true;
     newActorId = show.cast[0]?.id ?? "";
@@ -262,9 +308,13 @@
   /**
    * For each actor: per call index they're in, the indexes of OTHER calls
    * whose times actually overlap. Sequential calls (7–8 then 8–9:30) are
-   * not flagged; only true time conflicts are.
+   * not flagged; only true time conflicts are. Passing `show.cast` so the
+   * helper can expand `allCalled` to the full cast list for overlap
+   * detection - without it, All Called overlaps would silently miss.
    */
-  const overlapByActor = $derived(overlappingCallsByActor(day, show.groups));
+  const overlapByActor = $derived(
+    overlappingCallsByActor(day, show.groups, show.cast),
+  );
 
   /**
    * Normal click: set as primary type.
@@ -283,7 +333,12 @@
       return;
     }
 
-    // Normal click: set as primary
+    // Normal click: if clicking the active primary, clear it
+    if (id === day.eventTypeId) {
+      onchange({ eventTypeId: "" });
+      return;
+    }
+    // Set as primary
     const newType = show.eventTypes.find((t) => t.id === id);
     const wasDP = eventType?.isDressPerf ?? false;
     const isDP = newType?.isDressPerf ?? false;
@@ -398,11 +453,61 @@
     patchCall(callIndex, { calledActorIds: nextIds });
   }
 
+  function toggleGroup(callIndex: number, groupId: string, called: boolean) {
+    const call = day.calls[callIndex];
+    if (!call) return;
+    const current = call.calledGroupIds;
+    const nextIds = called
+      ? current.includes(groupId)
+        ? current
+        : [...current, groupId]
+      : current.filter((x) => x !== groupId);
+    patchCall(callIndex, { calledGroupIds: nextIds });
+  }
+
+  function toggleCrew(callIndex: number, crewId: string, called: boolean) {
+    const call = day.calls[callIndex];
+    if (!call) return;
+    const current = call.calledCrewIds ?? [];
+    const nextIds = called
+      ? current.includes(crewId)
+        ? current
+        : [...current, crewId]
+      : current.filter((x) => x !== crewId);
+    patchCall(callIndex, { calledCrewIds: nextIds });
+  }
+
+  function toggleAllCalled(callIndex: number, called: boolean) {
+    patchCall(callIndex, { allCalled: called || undefined });
+  }
+
+  /* Settings-driven label/color for the All Called pseudo-group. Mirrors
+     how DayCell, ListView, and the sidebar resolve them so the editor
+     stays consistent with the rest of the UI. */
+  const allCalledLabel = $derived(
+    show.settings.allCalledLabel?.trim() || "All Called",
+  );
+  const allCalledColor = $derived(show.settings.allCalledColor || "#5b1a2b");
+
+  /* "Who's called" panel mode. Toggled via a Cast/Team button mirroring
+     the left sidebar's pattern. Single state shared across all calls in
+     this editor session - if the user is in Crew mode and switches calls
+     they stay in Crew mode, which is what they likely want. */
+  let calledPanelMode = $state<"cast" | "crew">("cast");
+
   function callAll(callIndex: number) {
-    patchCall(callIndex, { calledActorIds: show.cast.map((m) => m.id) });
+    if (calledPanelMode === "cast") {
+      patchCall(callIndex, { calledActorIds: show.cast.map((m) => m.id) });
+    } else {
+      patchCall(callIndex, { calledCrewIds: show.crew.map((m) => m.id) });
+    }
   }
   function callNone(callIndex: number) {
-    patchCall(callIndex, { calledActorIds: [] });
+    if (calledPanelMode === "cast") {
+      patchCall(callIndex, { calledActorIds: [] });
+    } else {
+      patchCall(callIndex, { calledCrewIds: [] });
+    }
   }
 
   const timeFmt = $derived(show.settings.timeFormat ?? "12h");
@@ -772,6 +877,7 @@
                   minuteStep={show.settings.timeIncrementMinutes ?? 15}
                   ariaLabel={`Call ${callIndex + 1} start time`}
                   timeFormat={timeFmt}
+                  clearable
                   onchange={(next) => patchCall(callIndex, { time: next })}
                 />
               </div>
@@ -812,6 +918,31 @@
               <div class="btn-row">
                 <button
                   type="button"
+                  class="called-mode-toggle"
+                  aria-label="Toggle between cast and production team"
+                  title="Click to switch between cast and production team"
+                  onclick={() =>
+                    (calledPanelMode = calledPanelMode === "cast" ? "crew" : "cast")}
+                >
+                  {calledPanelMode === "cast" ? "Cast" : "Team"}
+                  <span class="count">
+                    ({calledPanelMode === "cast"
+                      ? show.cast.length
+                      : show.crew.length})
+                  </span>
+                  <svg
+                    class="toggle-arrow"
+                    width="11"
+                    height="11"
+                    viewBox="0 -960 960 960"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
                   class="link-btn"
                   onclick={() => callAll(callIndex)}>All</button
                 >
@@ -822,58 +953,168 @@
                 >
               </div>
             </div>
-            <ul class="actor-list">
-              {#each show.cast as member (member.id)}
-                {@const blockers = blockingConflictsFor(
-                  member.id,
-                  call,
-                  dayConflicts,
-                )}
-                {@const isBlocked = blockers.length > 0}
-                {@const checked =
-                  !isBlocked && call.calledActorIds.includes(member.id)}
-                {@const otherBookings =
-                  overlapByActor.get(member.id)?.get(callIndex) ?? []}
-                {@const showWarning = checked && otherBookings.length > 0}
+
+            <!-- Groups list - shown in BOTH Cast and Team modes. Even
+                 when the user is browsing crew, they may still want to
+                 toggle a cast group or All Called for the same call.
+                 The All Called row is rendered as a pseudo-group at the
+                 top of this list. -->
+            <ul class="group-call-list">
+              <li>
+                <label class="group-row">
+                  <input
+                    type="checkbox"
+                    checked={call.allCalled === true}
+                    onchange={(e) =>
+                      toggleAllCalled(callIndex, e.currentTarget.checked)}
+                  />
+                  <span
+                    class="swatch swatch-square"
+                    style:background={allCalledColor}
+                  ></span>
+                  <span class="actor-name">{allCalledLabel}</span>
+                  <span class="actor-character">
+                    {show.cast.length} cast member{show.cast.length === 1 ? "" : "s"}
+                  </span>
+                </label>
+              </li>
+              {#each show.groups as group (group.id)}
+                {@const checked = call.calledGroupIds.includes(group.id)}
+                {@const groupSwatch =
+                  group.color ?? locationColor(group.id) ?? "#6a1b9a"}
                 <li>
-                  <label
-                    class="actor-row"
-                    class:warn={showWarning}
-                    class:blocked={isBlocked}
-                  >
+                  <label class="group-row">
                     <input
                       type="checkbox"
                       {checked}
-                      disabled={isBlocked}
                       onchange={(e) =>
-                        toggleActor(callIndex, member.id, e.currentTarget.checked)}
+                        toggleGroup(
+                          callIndex,
+                          group.id,
+                          e.currentTarget.checked,
+                        )}
                     />
-                    <span class="swatch" style:background={member.color}></span>
-                    <span class="actor-name">
-                      {member.firstName} {member.lastName}
+                    <span
+                      class="swatch swatch-square"
+                      style:background={groupSwatch}
+                    ></span>
+                    <span class="actor-name">{group.name}</span>
+                    <span class="actor-character">
+                      {group.memberIds.length} member{group.memberIds.length === 1 ? "" : "s"}
                     </span>
-                    <span class="actor-character">{member.character}</span>
                   </label>
-                  {#if isBlocked}
-                    <div class="block-line">
-                      🚫 Unavailable:
-                      {blockers
-                        .map((b) =>
-                          b.startTime && b.endTime
-                            ? `${fmtTime(b.startTime)}–${fmtTime(b.endTime)}${b.label ? ` (${b.label})` : ""}`
-                            : b.label || "full rehearsal",
-                        )
-                        .join(", ")}
-                    </div>
-                  {:else if showWarning}
-                    <div class="warn-line">
-                      ⚠ Also called in
-                      {otherBookings.map(otherCallLabel).join(", ")}
-                    </div>
-                  {/if}
                 </li>
               {/each}
             </ul>
+
+            {#if calledPanelMode === "cast"}
+              <ul class="actor-list">
+                {#each show.cast as member (member.id)}
+                  {@const blockers = blockingConflictsFor(
+                    member.id,
+                    call,
+                    dayConflicts,
+                  )}
+                  {@const isBlocked = blockers.length > 0}
+                  {@const checked =
+                    !isBlocked && call.calledActorIds.includes(member.id)}
+                  {@const otherBookings =
+                    overlapByActor.get(member.id)?.get(callIndex) ?? []}
+                  <!-- "Effectively called" = directly listed, OR via a group
+                       that's called on this call, OR via allCalled. The
+                       warning needs this broader notion so dropping a group
+                       (Montagues, All Called, ...) still surfaces overlap
+                       warnings for the actors inside. The checkbox itself
+                       stays bound to direct membership only. -->
+                  {@const effectivelyCalled =
+                    !isBlocked &&
+                    (checked ||
+                      call.allCalled === true ||
+                      call.calledGroupIds.some((gid) => {
+                        const g = show.groups.find((x) => x.id === gid);
+                        return g ? g.memberIds.includes(member.id) : false;
+                      }))}
+                  {@const showWarning =
+                    effectivelyCalled && otherBookings.length > 0}
+                  <li>
+                    <label
+                      class="actor-row"
+                      class:warn={showWarning}
+                      class:blocked={isBlocked}
+                    >
+                      <input
+                        type="checkbox"
+                        {checked}
+                        disabled={isBlocked}
+                        onchange={(e) =>
+                          toggleActor(callIndex, member.id, e.currentTarget.checked)}
+                      />
+                      <span class="swatch" style:background={member.color}></span>
+                      <span class="actor-name">
+                        {member.firstName} {member.lastName}
+                      </span>
+                      <span class="actor-character">{member.character}</span>
+                    </label>
+                    {#if isBlocked}
+                      <div class="block-line">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" style="width: 1em; height: 1em; vertical-align: middle;"><path d="M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM480-160q54 0 104-17.5t92-50.5L228-676q-33 42-50.5 92T160-480q0 134 93 227t227 93Zm252-124q33-42 50.5-92T800-480q0-134-93-227t-227-93q-54 0-104 17.5T284-732l448 448ZM480-480Z"/></svg> Unavailable:
+                        {blockers
+                          .map((b) =>
+                            b.startTime && b.endTime
+                              ? `${fmtTime(b.startTime)}–${fmtTime(b.endTime)}${b.label ? ` (${b.label})` : ""}`
+                              : b.label || "full rehearsal",
+                          )
+                          .join(", ")}
+                      </div>
+                    {:else if showWarning}
+                      <div class="warn-line">
+                        ⚠ Also called in
+                        {otherBookings.map(otherCallLabel).join(", ")}
+                      </div>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <!-- Crew (production team) panel. No groups for crew - they
+                   don't have group definitions in the schema. No conflict
+                   warnings since the crew schedule doesn't track per-call
+                   overlaps yet. -->
+              {#if show.crew.length === 0}
+                <p class="empty-list-hint">
+                  No production team members yet. Add them in Default
+                  Settings &gt; Contacts &gt; Production Team.
+                </p>
+              {:else}
+                <ul class="actor-list">
+                  {#each show.crew as member (member.id)}
+                    {@const checked = (call.calledCrewIds ?? []).includes(member.id)}
+                    <li>
+                      <label class="actor-row">
+                        <input
+                          type="checkbox"
+                          {checked}
+                          onchange={(e) =>
+                            toggleCrew(
+                              callIndex,
+                              member.id,
+                              e.currentTarget.checked,
+                            )}
+                        />
+                        <span
+                          class="swatch swatch-square"
+                          style:background={member.color}
+                        ></span>
+                        <span class="actor-name">
+                          {member.firstName} {member.lastName}
+                        </span>
+                        <span class="actor-character">{member.role}</span>
+                      </label>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {/if}
           {/if}
           </div>
         {/each}
@@ -907,21 +1148,78 @@
         <ul class="conflict-list">
           {#each dayConflicts as c (c.id)}
             <li class="conflict-row">
-              <div class="conflict-info">
-                <strong>{actorNameById(c.actorId)}</strong>
-                <span class="conflict-range">{conflictRangeLabel(c)}</span>
-                {#if c.label}
-                  <span class="conflict-label">· {c.label}</span>
-                {/if}
-              </div>
-              <button
-                type="button"
-                class="remove-call"
-                aria-label={`Remove conflict for ${actorNameById(c.actorId)}`}
-                onclick={() => onrequestremoveconflict(c.id)}
-              >
-                Remove
-              </button>
+              {#if editingConflictId === c.id}
+                <div class="conflict-edit-form">
+                  <strong>{actorNameById(c.actorId)}</strong>
+                  <div class="conflict-edit-kind">
+                    <label>
+                      <input type="radio" value="all-day" bind:group={editKind} /> Full day
+                    </label>
+                    <label>
+                      <input type="radio" value="timed" bind:group={editKind} /> Timed
+                    </label>
+                  </div>
+                  {#if editKind === "timed"}
+                    <div class="conflict-edit-times">
+                      <TimePicker
+                        value={editStart}
+                        compact
+                        timeFormat={timeFmt}
+                        minuteStep={show.settings.timeIncrementMinutes ?? 15}
+                        onchange={(v) => (editStart = v)}
+                        ariaLabel="Conflict start time"
+                      />
+                      <span class="conflict-edit-sep">to</span>
+                      <TimePicker
+                        value={editEnd}
+                        compact
+                        timeFormat={timeFmt}
+                        minuteStep={show.settings.timeIncrementMinutes ?? 15}
+                        minTime={editStart}
+                        onchange={(v) => (editEnd = v)}
+                        ariaLabel="Conflict end time"
+                      />
+                    </div>
+                  {/if}
+                  <input
+                    type="text"
+                    class="conflict-edit-label"
+                    value={editLabel}
+                    placeholder="Label (optional)"
+                    oninput={(e) => (editLabel = e.currentTarget.value)}
+                  />
+                  <div class="conflict-edit-actions">
+                    <button type="button" class="remove-call" onclick={cancelEditConflict}>Cancel</button>
+                    <button type="button" class="save-conflict-btn" onclick={saveEditConflict}>Save</button>
+                  </div>
+                </div>
+              {:else}
+                <div class="conflict-info">
+                  <strong>{actorNameById(c.actorId)}</strong>
+                  <span class="conflict-range">{conflictRangeLabel(c)}</span>
+                  {#if c.label}
+                    <span class="conflict-label">- {c.label}</span>
+                  {/if}
+                </div>
+                <div class="conflict-actions">
+                  <button
+                    type="button"
+                    class="edit-conflict-btn"
+                    aria-label={`Edit conflict for ${actorNameById(c.actorId)}`}
+                    onclick={() => startEditConflict(c)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="remove-call"
+                    aria-label={`Remove conflict for ${actorNameById(c.actorId)}`}
+                    onclick={() => onrequestremoveconflict(c.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -1024,6 +1322,12 @@
         oninput={(html) => onchange({ notes: html })}
       />
     </section>
+
+    <div class="done-row">
+      <button type="button" class="btn btn-primary done-btn" onclick={onclose}>
+        Done
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1163,6 +1467,16 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+
+  .done-row {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: var(--space-2);
+  }
+
+  .done-btn {
+    min-width: 120px;
   }
 
   .field-label,
@@ -1509,11 +1823,92 @@
     align-items: center;
     justify-content: space-between;
     margin-top: var(--space-2);
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
 
   .btn-row {
     display: flex;
     gap: var(--space-2);
+    align-items: center;
+  }
+
+  /* Cast/Team toggle in the called-header. Mirrors the left sidebar's
+     `.sidebar-view-toggle` styling so the two switches feel like the
+     same control. */
+  .called-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    border: 1px solid var(--color-teal);
+    border-radius: var(--radius-full);
+    background: var(--color-teal);
+    color: var(--color-text-inverse);
+    cursor: pointer;
+    transition:
+      background var(--transition-fast),
+      border-color var(--transition-fast);
+  }
+  .called-mode-toggle:hover {
+    background: var(--color-teal-dark);
+    border-color: var(--color-teal-dark);
+  }
+  .called-mode-toggle .count {
+    opacity: 0.85;
+    font-weight: 600;
+  }
+  .called-mode-toggle .toggle-arrow {
+    margin-left: 2px;
+  }
+
+  /* Group selection list inside the called panel. Lighter than the cast
+     list and sits directly above it. */
+  .group-call-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--space-2) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-alt);
+  }
+
+  .group-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    font-size: 0.8125rem;
+  }
+  .group-row:hover {
+    background: var(--color-surface);
+  }
+
+  /* Square variant of the swatch dot used for groups (and crew, since
+     crew uses square chips elsewhere too). Visually distinguishes
+     groups from individual cast circles. */
+  .swatch-square {
+    border-radius: 2px;
+  }
+
+  .empty-list-hint {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    padding: var(--space-3);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-sm);
+    margin: 0;
+    text-align: center;
   }
 
   .link-btn {
@@ -1635,6 +2030,92 @@
     gap: var(--space-2);
     align-items: baseline;
     min-width: 0;
+  }
+
+  .conflict-actions {
+    display: flex;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+
+  .edit-conflict-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0 var(--space-2);
+    border: none;
+    background: transparent;
+    color: var(--color-teal);
+    cursor: pointer;
+  }
+
+  .edit-conflict-btn:hover {
+    text-decoration: underline;
+  }
+
+  .conflict-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 100%;
+    font-size: 0.8125rem;
+  }
+
+  .conflict-edit-kind {
+    display: flex;
+    gap: var(--space-3);
+    font-size: 0.75rem;
+  }
+
+  .conflict-edit-kind label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    cursor: pointer;
+  }
+
+  .conflict-edit-times {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .conflict-edit-sep {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .conflict-edit-label {
+    font: inherit;
+    font-size: 0.8125rem;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .conflict-edit-label:focus {
+    outline: none;
+    border-color: var(--color-teal);
+  }
+
+  .conflict-edit-actions {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+  }
+
+  .save-conflict-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-teal);
+    border-radius: var(--radius-sm);
+    background: var(--color-teal);
+    color: #fff;
+    cursor: pointer;
   }
 
   .conflict-info strong {
