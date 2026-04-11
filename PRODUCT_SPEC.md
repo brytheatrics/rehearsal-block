@@ -7,7 +7,7 @@ A sellable web app for theatre directors and stage managers to build rehearsal s
 
 ## Current State (April 2026)
 
-The demo at `/demo` is fully functional with sample data (Romeo & Juliet). All core scheduling features work. The site is deployed on Netlify (Starter plan, $9/mo) with Buy Now / Sign In buttons disabled (coming soon).
+The demo at `/demo` is fully functional with sample data (Romeo & Juliet). All core scheduling features work. The site is deployed on Netlify (Starter plan $9/mo, temporary - will downgrade to Free once the paid version is stable). Buy Now / Sign In routes are wired and the scaffolding for auth + payments is in place, but the actual `/app` editor is still a placeholder. See `C:\Users\blake\.claude\plans\curious-cuddling-moth.md` for the full 10-phase plan to ship the paid version.
 
 ### Feature areas (high level)
 
@@ -20,11 +20,11 @@ The demo at `/demo` is fully functional with sample data (Romeo & Juliet). All c
 - **Day editor**: full panel with Cast/Team toggle inside the "Who's called" picker, groups always visible (including All Called), per-call inline edit, conflict editing
 - **Default Settings (6 tabs)**: Appearance (theme, visibility, group drop behavior, fonts, font sizes), Schedule (time picker increments, call times per weekday, dress/perf call window, holidays, time format, week starts on), Event Types, Locations, Contacts (cast + production team subtabs with full CRUD + CSV import), Show
 - **Editing**: undo/redo (50 levels, Ctrl+Z/Y), Ctrl+S, copy/cut/paste days, multi-select via shift/ctrl-click, multi-day paste/clear with confirmation, draft day pattern
-- **Export**: PDF download with scale/page-break/orientation/margin/footer settings (server-side Puppeteer, paywalled on deployed), Print (browser dialog), CSV (plain spreadsheet OR Google Calendar format), Contact Sheet (CSV/DOCX/PDF)
-- **Share**: server-stored share links, view-only `/view?id=xxx` page with cast + crew filter, calendar/list toggle on the shared view
-- **Conflict collection**: actor-facing pages at `/conflicts/[token]` and `/conflicts/[token]/[actorId]`, localStorage-backed (Supabase wiring is Priority 2), Pending tab with Accept/Reject (inbox pattern), conflict lockout date support
+- **Export**: PDF download with scale/page-break/orientation/margin/footer settings (currently server-side Puppeteer, paywalled on deployed), Print (browser dialog), CSV (plain spreadsheet OR Google Calendar format), Contact Sheet (CSV/DOCX/PDF)
+- **Share**: server-stored share links (in-memory Map today, moves to R2 public bucket in the paid version), view-only `/view?id=xxx` page with cast + crew filter, calendar/list toggle on the shared view
+- **Conflict collection**: actor-facing pages at `/conflicts/[token]` and `/conflicts/[token]/[actorId]`, localStorage-backed today (moves to R2 public bucket in paid version), Pending tab with Accept/Reject (inbox pattern), conflict lockout date support
 - **Mobile**: hamburger header, sticky toolbar (just the toolbar - title scrolls away), list view as the default mobile mode, sticky preferences in localStorage, dropdown bottom sheets, responsive settings modal
-- **Landing page**: hero with scroll-pinned animation (planned to be replaced with a loop animation - see CLAUDE.md "Next session"), feature rows, BRY Theatrics branding in footer
+- **Landing page**: hero with scroll-pinned animation (planned to be replaced with a loop animation - see CLAUDE.md "Planned"), feature rows, BRY Theatrics branding in footer
 
 For the precise per-feature behavior list and history of incremental changes, see `SESSION_HISTORY.md` at the repo root.
 
@@ -34,14 +34,15 @@ For the precise per-feature behavior list and history of incremental changes, se
 
 - **Framework**: SvelteKit with Svelte 5 (runes: `$state`, `$derived`, `$effect`, `$props`)
 - **Monorepo**: pnpm workspaces - `packages/core` (shared TS) + `packages/standalone` (SvelteKit app)
-- **Hosting**: Netlify Starter ($9/mo) with adapter-netlify (serverless, not edge)
-- **Auth** (planned): Supabase Pro ($25/mo, see "Why not Supabase Free" below)
-- **Storage** (planned): Local-first - IndexedDB primary, Supabase as a debounced sync layer. Both `lib/storage/local.ts` and `lib/storage/supabase.ts` are currently stubs.
-- **Payments** (planned): Stripe
-- **PDF**: Puppeteer + @sparticuz/chromium-min (server-side, works locally, needs Lambda for production)
-- **Share**: lz-string compression for URL-encoded fallback, server API for stable links
+- **Hosting**: Netlify Starter ($9/mo, temporary) with adapter-netlify. Will downgrade to Netlify Free once Phase 6 (client-side paged.js PDF) ships, because Netlify Free has a 10s function timeout that kills the Puppeteer endpoint.
+- **Auth + metadata**: Supabase **Free tier** - auth (Google OAuth + magic link) + small metadata tables only. Supabase Pro is explicitly NOT in the base business model.
+- **Blob storage**: Cloudflare R2 **Free tier** (10 GB storage, 10M reads/mo, 1M writes/mo, zero egress fees). Consolidates all blob storage: show docs, archives, share snapshots, conflict snapshots, daily version snapshots, and backups. Two buckets: private `rehearsal-block-shows` for owner data, public-read `rehearsal-block-public` for actor-facing share + conflict snapshots (served directly via CDN at `share.rehearsalblock.com`, bypassing Netlify functions).
+- **Payments**: Stripe (2.9% + $0.30 per transaction, no subscription fee). $50 one-time purchase, no recurring fees.
+- **Error monitoring**: Sentry Free tier (5k events/month)
+- **PDF (current)**: Puppeteer + @sparticuz/chromium-min (server-side `/api/pdf` endpoint, works locally). **Being replaced** in Phase 6 of the paid version plan with client-side paged.js before the Netlify Free downgrade.
+- **Share**: lz-string compression for URL-encoded fallback, server API for stable links (in-memory today, R2 in paid version)
 - **CSS**: Custom properties in `lib/theme.css` (plum #2d1f3d, teal #38817D)
-- **Fonts**: Google Fonts (Inter, Playfair Display, Roboto, Lato, Merriweather, Open Sans, Questrial) + system fallbacks
+- **Fonts**: Google Fonts (Inter, Playfair Display, Roboto, Lato, Merriweather, Open Sans, Questrial) + system fallbacks. Future consideration: self-host via `@fontsource/*` for offline + CSP-strict compatibility.
 
 ### Key technical patterns
 
@@ -59,176 +60,226 @@ For the precise per-feature behavior list and history of incremental changes, se
 
 ## Architecture: Paid Version
 
+### Core principle: pay once, own it (on free infra)
+
+The paid version is a **$50 one-time purchase** with zero subscription cost. That means the base infrastructure has to fit inside free tiers: Netlify Free, Supabase Free, Cloudflare R2 Free, Sentry Free. Features that have variable cost (weekly call emails, cloud PDF generation, org tier with collaborators) go in separate paid add-ons, not in the base tier.
+
+This is a binding design constraint. Every architectural choice in the paid version flows from it.
+
 ### Core principle: local-first
 
-The app is local-first. The user's device is the source of truth; Supabase is a sync layer, not a backend. Every save writes to IndexedDB/localStorage immediately, and Supabase sync happens in the background on a debounce.
+The app is local-first. The user's device is the source of truth; R2 + Supabase are a sync layer, not a backend. Every save writes to IndexedDB immediately, and the cloud sync happens in the background on an idle-based debounce (60s after last edit).
 
 **Why this matters:**
 - **Offline by default.** If wifi drops mid-rehearsal, the app keeps working. Changes accumulate locally and flush when connectivity returns.
-- **Instant app open.** Load from local first (~100ms), reconcile with Supabase in the background. No spinner.
-- **Bandwidth is the real cost driver, not storage.** Debouncing Supabase writes to once every 10-30s (or on blur/close/idle) cuts bandwidth 10-100x.
-- **Survives the Supabase pause gotcha.** See below.
-- **Honest alignment with "no recurring fees" pitch.** User owns their data locally. If the cloud backend ever goes away, they can still open and export their shows.
+- **Instant app open.** Load from local first (~100ms), reconcile with cloud in the background. No spinner.
+- **Bandwidth is cheap.** Idle-based debounce means a 30-minute editing session does ~5 cloud writes instead of ~60. Gzip on the wire compresses a 150KB doc to 15-30KB. Hash guard skips no-op writes.
+- **Survives vendor outages.** If R2 or Supabase has a bad day, users already on their device keep working. IndexedDB is authoritative.
+- **Honest alignment with "no recurring fees" pitch.** User owns their data locally. Export/Import JSON buttons let them leave at any time. If the cloud backend ever goes away, they can still open and export their shows.
 
-**Conflict resolution: last-write-wins on the whole doc.** When two devices edit the same show offline, whichever syncs last overwrites the other. The window is rare in a single-user product. Don't pre-build CRDTs or operational transforms.
+**Conflict resolution: last-write-wins on the whole doc.** When two devices edit the same show offline, whichever syncs last overwrites the other. The window is rare in a single-user product. Don't pre-build CRDTs or operational transforms. Multi-tab editing triggers a non-blocking warning banner via BroadcastChannel API.
 
-**Save button visual state:** teal "needs-attention" fill when local state is ahead of the last successful Supabase sync. Clears when sync catches up. Failed sync retries on exponential backoff and reconnect.
+**Save button visual state:** because local saves are instant on every edit, the default save state is just "Saved" - honest and reassuring. A subtle error indicator appears only when cloud sync is actively failing and retrying.
 
-### Infrastructure (mostly free tier)
+### Storage split (all blob storage on R2, Supabase for metadata)
 
-- **Netlify Starter** ($9/mo): SvelteKit app, SSR, API routes (everything except heavy PDF)
-- **Supabase Pro** ($25/mo): Google OAuth, Postgres (shows, profiles, submissions), 8 GB DB, 100 GB bandwidth
-- **Stripe**: 2.9% + $0.30 per transaction, no monthly fee ($48.25 net on $50 sale)
-- **AWS Lambda**: standalone function with 2GB memory for PDF generation
-  - Free tier covers ~25,000 PDFs/month
-  - After free tier: ~$0.0003 per PDF
+| Data | Store | Reason |
+|---|---|---|
+| User accounts, auth, JWT custom claims | Supabase | Needs auth + RLS |
+| Shows index (metadata only: id, name, dates, cast_count, hash, timestamps) | Supabase | Relational, list queries |
+| `show_activity` audit log (for refund eligibility + audit) | Supabase | Relational queries by user + action |
+| Analytics (`page_views`, `demo_sessions`) | Supabase | 30-day row pruning, small volume |
+| **Show documents (gzipped JSON)** | **R2 private bucket** | Fat blobs, zero-egress CDN, cheap writes |
+| **Archived show documents** | **R2 private bucket** | Same, under `archive:` prefix |
+| **Daily version snapshots (7-day retention)** | **R2 private bucket** | Same, under `snapshots:` prefix |
+| **Published share snapshots** | **R2 public bucket** | Served directly via CDN at `share.rehearsalblock.com`, zero Netlify functions |
+| **Conflict collection show snapshots** | **R2 public bucket** | Same - actor-facing pages hit CDN directly |
+| **Pending conflict submissions inbox** | **R2 private bucket** | Writes through rate-limited function, reads through auth'd function |
+| **Nightly pg_dump backups** | **R2 private bucket** | Under `backups/pg:` prefix |
+| **Nightly R2 cross-bucket backup of show docs** | **R2 private backup bucket** | Defense in depth against catastrophic R2 data loss |
 
-### Why not Supabase Free
+**Why R2 for all blobs:** R2 has **published** free-tier quotas (unlike Netlify Blobs which doesn't publish them), zero egress fees (unlike AWS S3), and a public-read bucket mode that lets the share + conflict pages serve directly from Cloudflare's CDN without touching Netlify functions at all. This alone saves thousands of function invocations per month vs routing through a Netlify function.
 
-Two blockers:
-1. **Projects auto-pause after 7 days of inactivity and require MANUAL dashboard action to restore.** Not auto-resume on access (this is a common misconception - official docs are vague). If nobody opens the app for a week, the next visitor gets a broken product. Unacceptable for a paid product.
-2. **Bandwidth is the tight constraint.** Even with local-first debouncing, 2 GB/month only covers roughly 60-100 active monthly users.
+**Why public R2 for actor-facing share/conflict pages:** every actor viewing a share link or conflict page is a read, and these are the highest-volume public paths in the product. Routing them through Netlify functions would eat the 125k/month function budget fast. Serving from R2 public bucket + custom domain makes them **zero-function reads** with unlimited egress.
 
-**Pro tier break-even math:** $25/mo = $300/year. Needs **6-8 net sales per year** to cover. 8 GB DB + 100 GB bandwidth realistically supports 3,000-4,000+ active monthly users.
+### Resilience properties
 
-**The danger scenario** is: burst launch → many users → sales dry up → $300/year ongoing cost for users who already paid. Local-first architecture is the main mitigation. Secondary: auto-archive shows > 2 years old to Supabase Storage (cheaper per byte), compress show JSON before write, TOS language allowing cold-storage archival.
+- **Supabase 7-day auto-pause**: if it happens, `/app` login breaks for a few minutes until UptimeRobot catches it, BUT share links and actor conflict pages keep working because they're served from R2 directly. Nobody but Blake notices.
+- **R2 outage**: users already on their device keep working (IndexedDB). New-device users are stuck until R2 recovers. Rare (~15 min incidents, ~2/year historically).
+- **Netlify outage**: same as above - existing users keep working locally, new visitors are stuck. Rare.
+- **Supabase data corruption**: nightly pg_dump to R2 covers restoration. IndexedDB covers the "latest state" on each user's device.
+- **R2 data loss**: nightly cross-bucket sync covers it. User IndexedDB is the ultimate fallback for active users.
 
-### Supabase keepalive pings (belt-and-suspenders)
+### Infrastructure (all free tier)
 
-Even on Pro, set up monitoring. Two independent free layers:
+- **Netlify Free** (target state, currently on Starter as a temporary crutch): SvelteKit app, 125k function invocations/month, 100 GB bandwidth/month, 10s function timeout. The 10s timeout is why Phase 6 has to replace Puppeteer with client-side paged.js before the downgrade.
+- **Supabase Free**: Google OAuth + magic link auth, Postgres for metadata tables, 500 MB DB, 2 GB bandwidth/month, 60 concurrent connections (use pgbouncer URL to pool), 3 magic link emails/hour rate limit (accept for v1, swap to Resend Free post-launch if it becomes a problem).
+- **Cloudflare R2 Free**: 10 GB storage, 1M writes/month, 10M reads/month, zero egress fees.
+- **Cloudflare CDN + DDoS** (free, applied via DNS proxy toggle): L3/4/7 DDoS mitigation, WAF managed ruleset, bot protection, edge caching for prerendered routes.
+- **Stripe**: 2.9% + $0.30 per transaction, no monthly fee ($48.25 net on $50 sale). Stripe Radar blocklist for previously-refunded emails.
+- **Sentry Free**: 5,000 events/month error capture.
+- **UptimeRobot Free**: 50 monitors, 5-minute intervals, email alerts.
+- **GitHub Actions** (free for public or small private repos): backup/keepalive/cleanup cron jobs.
+
+### Scaling ceilings
+
+With the current plan (prerender audit + JWT has_paid claim + client-direct metadata reads + server-owned doc writes + R2 public bucket for share pages), the realistic cliff is at **roughly 1500-2000 active paid users**. Main bottleneck at that scale is Netlify Free's 125k function invocation budget. Breakdown at ~2000 active users:
+- Save writes: ~80k invocations/month (biggest line item)
+- Load shows: ~20k
+- Public analytics, share publishes, conflict submissions: ~10k
+- Total: ~110k, 88% of budget, tight
+
+The architectural move that pushes the cliff to **~5000+ active users** is **presigned R2 URLs for client-direct saves**, eliminating functions from the save path entirely. This is intentionally deferred to v2 so the initial architecture stays simpler. Trigger condition: monthly function usage hits 80k/125k.
+
+Beyond ~5000 users, Supabase bandwidth (2 GB/mo) becomes the next cliff, pushed out by **delta sync** (send only changed fields per save). Also deferred.
+
+Supabase DB storage (500 MB) and R2 storage (10 GB) are effectively unreachable at this product's realistic scale because metadata rows are ~500 bytes and gzipped show docs are ~25 KB.
+
+### Keepalives (mandatory, not optional)
+
+Supabase Free's 7-day auto-pause means keepalives are **product-critical**. Two independent layers:
 
 1. **UptimeRobot** (primary + alerting): Free tier = 50 monitors, 5-minute intervals, email alerts. Monitors `/api/healthcheck`.
-2. **GitHub Actions** (backup): cron every 3 days hitting the same endpoint. Independent infrastructure.
+2. **GitHub Actions** (backup): cron every 3 days hitting the same endpoint. Independent infrastructure - immune to UptimeRobot outages.
 
 **Do NOT run keepalive pings from Blake's home or work computers.** Sleep, restarts, vacation absences silently kill local crons.
 
-`/api/healthcheck` (to be built): GET endpoint, performs a trivial Supabase query (`select 1`), returns 200 `{ok: true, supabase: "responsive"}` or 500 `{ok: false, error}`.
+`/api/healthcheck` (Phase 7 of the plan): GET endpoint, performs a trivial Supabase `select 1` + R2 HEAD, returns 200 `{ok: true, supabase: "responsive", r2: "responsive"}` or 500.
 
-### Database schema
+### Database schema (paid version)
 
 ```sql
+-- Auth + profile (existing, partial)
 profiles: id, email, has_paid, stripe_customer_id, created_at
-shows: id, owner_id, name, document (jsonb), last_saved_at, last_published_at,
-       published_doc (jsonb), share_id (unique 8-char), conflict_share_token (unique),
-       created_at, updated_at
-show_access (future org tier): id, show_id, user_id, role, passcode, created_at
-conflict_submissions: id, show_id, cast_member_id, submitted_dates (jsonb),
-                      submitter_name, submitted_at, status, reviewed_at
+
+-- Metadata-only show index (new)
+shows_index: id, owner_id, owner_email, name, start_date, end_date, cast_count,
+             document_hash, document_size_bytes, doc_version,
+             last_saved_at, last_published_at,
+             share_id, conflict_share_token, archived_at,
+             created_at, updated_at
+
+-- Audit log for refund eligibility + admin stats (new)
+show_activity: id, show_id, user_id, action, created_at
+  -- action: 'created' | 'exported_json' | 'downloaded_pdf' | 'published_share'
+  --       | 'archived' | 'unarchived' | 'deleted' | 'restored_from_snapshot'
+
+-- Analytics, public routes only, 30-day pruning (new)
+page_views: id, path, visitor_hash, session_id, loaded_at, referrer_hash, country
+demo_sessions: id, visitor_hash, session_id, started_at, duration_ms,
+               interactions_count, referrer_hash
+
+-- Future organization tier (not v1)
+show_access: id, show_id, user_id, role, passcode, created_at
 ```
 
-**`conflict_submissions` is an inbox, not an archive.** Accept merges into `shows.document.conflicts` in a single transaction AND deletes the row. Optional cleanup job sweeps `status: "applied"` rows after 30-90 days for an audit trail.
-
-**Per-actor links are derived, not stored.** Don't create a row per link. The single `conflict_share_token` on the show plus the existing cast member UUID is enough to construct `/conflicts/{token}/{castMemberId}`. Cast member IDs are random UUIDs, so guessing is effectively impossible.
+**Note the differences from the old spec:**
+- **No `document` column on shows_index.** Doc bytes live in R2 at `show:<userId>:<showId>`. The index table is pure metadata.
+- **No `published_doc` column.** Published snapshots live in the R2 public bucket at `share/<token>.json.gz`.
+- **`owner_email` denormalized** from auth.users so that if Supabase auth ever has to be migrated off, shows can be matched back to users by email. Trivially small cost, real resilience.
+- **`doc_version` field** matches the new `ScheduleDoc.version` field. Forward-migration logic runs on read if the stored version is older than the current code's version.
+- **`show_activity` is an audit log**, not transient. Used for refund eligibility enforcement ("no refund if you exported your data"), admin stats, and future audit UI.
+- **`conflict_submissions` is an inbox, stored as JSON array in an R2 blob** (not a Supabase table). Accept merges into the show doc, Reject drops the entry - both rewrite the blob.
 
 ### Analytics: DIY, cookieless, public-routes only
 
-Goal: answer (1) how many people visit and (2) how long they use the demo, without a cookie banner or monthly analytics subscription.
+Goal: answer (1) how many people visit and (2) how long they use the demo before deciding not to buy. Zero tracking on `/app` (paid users).
 
-Custom tracking logged to Supabase, only on public routes. Paid users get zero tracking.
-
-**Schema:**
-```sql
-page_views: id, path, visitor_hash, session_id, loaded_at, referrer, user_agent_hash, country
-demo_sessions: id, visitor_hash, session_id, started_at, duration_ms, interactions_count, referrer
-```
-
-`visitor_hash` = SHA-256 of IP + UA + a rotating daily salt. Non-reversible, GDPR-compliant. Same person same day = same hash.
-
-**Implementation sketch:**
-1. `POST /api/track/page` - computes visitor_hash server-side, writes a row
-2. Demo page tracks session duration via `navigator.sendBeacon` on `visibilitychange` / `beforeunload`
-3. Only runs on `/`, `/demo`, etc. NOT on `/app/**`
-4. Private `/admin/stats` page gated to Blake's account: visit counts + demo duration stats
+Implementation:
+- `visitor_hash` = SHA-256 of IP + UA + a rotating daily salt. Non-reversible, GDPR-compliant. Same person same day = same hash.
+- `POST /api/track/page` - batched server-side writes to cut round-trips
+- `POST /api/track/demo-session` - `navigator.sendBeacon` on `visibilitychange` / `beforeunload`
+- Only runs on `/`, `/demo`, etc. NOT on `/app/**`
+- Private `/admin/stats` page gated to Blake's account: visit counts + demo duration stats
+- Nightly aggregation + row pruning via `pg_cron`: roll detailed rows into daily summaries, delete rows older than 30 days
 
 **No cookie banner needed** - no tracking cookies set, visitor_hash is request-derived, auth + checkout cookies are strictly-necessary and exempt. Privacy policy page disclosing what's tracked is required, but no modal popup.
 
+### Refund policy (abuse-resistant)
+
+The $50 one-time purchase means refund abuse is an obvious vector ("pay → build show → download JSON → refund → repeat next year"). Plan closes this:
+
+- **7-day goodwill refund window** from purchase date
+- **Refund is void** if `show_activity` has any disqualifying action: `exported_json`, `downloaded_pdf`, `published_share`, or `conflict_share_token` used
+- **Refunds trigger automatic account deletion**: Stripe refund → `charge.refunded` webhook → flip `has_paid = false` → delete user's data. Stripe Radar adds the email to a block list to prevent recreating.
+- **EU Consumer Rights Directive Article 16(m) waiver** via a required consent checkbox at checkout: "I want immediate access and understand I waive my 14-day cooldown right." Legally parallel to how Netflix/Spotify handle digital goods.
+- **Demo is the free trial**: users can try every feature on `/demo` before paying. "I didn't know what I was buying" argument doesn't apply.
+
 ### User flow (paid)
 
-1. Sign in with Google
-2. Create unlimited shows
-3. Edit - saves to local IndexedDB instantly, debounced Supabase sync in background
-4. Save button shows teal "sync pending" state while behind; clears when caught up
-5. Download PDF via AWS Lambda
-6. Publish - saves snapshot to `published_doc`, cast sees live updates via share link
-7. Collect actor conflicts, review pending submissions, accept to merge
+1. Sign in with Google (or magic link)
+2. Pay $50 via Stripe checkout (with consent checkbox)
+3. Stripe webhook flips `has_paid = true`, success page forces JWT refresh to pick up new claim
+4. `/app` show list - grid of cards with hover actions (Open, Duplicate, Archive, Delete)
+5. "Create your first show" empty state CTA on first visit
+6. Edit - saves to local IndexedDB instantly, debounced cloud sync in background (60s idle + on blur/close/Ctrl+S)
+7. Daily first-save copies previous version to R2 snapshots for 7 days of history
+8. Download PDF via client-side paged.js (zero server cost)
+9. Publish - writes snapshot to R2 public bucket, actors see it via `share.rehearsalblock.com/share/<token>.json.gz` served by Cloudflare CDN
+10. Collect actor conflicts - writes snapshot to R2 public bucket, actors submit via rate-limited Netlify function, director reviews Pending tab + Accept/Reject
 
 ---
 
 ## What to Build Next
 
-### Priority 1: Polish & Ship Demo
+### Priority 1: Ship the paid version
 
-- **Replace landing-page hero scroll animation with a loop** (next planned session - details in CLAUDE.md)
-- **Help docs / tutorial packet** (planned multi-phase work - see CLAUDE.md for trigger phrase)
-- Batch deploy changes to Netlify (avoid frequent deploys - 15 credits each, 300/month)
+**Full plan**: `C:\Users\blake\.claude\plans\curious-cuddling-moth.md` (10 phases, ordered so each builds on the last).
 
-### Priority 2: Wire Up Paid Version
+Summary of phases:
+1. **Storage foundation** - R2 + Supabase metadata + IndexedDB + sync layer + JWT has_paid claim + `show_activity` + daily snapshots
+2. **App shell** - minimal ~40px header with hamburger menu (Account / Privacy / Demo / Contact / Help)
+2.5. **Prerender audit** - mark every static route as `prerender = true` to cut function invocations
+3. **Show list** - grid of cards, New Show flow, Archive, Export/Import JSON
+4. **Editor extraction** - pull the ~3000 line `/demo/+page.svelte` into a reusable `ScheduleEditor.svelte` used by both `/demo` and `/app/[showId]`
+5. **Share + conflict backend** - R2 public bucket with custom domain, CDN-direct public reads
+6. **PDF** - client-side paged.js to replace Puppeteer (blocker for Netlify Free downgrade)
+7. **Ops hardening** - healthcheck, UptimeRobot, GitHub Actions keepalives, nightly pg_dump, R2 cross-bucket backup, Sentry, cost alerts, Cloudflare proxy, CSP headers
+8. **Account settings + legal pages + refund enforcement** - `/app/account`, `/privacy`, `/terms`, `/contact`, `/help`, refund API with `show_activity` check, Stripe webhook `charge.refunded` handler, consent checkbox at `/buy`
+9. **Analytics** - `/api/track/*` endpoints, public-route instrumentation, `/admin/stats`
+10. **Demo reset + launch QA** - Reset demo button, end-to-end purchase flow test, backup restore test, Sentry smoke test
 
-**Foundation work (do first - everything else depends on this):**
-1. Fill in `lib/storage/local.ts` (IndexedDB-backed, implements `ShowStorage` interface)
-2. Fill in `lib/storage/supabase.ts` (writes for signed-in paid users)
-3. Build the sync layer: write local first (instant), queue debounced Supabase sync (10-30s idle), track `syncStatus`, retry failed syncs on backoff
-4. Save button visual state: teal needs-attention fill when `syncStatus !== "synced"`
-5. Last-write-wins conflict resolution on load
+### Priority 2: Post-launch polish (separate planned sessions)
 
-**Auth, billing, routing:**
-6. Activate Supabase auth (Google OAuth) - hooks already scaffolded
-7. Create `shows` table with sync layer wired
-8. Gate features behind `has_paid` check
-9. Wire `/app` route for paid users
-10. Move share storage from in-memory Map to Supabase `shows.published_doc`
+- **Landing-page hero loop animation** replacing the scroll-pinned version (see CLAUDE.md "Planned")
+- **Help docs / tutorial packet** (see CLAUDE.md "Planned: Help Docs")
+- **Batch deploy discipline** during the Starter period: 300 Netlify credits/month, 15 per deploy, batch changes
 
-**Supabase keepalive (partially set up):**
-- ✅ UptimeRobot account created, email alerts configured
-- ✅ Landing page monitor active at `https://rehearsalblock.com/`
-- ⏸️ Healthcheck monitor paused, pre-configured for `/api/healthcheck` - unpause when endpoint ships
-11. Build `/api/healthcheck` endpoint (trivial Supabase query, 200/500)
-12. Unpause healthcheck monitor
-13. Add `.github/workflows/supabase-keepalive.yml` cron every 3 days as second layer
+### Priority 3: Future tiers + add-ons (see plan file "Future Considerations")
 
-**Analytics (DIY, see Architecture section above):**
-14. Add `page_views` and `demo_sessions` tables
-15. Build `POST /api/track/page` endpoint
-16. Build `POST /api/track/demo-session` endpoint with `sendBeacon` support
-17. Instrument public routes (NOT `/app/**`)
-18. Instrument demo with session duration + interaction counter
-19. Private `/admin/stats` page gated to Blake's account
+- **Organization tier**: collaborator links, view-only links with passcodes, locked tech dates (priced separately)
+- **Weekly call emails**: per-actor schedule emails via SendGrid/Resend, paid subscription add-on
+- **Reports**: rehearsal/tech/performance reports with rich text, photo attachments, email delivery
+- **Cloud PDF add-on**: one-click cloud PDF if paged.js has limitations for certain use cases
+- **TLT migration**: `packages/tlt` with Google Sheets sync, admin/director auth
 
-**PDF:**
-20. Deploy PDF Lambda to AWS (reuse existing Puppeteer server code with 2GB memory)
-21. Point ExportModal fetch at Lambda URL instead of `/api/pdf`
+### Priority 4: Scale-triggered optimizations
 
-**Conflict collection backend** (UI is built, currently localStorage-stubbed):
-22. Add `conflict_share_token` column to `shows` table
-23. Backend the `/conflicts/[token]` and `/conflicts/[token]/[actorId]` pages with Supabase
-24. POST endpoint writes to `conflict_submissions`
-25. Wire Pending tab in `ConflictRequestModal.svelte` to fetch real submissions
-26. Build Accept (merge into `shows.document.conflicts` + delete row) / Reject (delete row) flow
-
-### Priority 3: Future Features
-
-- Organization tier: collaborator links, view-only links with passcodes, locked tech dates
-- Weekly call emails (per-actor schedule emails, Netlify Function + SendGrid)
-- Reports (phase 2): rehearsal/tech/performance reports with rich text, photo attachments, email delivery
-- TLT migration: `packages/tlt` with Google Sheets sync, admin/director auth
+- **Presigned R2 URLs for client-direct saves** - pushes function budget cliff from ~1500 to ~5000 users. Trigger: monthly function usage at 80%.
+- **Delta sync** - only send changed fields per save. Trigger: Supabase bandwidth at 80%.
+- **Auto-archive stale shows** - nightly cron moves shows `updated_at > 1 year ago` to cold storage. Trigger: real usage showing user show counts growing large.
+- **Automated E2E tests (Playwright)** - critical-path regression coverage. Add during first post-launch refactor.
+- **Service worker for full offline** - current plan is local-first data; adding a SW caches the app shell so it boots fully offline.
 
 ---
 
 ## Technical Debt
 
 - `locationPresets` (string[]) vs `locationPresetsV2` (LocationPreset[]) - migrate fully to V2
-- Share endpoint uses in-memory Map (swap for Supabase in paid version)
+- Share endpoint uses in-memory Map (Phase 5 moves to R2 public bucket)
 - Supabase auth warning in logs ("use getUser() instead of getSession()")
 - InlineEditor `state_referenced_locally` warnings (intentional - local value prevents reactive overwrite)
 - CastEditorModal still exists as separate component but cast editing now lives in DefaultsModal Contacts tab
 - A few accessibility warnings in DefaultsModal (8 warnings total, all pre-existing, none blocking)
+- Profile row queried on every request in `hooks.server.ts` (Phase 1 moves to JWT custom claim)
+- No schema versioning on stored `ScheduleDoc` yet (Phase 1 adds `version: 1` field)
 
 ---
 
 ## Key Files
 
 ### Core package (`packages/core/src/`)
-- `types.ts` - ScheduleDoc, CastMember, CrewMember, Group, EventType, Call, ScheduleDay, Settings, LocationPreset
+- `types.ts` - ScheduleDoc, CastMember, CrewMember, Group, EventType, Call, ScheduleDay, Settings, LocationPreset. Will gain `version: number` field in Phase 1 of the paid version plan.
 - `export.ts` - buildPrintHtml, buildCsvContent, buildPlainCsvContent, buildPageFooter
 - `schedule.ts` - expandCalledActorIds, effectiveDescription/Location, locationColor/Shape, EVENT_TYPE_COLOR_PALETTE, CAST_COLOR_PALETTE
 - `cast.ts` - castDisplayNames with cross-pool disambiguation
@@ -239,17 +290,32 @@ demo_sessions: id, visitor_hash, session_id, started_at, duration_ms, interactio
 - `csv-import.ts` - cast/crew CSV import with column mapping
 
 ### Standalone package (`packages/standalone/src/`)
-- `routes/demo/+page.svelte` - main demo page (owns all state, ~3000+ lines)
+- `routes/+page.svelte` - landing page with scroll-pinned hero animation
+- `routes/demo/+page.svelte` - main demo page, ~3000+ lines. Phase 4 of the plan extracts this into a reusable `ScheduleEditor.svelte` component.
 - `routes/(view)/view/+page.svelte` - read-only view with cast/crew filter
 - `routes/conflicts/[token]/+page.svelte` - actor-facing conflict submission page
-- `routes/api/pdf/+server.ts` - Puppeteer PDF endpoint
-- `routes/api/share/+server.ts` - share publish/retrieve
+- `routes/login/+page.svelte` + `+page.server.ts` - Google OAuth + magic link actions
+- `routes/auth/callback/+server.ts` - OAuth code exchange
+- `routes/buy/+page.svelte` + `+page.server.ts` - Stripe checkout
+- `routes/buy/success/+page.server.ts` - post-payment verification
+- `routes/app/+page.svelte` - placeholder (Phase 3 rewrites this as the show list)
+- `routes/app/+layout.server.ts` - route guard (redirect unpaid users to /buy)
+- `routes/api/pdf/+server.ts` - Puppeteer PDF endpoint (Phase 6 replaces with client-side)
+- `routes/api/share/+server.ts` - share publish/retrieve (in-memory Map, Phase 5 moves to R2)
+- `routes/api/stripe-webhook/+server.ts` - Stripe webhook, signature-verified. Phase 8 extends with `charge.refunded` handler.
 - `routes/api/contact-sheet-pdf/+server.ts` - pdfkit contact sheet PDF
-- `lib/pdf-templates.ts` - shared header/footer HTML builders for PDF (used by both server and modal preview)
+- `hooks.server.ts` - Supabase session + profile loading + route guards. Phase 1 replaces the profile query with a JWT custom claim read.
+- `lib/supabase/client.ts` + `admin.ts` - Supabase clients
+- `lib/stripe.ts` - Stripe server client
+- `lib/storage/types.ts` - ShowStorage interface + StoredShow + PaywallError
+- `lib/storage/demo.ts` - demo implementation (read-only, throws PaywallError on writes)
+- `lib/storage/local.ts` - **stub**, filled in Phase 1
+- `lib/storage/supabase.ts` - **stub**, filled in Phase 1
+- `lib/pdf-templates.ts` - shared header/footer HTML builders for PDF
 - `lib/fade-when-clipped.ts` - Svelte action for chip overflow detection
 - `lib/contact-sheet-pdf.ts` - pdfkit-based contact sheet renderer
 - `lib/export-docx.ts` - DOCX builder for contact sheets
-- `lib/components/scheduler/` - all scheduler UI components
+- `lib/components/scheduler/` - all scheduler UI components (will be consumed by the new `ScheduleEditor.svelte` in Phase 4)
 - `lib/theme.css` - CSS custom properties
 
 ---
@@ -259,3 +325,4 @@ demo_sessions: id, visitor_hash, session_id, started_at, duration_ms, interactio
 - **One-time purchase: $50**
 - No subscription, no recurring fees, unlimited shows
 - Stripe handles payment, webhook confirms and marks `has_paid: true` in Supabase
+- 7-day goodwill refund window, voided by data export / PDF download / share publication

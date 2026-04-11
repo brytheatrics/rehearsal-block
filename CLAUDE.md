@@ -3,6 +3,8 @@
 ## Project Overview
 Rehearsal Block is a web app for theatre directors and stage managers to build rehearsal schedules. See `PRODUCT_SPEC.md` for what's built, architecture, and roadmap. Verbose session history lives in `SESSION_HISTORY.md` (moved out of this file to keep startup tokens low).
 
+**Paid version plan**: the full implementation plan for shipping the paid version lives at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. When starting work on the paid version, read that plan first - it has the 10-phase breakdown, architecture decisions, file paths, and verification steps.
+
 ## Local Development
 
 ### Start the dev server
@@ -63,23 +65,40 @@ Per-element sizes use `em` units (not `rem`) in CSS and the SIZE_MAP so they sca
 ### Chip text overflow → fade gradient
 Cast/crew/group chips use a `fadeWhenClipped` Svelte action (`packages/standalone/src/lib/fade-when-clipped.ts`) that watches text elements with `ResizeObserver` and toggles `is-overflowing` on the closest chip ancestor. CSS uses `:global(.is-overflowing)` to render a `::after` overlay (15px fade + 7px solid buffer = 22px) only when the text is actually clipped. The chip's border, border-radius, and colored left stripe stay intact - only the inside text fades.
 
-### PDF rendering
+### PDF rendering (current)
 - Server (`/api/pdf`) uses Puppeteer with `headerTemplate` / `footerTemplate` for the show title (when "Title on all pages" is on) and footer logo / page numbers / date.
 - Shared HTML template builders in `packages/standalone/src/lib/pdf-templates.ts` - same module is used by both the server endpoint AND the export modal preview iframe so they render identically.
 - PDF scale slider works via regex rewrite of `font-size: Npx` in the embedded `<style>` (NOT via Puppeteer's `scale` option, which doesn't expand the bottom margin reservation, and NOT via CSS `zoom`, which interacts badly with `page-break-inside: avoid`).
 - `.print-header h1/.dates` get explicitly restored to their original 22px/11px sizes after the regex rewrite so the show title at the top of page 1 stays unscaled.
 - Header template MUST use system-ui / Georgia (no Google Fonts `<link>` - Chrome's printToPDF runs the template in an isolated context that can't fetch external stylesheets, throws CDP errors).
+- **Puppeteer is being replaced** in Phase 6 of the paid version plan with a client-side paged.js path. Both because Netlify Free has a 10s function timeout (Puppeteer routinely exceeds) and because the paid version's zero-recurring-cost philosophy rules out server-side PDF. Do not delete `/api/pdf` until paged.js is proven against the demo show - it stays as a localhost dev tool.
 
 ### Color picker portal
 The group color picker popover uses a `portalToBody` Svelte action (defined inline in `Sidebar.svelte`) that does `document.body.appendChild(node)` on mount. Without it, Chromium clips the popover even though it's `position: fixed` because of an `overflow: hidden + position: sticky` ancestor. Use this pattern for any popover that needs to escape an overflow ancestor.
 
-### Deployment - IMPORTANT
-- **Netlify Starter plan** ($9/mo) - auto-deploys on push to `main`
-- Each deploy uses 15 credits. 300 credits/month. **Do not push frequently** - batch changes and only push when asked.
-- PDF download is paywalled on deployed site (`readOnly` prop on ExportModal when `hostname !== "localhost"`)
-- Show title/dates are editable on localhost, read-only on deployed (`showReadOnly` on DefaultsModal)
-- Server-side PDF via Puppeteer works locally but hits Netlify's 1024MB memory limit - needs AWS Lambda for production
-- Share links use in-memory Map (works locally, resets on Netlify deploys)
+## Infrastructure (current state + plan)
+
+### Vendors
+- **Netlify** - hosts the SvelteKit app. **Currently Starter ($9/mo)** as a temporary crutch for the heavy launch-period deploy load (300 credits/month, 15 per deploy). **Will downgrade to Free** once the paid version is stable and Phase 6 (client-side PDF via paged.js) has replaced the Puppeteer endpoint. Netlify Free has a 10s function timeout + 125k invocation/month budget, which is fine for the architecture in the plan.
+- **Supabase** - auth + small metadata tables. **Free tier only.** Supabase Pro is explicitly NOT in the base "pay once" business model; it would only come in if subscription add-ons ship later. Free tier has a 7-day inactivity auto-pause, 2 GB bandwidth/month, 500 MB DB storage.
+- **Cloudflare R2** - primary blob storage for show documents, archives, share snapshots, conflict snapshots, and backups. Free tier: 10 GB storage, 10M reads/mo, 1M writes/mo, zero egress fees. Consolidates all blob storage onto one vendor with known quotas.
+- **Stripe** - payments (one-time $50 purchase, no subscriptions in the base tier).
+- **Sentry** - error monitoring, Free tier (5k events/month).
+
+### Deployment cadence (during Starter period)
+- Auto-deploys on push to `main`. 15 credits per deploy, 300/month cap.
+- **Do not push frequently** - batch changes and only push when Blake asks.
+- Once on Free tier, deploy credits become unmetered but function budget (125k/mo) becomes the new bottleneck.
+
+### Current state of paid-version wiring
+- **Done**: Supabase auth + Google OAuth + magic link, hooks.server.ts with `/app` route guard, `/buy` Stripe checkout, `/api/stripe-webhook` signature-verified, `ShowStorage` interface + `demo.ts` implementation, `/app` placeholder page with sign-out.
+- **Stub**: `lib/storage/local.ts` and `lib/storage/supabase.ts` throw on every method.
+- **Missing**: everything else in the plan file's 10 phases.
+
+### Current paywall gating on demo
+- `hostname !== "localhost"` = all writes, exports, advanced UI → paywall modal
+- localhost dev = full editing allowed (for testing/demo purposes)
+- Once the paid version ships, the demo stays fully accessible but reachable only via the hamburger menu inside `/app`, and a "Reset demo" button wipes any accumulated edits
 
 ## Testing Changes
 After making changes, verify in the browser at http://localhost:5173/demo. The preview tool can screenshot and interact with the page. For the export modal, the preview tool struggles with iframes - use `preview_snapshot` instead of `preview_screenshot` when the modal is open.
@@ -94,6 +113,7 @@ For iterating on PDF export specifically: `packages/standalone/scripts/debug-cal
 - `Call.allCalled` - boolean flag that means all CAST members, not crew
 - `ScheduleDoc.cast` - array of CastMember
 - `ScheduleDoc.crew` - array of CrewMember
+- `ScheduleDoc.version` - schema version field, added with the paid version for forward migrations. Demo sample may not have it yet; handle `undefined` as version 1 on read.
 - `Settings.crewDisplayMode` - "name" | "role" | "both"
 - `Settings.showCastConflicts` / `Settings.showCrewConflicts` - visibility toggles for grid
 - `Settings.defaultEventType` - show-wide default event type for new days ("" for none)
@@ -102,41 +122,28 @@ For iterating on PDF export specifically: `packages/standalone/scripts/debug-cal
 - Conflicts use `actorId` field for both cast and crew members (shared conflict system)
 - Demo show in `packages/core/src/sample-show.ts` exports `sampleShow: ScheduleDoc`
 
-## Next session: replace landing-page hero scroll animation with a loop
-
-The landing page hero (`packages/standalone/src/routes/+page.svelte`) currently uses a scroll-pinned animation - the hero pins via `position: sticky` on `.hero-pin` and 11 stages (`s1` through `s11`) cumulatively reveal day cells / chips / details over a ~1400px scroll range, gated by `STAGE_THRESHOLDS` and a continuous `progress = scrollY / 1400` value driving CSS custom properties (`--chip-drag`, `--chip-opacity`, etc.). Mobile disables the pin and forces all stages to 11.
-
-Blake wants to swap this for a self-contained loop animation that runs continuously without requiring the user to scroll. When starting this, tell Claude:
-
-> "Read the 'Next session: replace landing-page hero scroll animation with a loop' section in CLAUDE.md and let's plan the loop before touching anything."
-
-Things to consider:
-- Keep the hero copy on the left and the faux-month preview on the right at desktop, same general layout
-- The loop should tell the same "build a week of rehearsals" story: empty cells → drag actors in → labels appear → location pills appear → the week is complete
-- Around 8-12 second loop length is typical for this kind of animation. Long enough to read each step, short enough that re-watching doesn't feel slow
-- Use CSS `@keyframes` with `animation-iteration-count: infinite` rather than scroll-driven CSS, OR a JS-driven `requestAnimationFrame` loop with state machine if the choreography is complex
-- Mobile: keep the loop running (since pin scroll was disabled there anyway)
-- Pin can come out entirely - the hero sits in normal flow, the loop just plays in place
-- All the existing chip artwork can be reused. Just rewire the visibility/animation triggers
-- Reset gracefully between loops (don't have a jarring "everything disappears at once" moment - fade out smoothly so the next loop start feels intentional)
-
-Risk: the existing implementation has 11 stages with subtle ordering (MON builds 3-8, THU builds 7-11 lagging behind). Translating this to a pure CSS keyframe means a single timeline with `animation-delay` per element, which is easier to reason about than scroll progress but means all elements share one master timeline.
-
-## Most-recent session summary (2026-04-11)
-
-Long multi-topic session covering mobile responsiveness, settings reorg, list view polish, chip overflow fade treatment, day editor "Who's called" rebuild, and a complete PDF export rewrite. See `SESSION_HISTORY.md` for the full entry. Highlights:
-- **Mobile**: hamburger header, sticky toolbar, list view default, settings tab wrapping, expanded card grid stacking, dropdown bottom sheets
-- **List view**: removed redundant location footer, location pin SVG replaces `@`, max-width 620px centered, font size variables wired in
-- **Day editor**: "Who's called" rebuilt with Cast/Team toggle, groups always visible, All Called as pseudo-group, group swatch colors fixed via `locationColor` fallback
-- **Empty cell bug fix**: `emptyDay()` no longer auto-selects "Rehearsal" when no default is set
-- **Settings reorg**: Time format + Week starts on moved to Schedule, Group drop behavior moved to Appearance
-- **Round plum checkboxes**: global `app.css` rule replaces browser-default blue squares
-- **Chip overflow fade**: `fadeWhenClipped` action + per-chip `::after` gradient overlay (15px fade + 7px buffer)
-- **Color picker portal**: `portalToBody` action fixes Chromium clipping bug with sticky+overflow ancestors
-- **PDF rewrite**: shared `pdf-templates.ts` module, font-size regex scaling, `formatUsDateRange` for non-duplicated years, headerTemplate fix (no Google Fonts), `.print-header` strip depth-walker, dark grey header underline (no more accent picker), solid call-block separators
+### Paid-version Supabase tables (planned, not yet created)
+- `shows_index` - metadata only (id, owner_id, owner_email denormalized, name, dates, cast_count, document_hash, doc_version, archived_at, share_id, conflict_share_token, timestamps). No `document` column - doc bytes live in R2.
+- `show_activity` - audit log (show_id, user_id, action, created_at). Used for refund eligibility, audit, admin stats.
+- `page_views` + `demo_sessions` - analytics for public routes only, with 30-day row pruning.
+- Custom access token hook embeds `has_paid` in JWT claims so `hooks.server.ts` doesn't re-query profiles on every request.
 
 ## Planned: Help Docs / Tutorial Packet
 
 Future session goal: build a comprehensive help/tutorial doc for end users (theater directors, stage managers). Phase 1 = exploration via Explore agents to map every interaction. Phase 2 = write Getting Started + Feature Reference + Keyboard cheat sheet + FAQ. Phase 3 (optional) = in-app `/help` route + contextual `?` overlays. When starting this, tell Claude: *"Read the planned help docs section in CLAUDE.md and start Phase 1 (exploration)."*
 
 The full Phase 1 exploration checklist (components to map, user flows to trace, grep passes for keyboard shortcuts) is preserved in `SESSION_HISTORY.md` under the original Help Docs planning entry. Caveats Blake should know: Claude will miss subtle UX intent that only Blake knows; first drafts will read like a reference manual; screenshots will use the demo show.
+
+## Most-recent session summary (2026-04-11)
+
+Planning session for the paid version architecture. No code written - just deep exploration + design + approval of a 10-phase plan living at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. Key architectural decisions:
+- **All blob storage consolidated on Cloudflare R2**: show docs, archives, share snapshots, conflict snapshots, and backups. Private bucket for owner-only data, public-read bucket with custom domain (`share.rehearsalblock.com`) for share + conflict public paths so actor views bypass Netlify functions entirely.
+- **Supabase drops to metadata-only**: `shows_index` table has no document column. Bandwidth drops ~95% vs keeping docs in Supabase.
+- **Full local-first**: IndexedDB primary + 60s idle-based debounce (not timer-based) + gzip + hash no-op guard + hard flush on blur/close.
+- **Daily version history with 7-day retention**: first-save-of-day copies existing R2 blob to `snapshots/<user>/<show>/<date>.json.gz`. Users get "restore from yesterday" for free.
+- **Refund policy with anti-abuse teeth**: 7-day goodwill window, voided if user exported JSON / downloaded PDF / published share. `show_activity` audit log enforces server-side. Stripe Radar blocks previously-refunded emails. EU consent checkbox at checkout provides Article 16(m) waiver.
+- **Ops hardening**: `/api/healthcheck`, UptimeRobot + GitHub Actions keepalives, nightly pg_dump backup to R2, Sentry error monitoring, cost alerts on every paid service, Cloudflare proxy on the Netlify origin for free DDoS/WAF, CSP headers.
+- **5-year resilience folds**: Export/Import show JSON, owner_email denormalized for auth migration recovery, schema versioning on ScheduleDoc, numbered Supabase migrations, R2 cross-bucket nightly backup.
+- **Deferred to "Future Considerations"**: presigned R2 URLs (scale-triggered), delta sync, org tier, weekly call emails, E2E tests, service worker for full offline.
+
+No deploys. No code changes. Plan is locked in; Phase 1 (storage foundation) starts next session.
