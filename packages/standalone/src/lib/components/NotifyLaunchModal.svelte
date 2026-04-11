@@ -61,16 +61,16 @@
     });
 
     try {
-      const res = await fetch("/", {
+      // POST to the static HTML stub, not "/". Posting to "/" on
+      // adapter-netlify routes through SvelteKit's function handler,
+      // which rejects unknown POSTs before Netlify's form processor
+      // sees the request. Posting directly at __forms.html hits the
+      // static file Netlify registered during form detection.
+      const res = await fetch("/__forms.html", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
       });
-      // On Netlify, a 200 or 303 means the submission was captured.
-      // On localhost dev, "/" returns the home page (200) which is
-      // indistinguishable from success - we treat the whole path as a
-      // success since the UI flow is the same. Real failures come back
-      // as network errors and fall into the catch block.
       if (res.ok || res.status === 303) {
         status = "success";
       } else {
