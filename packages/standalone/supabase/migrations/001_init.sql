@@ -1,0 +1,73 @@
+-- Migration 001: initial paid-version schema
+--
+-- PLACEHOLDER - to be filled in during Phase 1 of the paid version plan.
+-- See C:\Users\blake\.claude\plans\curious-cuddling-moth.md Phase 1.
+--
+-- When implementing, this migration must create:
+--
+--   1. shows_index table (metadata only, no document blob):
+--      - id uuid PK
+--      - owner_id uuid FK -> auth.users
+--      - owner_email text (denormalized, survives auth migration)
+--      - name text
+--      - start_date date
+--      - end_date date
+--      - cast_count int
+--      - document_hash text (client-computed SHA-256 of gzipped R2 blob)
+--      - document_size_bytes int (for analytics)
+--      - doc_version text (matches ScheduleDoc.version)
+--      - last_saved_at timestamptz
+--      - last_published_at timestamptz
+--      - share_id text unique (8-char, for share links)
+--      - conflict_share_token text unique (for conflict collection)
+--      - archived_at timestamptz (nullable)
+--      - created_at, updated_at timestamptz
+--    RLS: owner_id = auth.uid() on all CRUD
+--    Index: (owner_id, updated_at desc) for the show list query
+--
+--  2. show_activity table (audit log for refund eligibility + admin stats):
+--    - id uuid PK
+--    - show_id uuid FK -> shows_index
+--    - user_id uuid FK -> auth.users
+--    - action text ('created' | 'exported_json' | 'downloaded_pdf'
+--                   | 'published_share' | 'archived' | 'unarchived'
+--                   | 'deleted' | 'restored_from_snapshot')
+--    - created_at timestamptz default now()
+--    RLS: user can read their own rows; only service role can write
+--    Index: (user_id, action, created_at desc) for refund eligibility query
+--
+--  3. page_views table (analytics, public routes only):
+--    - id uuid PK
+--    - path text
+--    - visitor_hash text (SHA-256 of IP + UA + rotating daily salt)
+--    - session_id text
+--    - loaded_at timestamptz
+--    - referrer_hash text (nullable)
+--    - country text (nullable)
+--
+--  4. demo_sessions table:
+--    - id uuid PK
+--    - visitor_hash text
+--    - session_id text
+--    - started_at timestamptz
+--    - duration_ms int
+--    - interactions_count int
+--    - referrer_hash text (nullable)
+--
+--  5. Custom access token hook function that embeds profiles.has_paid
+--     into the JWT custom_claims so hooks.server.ts can read it without
+--     a per-request profile query.
+--
+-- Migration pattern going forward:
+--   - Numbered sequentially: 001_init.sql, 002_add_foo.sql, 003_fix_bar.sql
+--   - Apply via `supabase db push` (Supabase CLI)
+--   - Track applied state in standard supabase_migrations.schema_migrations
+--   - NEVER edit a migration after it has been applied to prod - always add
+--     a new one that fixes the earlier one
+
+-- Placeholder: prevent this migration from running and creating empty state.
+-- Remove this guard and write real DDL above when filling in Phase 1.
+DO $$
+BEGIN
+  RAISE EXCEPTION 'Migration 001_init.sql is still a placeholder - see Phase 1 of the paid version plan before applying';
+END $$;

@@ -2,6 +2,10 @@ import { fail, redirect } from "@sveltejs/kit";
 import type { Actions } from "./$types";
 import { PUBLIC_SITE_URL } from "$env/static/public";
 
+// NOT prerenderable: SvelteKit refuses to prerender any page with form
+// actions defined. The page has to run on the server to handle the action
+// dispatch. Login stays as a runtime route.
+
 export const actions: Actions = {
   google: async ({ locals, url }) => {
     // TODO (pre-launch): replace this full-page OAuth redirect with Google
