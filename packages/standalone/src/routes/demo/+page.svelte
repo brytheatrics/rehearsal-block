@@ -13,6 +13,7 @@
   import ContactSheetModal from "$lib/components/scheduler/ContactSheetModal.svelte";
   import ConflictRequestModal from "$lib/components/scheduler/ConflictRequestModal.svelte";
   import ShowEditorModal from "$lib/components/scheduler/ShowEditorModal.svelte";
+  import ComingSoonModal from "$lib/components/ComingSoonModal.svelte";
   import NotifyLaunchModal from "$lib/components/NotifyLaunchModal.svelte";
   import Toast from "$lib/components/scheduler/Toast.svelte";
   import { onMount } from "svelte";
@@ -139,6 +140,10 @@
   /** Whether the launch-notification signup modal is open. Triggered
    *  from the bottom demo banner. */
   let notifyLaunchOpen = $state(false);
+  /* Pre-launch gating for the Buy Rehearsal Block buttons on this page.
+     Clicking any of them opens ComingSoonModal which offers a link to
+     transition to NotifyLaunchModal. Removed when the paid version ships. */
+  let comingSoonOpen = $state(false);
   let defaultsOpen = $state(false);
   let castEditorOpen = $state(false);
   let showEditorOpen = $state(false);
@@ -3374,7 +3379,13 @@
           Notify me when it launches
         </button>
       </div>
-      <span class="btn btn-primary disabled-link" title="Coming soon">Buy Rehearsal Block</span>
+      <button
+        type="button"
+        class="btn btn-primary"
+        onclick={() => (comingSoonOpen = true)}
+      >
+        Buy Rehearsal Block
+      </button>
     </div>
   </div>
 </div>
@@ -3434,6 +3445,17 @@
     onclose={() => (contactSheetOpen = false)}
     readOnly={isDeployedDemo}
     onpaywall={() => (paywallOpen = true)}
+  />
+{/if}
+
+{#if comingSoonOpen}
+  <ComingSoonModal
+    context="purchase"
+    onclose={() => (comingSoonOpen = false)}
+    onnotify={() => {
+      comingSoonOpen = false;
+      notifyLaunchOpen = true;
+    }}
   />
 {/if}
 
@@ -3800,20 +3822,22 @@
         <button type="button" class="btn btn-secondary" onclick={closePaywall}>
           Keep exploring
         </button>
-        <span class="btn btn-primary disabled-link" title="Coming soon">Buy Rehearsal Block</span>
+        <button
+          type="button"
+          class="btn btn-primary"
+          onclick={() => {
+            closePaywall();
+            comingSoonOpen = true;
+          }}
+        >
+          Buy Rehearsal Block
+        </button>
       </div>
     </div>
   </div>
 {/if}
 
 <style>
-  .disabled-link {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-    user-select: none;
-  }
-
   .demo-page {
     width: 100%;
   }

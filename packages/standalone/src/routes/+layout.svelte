@@ -3,8 +3,33 @@
   import { invalidate } from "$app/navigation";
   import { page } from "$app/state";
   import { onMount } from "svelte";
+  import ComingSoonModal from "$lib/components/ComingSoonModal.svelte";
+  import NotifyLaunchModal from "$lib/components/NotifyLaunchModal.svelte";
 
   let { data, children } = $props();
+
+  /* Pre-launch gating for Sign In / Buy buttons. All Sign In / Buy Now /
+     Buy Rehearsal Block buttons in the header and hamburger dropdown are
+     disabled for real usage but still clickable - clicking opens the
+     ComingSoonModal. From there users can transition to the
+     NotifyLaunchModal to drop their email. Remove this gating once the
+     paid version is live and /login + /buy routes should be reachable. */
+  let comingSoonOpen = $state(false);
+  let comingSoonContext = $state<"sign-in" | "purchase">("sign-in");
+  let notifyLaunchOpen = $state(false);
+
+  function openComingSoon(context: "sign-in" | "purchase") {
+    comingSoonContext = context;
+    comingSoonOpen = true;
+    /* Close the mobile menu if it happens to be open so the modal isn't
+       stacked on top of the dropdown. */
+    menuOpen = false;
+  }
+
+  function transitionToNotify() {
+    comingSoonOpen = false;
+    notifyLaunchOpen = true;
+  }
 
   /** Public pages (view, conflicts) use their own minimal layout - skip the app shell. */
   const isPublicPage = $derived(
@@ -121,8 +146,20 @@
               </form>
             {:else}
               <a href="/demo" class="nav-link">Demo</a>
-              <span class="nav-link disabled-link" title="Coming soon">Sign In</span>
-              <span class="btn btn-primary disabled-link" title="Coming soon">Buy Now</span>
+              <button
+                type="button"
+                class="nav-link nav-link-btn"
+                onclick={() => openComingSoon("sign-in")}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary"
+                onclick={() => openComingSoon("purchase")}
+              >
+                Buy Now
+              </button>
             {/if}
           </nav>
 
@@ -179,8 +216,20 @@
                 <div class="menu-email-static">Signed in as {data.user.email}</div>
               {:else}
                 <a href="/demo" class="menu-item" onclick={closeMenu}>Demo</a>
-                <span class="menu-item disabled-link" title="Coming soon">Sign In</span>
-                <span class="menu-item menu-item-primary disabled-link" title="Coming soon">Buy Now</span>
+                <button
+                  type="button"
+                  class="menu-item"
+                  onclick={() => openComingSoon("sign-in")}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  class="menu-item menu-item-primary"
+                  onclick={() => openComingSoon("purchase")}
+                >
+                  Buy Now
+                </button>
               {/if}
               <div class="menu-divider"></div>
             </div>
@@ -244,6 +293,22 @@
       </div>
     </footer>
   </div>
+{/if}
+
+<!-- Pre-launch gating modals. Rendered outside the .app-shell so they
+     stay visible even on public pages (/view, /conflicts) if those pages
+     ever need to open them. Sign In / Buy buttons anywhere in the app
+     shell route through these. -->
+{#if comingSoonOpen}
+  <ComingSoonModal
+    context={comingSoonContext}
+    onclose={() => (comingSoonOpen = false)}
+    onnotify={transitionToNotify}
+  />
+{/if}
+
+{#if notifyLaunchOpen}
+  <NotifyLaunchModal source="landing" onclose={() => (notifyLaunchOpen = false)} />
 {/if}
 
 <style>
@@ -313,12 +378,15 @@
     color: var(--color-teal);
     text-decoration: none;
   }
-
-  .disabled-link {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-    user-select: none;
+  /* Some primary nav items are <button> elements (Sign In opens a modal
+     rather than navigating). Strip button defaults so they match <a>. */
+  .nav-link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    cursor: pointer;
   }
 
   /* Signout form wrapper - shrinks the form to size of button only. */
@@ -409,10 +477,6 @@
     background: var(--color-bg-alt);
     color: var(--color-teal);
     text-decoration: none;
-  }
-  .menu-item.disabled-link {
-    opacity: 0.45;
-    cursor: not-allowed;
   }
 
   /* Primary CTA styling inside the hamburger dropdown (mobile-only Buy Now,

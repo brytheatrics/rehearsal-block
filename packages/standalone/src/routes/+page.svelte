@@ -1,10 +1,14 @@
 <script lang="ts">
+  import ComingSoonModal from "$lib/components/ComingSoonModal.svelte";
   import NotifyLaunchModal from "$lib/components/NotifyLaunchModal.svelte";
 
   let { data } = $props();
 
   /** Whether the launch-notification signup modal is open. */
   let notifyOpen = $state(false);
+  /** Whether the "Coming soon" gate modal is open (shown when the
+   *  disabled Buy Rehearsal Block button is clicked before launch). */
+  let comingSoonOpen = $state(false);
 
   // Static cast data for the hero mockup + chip reel. These aren't real records -
   // they're hand-picked to showcase the product's visual language at small scale.
@@ -649,7 +653,13 @@
         <span class="arrow" aria-hidden="true">→</span>
       </a>
       {#if !data.profile?.has_paid}
-        <span class="btn btn-ghost btn-lg disabled-link">Buy Rehearsal Block</span>
+        <button
+          type="button"
+          class="btn btn-ghost btn-lg"
+          onclick={() => (comingSoonOpen = true)}
+        >
+          Buy Rehearsal Block
+        </button>
       {/if}
     </div>
     <p class="closing-note">No account needed. Works in your browser.</p>
@@ -658,6 +668,17 @@
     </button>
   </div>
 </section>
+
+{#if comingSoonOpen}
+  <ComingSoonModal
+    context="purchase"
+    onclose={() => (comingSoonOpen = false)}
+    onnotify={() => {
+      comingSoonOpen = false;
+      notifyOpen = true;
+    }}
+  />
+{/if}
 
 {#if notifyOpen}
   <NotifyLaunchModal source="landing" onclose={() => (notifyOpen = false)} />
@@ -832,13 +853,6 @@
     border-color: rgba(255, 255, 255, 0.6);
     background: rgba(255, 255, 255, 0.05);
     text-decoration: none;
-  }
-
-  .disabled-link {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-    user-select: none;
   }
 
   /* ==================== HERO PREVIEW CARD ==================== */
