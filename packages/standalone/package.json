@@ -11,13 +11,16 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1029.0",
     "@rehearsal-block/core": "workspace:*",
     "@sparticuz/chromium-min": "^143.0.4",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
     "docx": "^9.6.1",
     "follow-redirects": "^1.15.11",
+    "idb-keyval": "^6.2.2",
     "lz-string": "^1.5.0",
+    "pako": "^2.1.0",
     "pdfkit": "^0.18.0",
     "puppeteer-core": "^24.40.0",
     "stripe": "^17.5.0"
@@ -27,6 +30,7 @@
     "@sveltejs/kit": "^2.16.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@types/lz-string": "^1.5.0",
+    "@types/pako": "^2.0.4",
     "@types/pdfkit": "^0.17.5",
     "svelte": "^5.16.0",
     "svelte-check": "^4.1.1",
