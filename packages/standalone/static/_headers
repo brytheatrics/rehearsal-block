@@ -1,0 +1,18 @@
+# Netlify custom headers. Applied to all responses matching the path pattern.
+# https://docs.netlify.com/routing/headers/
+
+# Content Security Policy - defense in depth against XSS.
+# Restrictive baseline: only allow scripts, styles, fonts, and connections
+# from known origins. Blocks inline scripts (except Svelte's hydration which
+# uses module scripts, not inline eval), external script injection, and
+# untrusted fetch targets.
+#
+# Tune as needed when adding new integrations (Sentry, Google Identity
+# Services, etc.) - the browser console will report CSP violations with
+# the blocked URI so you know exactly what to whitelist.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://*.r2.cloudflarestorage.com https://*.r2.dev; frame-src https://js.stripe.com; object-src 'none'; base-uri 'self'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
