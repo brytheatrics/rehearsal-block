@@ -29,17 +29,26 @@
 </svelte:head>
 
 <div class="legal-page container-sm">
-  <div class="draft-banner" role="note">
-    <strong>DRAFT - NOT LAWYER REVIEWED.</strong> These terms are a
-    placeholder and must be reviewed by a lawyer (or replaced with a vetted
-    template) before Rehearsal Block accepts real payments. The refund
-    policy in particular has real enforcement behind it and must be
-    legally sound.
-  </div>
+  <!--
+    Draft banner only renders during local dev (pnpm dev). Vite replaces
+    import.meta.env.DEV with a literal at build time, so the entire block
+    becomes dead code and is tree-shaken out of the prerendered terms.html.
+    On Netlify production deploys, this banner does not exist in the served
+    HTML at all.
+  -->
+  {#if import.meta.env.DEV}
+    <div class="draft-banner" role="note">
+      <strong>DRAFT - NOT LAWYER REVIEWED.</strong> These terms are a
+      placeholder and must be reviewed by a lawyer (or replaced with a
+      vetted template) before Rehearsal Block accepts real payments. The
+      refund policy in particular has real enforcement behind it and must
+      be legally sound.
+    </div>
+  {/if}
 
   <h1>Terms of Service</h1>
 
-  <p class="meta">Last updated: 2026-04-11 (DRAFT)</p>
+  <p class="meta">Last updated: 2026-04-11</p>
 
   <p>
     By using Rehearsal Block or purchasing access, you agree to these
