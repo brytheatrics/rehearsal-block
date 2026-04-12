@@ -31,10 +31,11 @@
     notifyLaunchOpen = true;
   }
 
-  /** Public pages (view, conflicts) use their own minimal layout - skip the app shell. */
+  /** Pages with their own layout - skip the marketing header/footer. */
   const isPublicPage = $derived(
     page.url.pathname.startsWith("/view") ||
-      page.url.pathname.startsWith("/conflicts"),
+      page.url.pathname.startsWith("/conflicts") ||
+      page.url.pathname.startsWith("/app"),
   );
 
   /*
