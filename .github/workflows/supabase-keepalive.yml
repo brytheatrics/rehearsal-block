@@ -1,0 +1,32 @@
+# Second-layer keepalive for Supabase Free tier's 7-day auto-pause.
+#
+# UptimeRobot is the primary monitor (5-minute intervals, email alerts).
+# This GitHub Actions cron is the backup - independent infrastructure,
+# immune to UptimeRobot outages. Fires every 3 days.
+#
+# The healthcheck endpoint pings both Supabase and R2, so this single
+# cron keeps both services alive.
+
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # Every 3 days at a quiet hour (4:17 AM UTC, off-minute to avoid
+    # the :00/:30 stampede). Cron: minute hour day-of-month month day-of-week.
+    - cron: "17 4 */3 * *"
+  # Allow manual trigger from the Actions tab for testing.
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping healthcheck endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://rehearsalblock.com/api/healthcheck)
+          echo "Healthcheck returned HTTP $response"
+          if [ "$response" != "200" ]; then
+            echo "::error::Healthcheck failed with HTTP $response"
+            exit 1
+          fi
