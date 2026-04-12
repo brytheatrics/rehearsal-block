@@ -46,31 +46,32 @@
     }, 2200);
   }
 
-  /* Mobile nav dropdown state. Only rendered/used at <= 768px via CSS.
-     Closes on navigation, on outside click, or on Escape. */
-  let mobileNavOpen = $state(false);
+  /* Hamburger menu dropdown state. Visible at ALL viewport widths now
+     (previously mobile-only). Closes on navigation, on outside click,
+     and on Escape. */
+  let menuOpen = $state(false);
 
-  function toggleMobileNav(e: MouseEvent) {
+  function toggleMenu(e: MouseEvent) {
     /* Stop the click from reaching the window handler, which would see
        the freshly-opened state and immediately close it again. */
     e.stopPropagation();
-    mobileNavOpen = !mobileNavOpen;
+    menuOpen = !menuOpen;
   }
 
-  function closeMobileNav() {
-    mobileNavOpen = false;
+  function closeMenu() {
+    menuOpen = false;
   }
 
   function handleWindowClick(e: MouseEvent) {
-    if (!mobileNavOpen) return;
+    if (!menuOpen) return;
     const target = e.target as HTMLElement | null;
     if (!target) return;
-    if (target.closest(".mobile-nav-toggle") || target.closest(".nav")) return;
-    mobileNavOpen = false;
+    if (target.closest(".menu-toggle") || target.closest(".menu-dropdown")) return;
+    menuOpen = false;
   }
 
   function handleWindowKey(e: KeyboardEvent) {
-    if (e.key === "Escape" && mobileNavOpen) mobileNavOpen = false;
+    if (e.key === "Escape" && menuOpen) menuOpen = false;
   }
 
   onMount(() => {
@@ -90,42 +91,114 @@
   {@render children?.()}
 {:else}
   <div class="app-shell">
-    <header class="app-header" class:mobile-nav-open={mobileNavOpen}>
+    <header class="app-header" class:menu-is-open={menuOpen}>
       <div class="container header-inner">
-        <a href="/" class="brand" onclick={closeMobileNav}>
+        <a href="/" class="brand" onclick={closeMenu}>
           <img src="/rehearsal-block-logo.svg" alt="Rehearsal Block" class="brand-logo" />
         </a>
 
-        <button
-          type="button"
-          class="mobile-nav-toggle"
-          aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
-          aria-expanded={mobileNavOpen}
-          onclick={toggleMobileNav}
-        >
-          {#if mobileNavOpen}
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          {:else}
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-          {/if}
-        </button>
+        <div class="header-right">
+          <!--
+            Primary nav bar: visible at desktop width (> 768px) only. At mobile
+            width it's hidden via @media; the same items move into the hamburger
+            dropdown (.menu-primary-mobile) since there's no room for them in
+            the 56px mobile header row.
+          -->
+          <nav class="primary-nav">
+            {#if data.user && data.profile?.has_paid}
+              <a href="/app" class="nav-link">My Shows</a>
+              <form method="POST" action="/login?/signout" class="signout-form">
+                <button type="submit" class="nav-email-btn" title="Click to sign out">
+                  {data.user.email}
+                </button>
+              </form>
+            {:else if data.user}
+              <a href="/buy" class="btn btn-primary">Buy Rehearsal Block</a>
+              <form method="POST" action="/login?/signout" class="signout-form">
+                <button type="submit" class="nav-email-btn" title="Click to sign out">
+                  {data.user.email}
+                </button>
+              </form>
+            {:else}
+              <a href="/demo" class="nav-link">Demo</a>
+              <span class="nav-link disabled-link" title="Coming soon">Sign In</span>
+              <span class="btn btn-primary disabled-link" title="Coming soon">Buy Now</span>
+            {/if}
+          </nav>
 
-        <nav class="nav" class:nav-open={mobileNavOpen}>
-          {#if data.user && data.profile?.has_paid}
-            <a href="/app" class="nav-link" onclick={closeMobileNav}>My Shows</a>
-            <span class="nav-email">{data.user.email}</span>
-          {:else if data.user}
-            <a href="/buy" class="btn btn-primary" onclick={closeMobileNav}>Buy Rehearsal Block</a>
-          {:else}
-            <a href="/demo" class="nav-link" onclick={closeMobileNav}>Demo</a>
-            <span class="nav-link disabled-link" title="Coming soon">Sign In</span>
-            <span class="btn btn-primary disabled-link" title="Coming soon">Buy Now</span>
-          {/if}
-        </nav>
+          <!-- Hamburger toggle: visible at ALL widths. -->
+          <button
+            type="button"
+            class="menu-toggle"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            onclick={toggleMenu}
+          >
+            {#if menuOpen}
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            {:else}
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            {/if}
+          </button>
+        </div>
+
+        <!--
+          Hamburger dropdown. Rendered when the menu is open.
+
+          Contents are split into three groups:
+
+          1. .menu-primary-mobile — visible at mobile width only. Duplicates
+             the primary nav items (which are hidden on mobile) so users still
+             have a way to reach Demo / Sign In / Buy / My Shows when the top
+             nav bar collapses.
+
+          2. .menu-secondary — visible at all widths. The static pages (Help,
+             Contact, Privacy, Terms) plus Demo when signed in (when signed
+             out, Demo is already in the top nav).
+
+          3. .menu-signout — visible only when signed in. Sign out form.
+        -->
+        {#if menuOpen}
+          <div class="menu-dropdown" role="menu">
+            <div class="menu-primary-mobile">
+              {#if data.user && data.profile?.has_paid}
+                <a href="/app" class="menu-item" onclick={closeMenu}>My Shows</a>
+                <div class="menu-email-static">Signed in as {data.user.email}</div>
+              {:else if data.user}
+                <a href="/buy" class="menu-item menu-item-primary" onclick={closeMenu}>Buy Rehearsal Block</a>
+                <div class="menu-email-static">Signed in as {data.user.email}</div>
+              {:else}
+                <a href="/demo" class="menu-item" onclick={closeMenu}>Demo</a>
+                <span class="menu-item disabled-link" title="Coming soon">Sign In</span>
+                <span class="menu-item menu-item-primary disabled-link" title="Coming soon">Buy Now</span>
+              {/if}
+              <div class="menu-divider"></div>
+            </div>
+
+            <div class="menu-secondary">
+              {#if data.user}
+                <a href="/demo" class="menu-item" onclick={closeMenu}>Demo</a>
+              {/if}
+              <a href="/help" class="menu-item" onclick={closeMenu}>Help</a>
+              <a href="/contact" class="menu-item" onclick={closeMenu}>Contact</a>
+              <a href="/privacy" class="menu-item" onclick={closeMenu}>Privacy</a>
+              <a href="/terms" class="menu-item" onclick={closeMenu}>Terms</a>
+            </div>
+
+            {#if data.user}
+              <div class="menu-divider"></div>
+              <form method="POST" action="/login?/signout" class="menu-signout-form">
+                <button type="submit" class="menu-item menu-item-signout">
+                  Sign out
+                </button>
+              </form>
+            {/if}
+          </div>
+        {/if}
       </div>
     </header>
 
@@ -176,6 +249,7 @@
     background: #ffffff;
     color: var(--color-text);
     border-bottom: none;
+    position: relative;
   }
 
   .header-inner {
@@ -204,29 +278,21 @@
     text-decoration: none;
   }
 
-  .nav {
+  /* Right side of the header: primary nav + hamburger toggle, grouped
+     together so they stay aligned on the right edge. */
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  /* Primary nav: visible at desktop width (> 768px). Hidden on mobile via
+     the @media rule below. Contains the common actions (Demo/Sign In/Buy
+     when signed out, My Shows + email when signed in). */
+  .primary-nav {
     display: flex;
     align-items: center;
     gap: var(--space-5);
-  }
-
-  /* Hamburger toggle: only visible at mobile width via the @media rule
-     below. At desktop it's display:none. */
-  .mobile-nav-toggle {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-  }
-  .mobile-nav-toggle:hover {
-    background: rgba(0, 0, 0, 0.04);
   }
 
   .nav-link {
@@ -240,16 +306,138 @@
     text-decoration: none;
   }
 
-  .nav-email {
-    color: var(--color-teal-light);
-    font-size: 0.875rem;
-  }
-
   .disabled-link {
     opacity: 0.45;
     cursor: not-allowed;
     pointer-events: none;
     user-select: none;
+  }
+
+  /* Signout form wrapper - shrinks the form to size of button only. */
+  .signout-form {
+    display: inline-flex;
+    margin: 0;
+  }
+
+  /* Email shown in the desktop primary nav. Rendered as a button because
+     clicking it signs the user out. The title attribute communicates this. */
+  .nav-email-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-teal-dark);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+  }
+  .nav-email-btn:hover {
+    color: var(--color-teal);
+    text-decoration: underline;
+  }
+
+  /* Hamburger toggle: visible at ALL widths now (previously mobile-only). */
+  .menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+  .menu-toggle:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  /* Hamburger dropdown. Absolutely positioned relative to the header so it
+     overlays content below without pushing the layout down. On desktop it
+     anchors to the right; on mobile it spans full width (see @media below). */
+  .menu-dropdown {
+    position: absolute;
+    top: 100%;
+    right: var(--space-5);
+    min-width: 240px;
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-2) 0;
+    z-index: 30;
+  }
+
+  .menu-item {
+    display: block;
+    width: 100%;
+    padding: var(--space-2) var(--space-4);
+    color: var(--color-text);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9375rem;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .menu-item:hover {
+    background: var(--color-bg-alt);
+    color: var(--color-teal);
+    text-decoration: none;
+  }
+  .menu-item.disabled-link {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Primary CTA styling inside the hamburger dropdown (mobile-only Buy Now,
+     Buy Rehearsal Block). */
+  .menu-item-primary {
+    color: var(--color-teal-dark);
+    font-weight: 600;
+  }
+
+  /* Sign out button - same geometry as other items but red accent. */
+  .menu-item-signout {
+    color: var(--color-danger);
+  }
+  .menu-item-signout:hover {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+  }
+
+  .menu-signout-form {
+    display: block;
+    margin: 0;
+    padding: 0;
+  }
+
+  .menu-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: var(--space-2) 0;
+  }
+
+  /* Email shown inside the mobile dropdown (as static info, not clickable,
+     because the Sign out button is separately available below). */
+  .menu-email-static {
+    padding: var(--space-1) var(--space-4) var(--space-2);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  /* Hide the mobile-only primary group at desktop width. The top primary
+     nav bar is already visible there. */
+  @media (min-width: 769px) {
+    .menu-primary-mobile {
+      display: none;
+    }
   }
 
   .app-main {
@@ -353,12 +541,9 @@
     justify-self: end;
   }
 
-  /* ---- Mobile header: logo left, hamburger right, nav collapses into
-     a dropdown underneath the header row. ---- */
+  /* ---- Mobile: hide the primary nav, reduce header height, make the
+     hamburger dropdown full-width. ---- */
   @media (max-width: 768px) {
-    .app-header {
-      position: relative;
-    }
     .header-inner {
       height: 56px;
       padding-left: var(--space-4);
@@ -370,47 +555,18 @@
       object-fit: contain;
       object-position: left center;
     }
-    .mobile-nav-toggle {
-      display: inline-flex;
-    }
-    /* Nav becomes a dropdown panel: hidden by default, shown when the
-       hamburger opens it. Absolutely positioned so it overlays content
-       below without pushing the layout down. */
-    .nav {
-      position: absolute;
-      top: 56px;
-      left: 0;
-      right: 0;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0;
-      background: #ffffff;
-      border-bottom: 1px solid var(--color-border);
-      box-shadow: 0 6px 16px rgba(15, 10, 25, 0.08);
-      padding: var(--space-2) var(--space-4);
-      z-index: 20;
+    .primary-nav {
       display: none;
     }
-    .nav.nav-open {
-      display: flex;
-    }
-    .nav .nav-link,
-    .nav .btn,
-    .nav .nav-email {
-      padding: var(--space-3) 0;
-      border-bottom: 1px solid var(--color-border);
-      text-align: left;
-      font-size: 1rem;
-    }
-    .nav :last-child {
-      border-bottom: none;
-    }
-    /* Primary button keeps its teal background but drops the inline
-       treatment - still readable and tappable at full width. */
-    .nav .btn.btn-primary {
-      border-bottom: 1px solid var(--color-border);
-      background: transparent;
-      color: var(--color-text);
+    /* Full-width dropdown overlay, drops down below the header row. */
+    .menu-dropdown {
+      left: 0;
+      right: 0;
+      top: 56px;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      min-width: 0;
     }
   }
 
