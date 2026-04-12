@@ -238,6 +238,7 @@
               {#if data.user}
                 <a href="/demo" class="menu-item" onclick={closeMenu}>Demo</a>
               {/if}
+              <a href="/app" class="menu-item" onclick={closeMenu}>All Shows</a>
               <a href="/help" class="menu-item" onclick={closeMenu}>Help</a>
               <a href="/contact" class="menu-item" onclick={closeMenu}>Contact</a>
               <a href="/privacy" class="menu-item" onclick={closeMenu}>Privacy</a>

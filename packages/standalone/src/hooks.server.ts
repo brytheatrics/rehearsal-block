@@ -90,8 +90,12 @@ const authGuard: Handle = async ({ event, resolve }) => {
     event.locals.profile = null;
   }
 
-  // Route guards: /app requires signed in + paid
-  if (event.url.pathname.startsWith("/app")) {
+  // Route guards: /app requires signed in + paid.
+  // Bypass on localhost so the show list UI can be previewed during
+  // development without a real Supabase session. Remove this bypass
+  // before launch (or when Phase 1 storage wires real auth).
+  const isLocalhost = event.url.hostname === "localhost" || event.url.hostname === "127.0.0.1";
+  if (event.url.pathname.startsWith("/app") && !isLocalhost) {
     if (!user) {
       redirect(303, "/login");
     }
