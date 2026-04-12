@@ -1,45 +1,118 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+
+  /* Collapsible table of contents state. Default is OPEN so desktop visitors
+     see the TOC immediately (the CSS keeps it always-visible at >= 960px
+     regardless of this state). On mobile the onMount check below flips it
+     to closed so the TOC doesn't push the content down on small screens. */
+  let tocOpen = $state(true);
+
+  /* Close the TOC after a link is clicked, but ONLY on mobile - on desktop
+     the TOC is permanently visible so closing it would be meaningless. */
+  function closeTocIfMobile() {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 960px)").matches) {
+      tocOpen = false;
+    }
+  }
+
+  onMount(() => {
+    /* Collapse by default on mobile so the content isn't pushed below
+       an open sidebar on first load. Desktop visitors get the TOC open. */
+    if (window.matchMedia("(max-width: 960px)").matches) {
+      tocOpen = false;
+    }
+  });
+
+  /* TOC entries - h2 sections only (h3s would make it too deep to scan). */
+  const tocEntries = [
+    { id: "try-the-demo", label: "Try the demo" },
+    { id: "key-concepts", label: "Key concepts" },
+    { id: "main-toolbar", label: "Main toolbar" },
+    { id: "keyboard-shortcuts", label: "Keyboard shortcuts" },
+    { id: "common-questions", label: "Common questions" },
+    { id: "still-stuck", label: "Still stuck?" },
+  ];
+</script>
+
 <svelte:head>
   <title>Help - Rehearsal Block</title>
   <meta name="description" content="Documentation and support for Rehearsal Block." />
 </svelte:head>
 
-<div class="help-page container-sm">
-  <div class="construction-banner" role="note">
-    <strong>Full help docs are on the way.</strong> This page will grow
-    into a complete reference (getting started, feature guide, keyboard
-    shortcuts, FAQ). Until then, the fastest way to learn Rehearsal
-    Block is the interactive demo.
-  </div>
+<div class="help-layout">
+  <!--
+    Collapsible table of contents. Desktop (>= 960px): permanently visible
+    as a sticky sidebar on the left, regardless of `tocOpen` state. Mobile
+    (< 960px): a tappable "Contents" button that expands a link list;
+    closes automatically when a link is clicked so the content isn't
+    covered.
+  -->
+  <aside class="help-toc" class:is-open={tocOpen}>
+    <button
+      type="button"
+      class="toc-toggle"
+      aria-expanded={tocOpen}
+      aria-controls="help-toc-list"
+      onclick={() => (tocOpen = !tocOpen)}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+      <span>Contents</span>
+      <svg class="toc-chevron" class:flipped={tocOpen} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
+    <nav id="help-toc-list" class="toc-list" aria-label="Help page contents">
+      <ul>
+        {#each tocEntries as entry (entry.id)}
+          <li>
+            <a href="#{entry.id}" onclick={closeTocIfMobile}>{entry.label}</a>
+          </li>
+        {/each}
+      </ul>
+    </nav>
+  </aside>
 
-  <h1>Help</h1>
+  <div class="help-page">
+    <div class="construction-banner" role="note">
+      <strong>Full help docs are on the way.</strong> This page will grow
+      into a complete reference (getting started, feature guide, keyboard
+      shortcuts, FAQ). Until then, the fastest way to learn Rehearsal
+      Block is the interactive demo.
+    </div>
 
-  <h2>Try the demo</h2>
+    <h1>Help</h1>
+
+    <h2 id="try-the-demo">Try the demo</h2>
 
   <p>
     The <a href="/demo">demo page</a> loads a real sample show
     (<em>Romeo and Juliet</em>) with cast, production team, locations,
     and a few weeks of rehearsals already built out. Browse every view,
-    open the day editor, switch scope between All / Month / Week / Day,
-    open Settings, try the filter - get a feel for how the interface
-    fits together. Most editing actions (creating shows, adding cast,
-    saving, downloading, sharing) are paid features; the demo is for
+    open the day editor, switch scope between Overview / Month / Week /
+    Day, open Settings, try the filter - get a feel for how the
+    interface fits together. Most editing actions (creating shows,
+    adding cast, saving, downloading) are paid features; the demo is for
     exploring how the app works before buying, not building your own
     schedule in it.
   </p>
 
-  <h2>Key concepts</h2>
+  <h2 id="key-concepts">Key concepts</h2>
 
   <ul>
-    <li><strong>Shows</strong> are containers for a production's schedule. One show per production.</li>
+    <li><strong>Shows</strong> - your dashboard shows a grid of cards, one per production you're working on. Each card is a "show" that holds that production's cast, production team, locations, scheduled days, and conflicts.</li>
     <li><strong>Cast</strong> members are actors with characters. <strong>Production team</strong> members are stage managers, designers, and other behind-the-scenes roles. Both live in the sidebar (under a single Cast/Team toggle) and can be dragged onto days.</li>
-    <li><strong>Groups</strong> let you call multiple cast at once (Ensemble, Leads, Dancers). "All Called" is a built-in group meaning everyone.</li>
+    <li><strong>Groups</strong> let you call multiple cast at once (Ensemble, Leads, Dancers). "All Called" is a built-in group meaning all cast members.</li>
     <li><strong>Event types</strong> are pill labels on days (Rehearsal, Tech, Dress, Performance). You configure the defaults in Settings.</li>
+    <li><strong>Locations</strong> are the physical spaces for rehearsals and performances, with custom colors and shapes. Drag them onto days or specific calls.</li>
     <li><strong>Calls</strong> are the actual rehearsal blocks within a day. Most days have one call. Dress and performance days have multiple labeled calls (Crew Call, Actor Call, and so on).</li>
     <li><strong>Conflicts</strong> are dates or time windows when a cast member can't be at rehearsal. The grid shows them so you can plan around them.</li>
-    <li><strong>Locations</strong> are rehearsal spaces with custom colors and shapes. Drag them onto days or specific calls.</li>
   </ul>
 
-  <h2>Main toolbar</h2>
+  <h2 id="main-toolbar">Main toolbar</h2>
 
   <p>
     The toolbar at the top of the scheduler has 12 buttons in two groups:
@@ -76,7 +149,7 @@
           </svg>
         </span>
       </span>
-      <strong>View toggle (Calendar / List)</strong> - switches between the calendar grid and the list view. The icon shows the mode you'll switch <em>to</em>, not the current mode.
+      <strong>Mode toggle (Calendar / List)</strong> - switches between the calendar grid and the list view.
     </li>
     <li>
       <span class="toolbar-icon" aria-hidden="true">
@@ -95,7 +168,7 @@
           <path d="M19.6,11h-4.2c-.66,0-1.22-.18-1.7-.55s-.71-.81-.71-1.32v-3.27c0-.51.23-.95.71-1.32s1.04-.55,1.7-.55h4.2c.66,0,1.22.18,1.7.55s.71.81.71,1.32v3.27c0,.51-.23.95-.71,1.32s-1.04.55-1.7.55ZM15,9h5v-3h-5v3Z" fill="currentColor"/>
         </svg>
       </span>
-      <strong>View scope</strong> - opens a dropdown to pick Overview / Month / Week / Day. Controls how much of the schedule is visible at once. The button's icon changes based on the current scope. Keyboard: <kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>M</kbd> / <kbd>W</kbd> / <kbd>D</kbd>.
+      <strong>View scope</strong> - opens a dropdown to pick Overview / Month / Week / Day. Controls how much of the schedule is visible at once. The button's icon changes based on the current scope. Keyboard: <kbd>Shift</kbd>+<kbd>O</kbd> / <kbd>M</kbd> / <kbd>W</kbd> / <kbd>D</kbd>.
     </li>
     <li>
       <span class="toolbar-icon" aria-hidden="true">
@@ -157,7 +230,7 @@
           <path d="M5.5 4.5L8 2l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         </svg>
       </span>
-      <strong>Export</strong> - opens a menu with PDF download (calendar layout), Print (browser dialog), CSV (plain spreadsheet or Google Calendar format), and Contact Sheet (CSV, DOCX, or PDF).
+      <strong>Export</strong> - opens a menu with PDF download (calendar or list layout), Print (browser dialog), CSV (plain spreadsheet or Google Calendar format), and Contact Sheet (CSV, DOCX, or PDF).
     </li>
     <li>
       <span class="toolbar-icon" aria-hidden="true">
@@ -174,7 +247,7 @@
           <path d="M14 2l-4 13-2.5-5.5L2 7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none"/>
         </svg>
       </span>
-      <strong>Share</strong> - publishes a read-only share link your cast can visit to see the schedule, with per-actor filtering. A badge indicates you've made changes since the last publish.
+      <strong>Share</strong> - publishes a read-only share link your cast can visit to see the schedule, with per-person filtering. A badge indicates you've made changes since the last publish.
     </li>
     <li>
       <span class="toolbar-icon" aria-hidden="true">
@@ -182,7 +255,7 @@
           <path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H520q-33 0-56.5-23.5T440-240v-206l-64 62-56-56 160-160 160 160-56 56-64-62v206h220q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41h100v80H260Zm220-280Z" fill="currentColor"/>
         </svg>
       </span>
-      <strong>Save</strong> - push the latest state to the cloud immediately. Your work is already saved locally on every edit; this just forces the background cloud sync to happen right away instead of waiting for its usual idle delay. The icon is a cloud with an upload arrow - hints at the cloud-sync nature.
+      <strong>Save</strong> - push the latest state to the cloud immediately. Your work is already saved locally on every edit; this just forces the background cloud sync to happen right away instead of waiting for its usual idle delay.
     </li>
   </ul>
 
@@ -193,22 +266,21 @@
     familiar.
   </p>
 
-  <h2>Keyboard shortcuts (essentials)</h2>
+  <h2 id="keyboard-shortcuts">Keyboard shortcuts (essentials)</h2>
 
   <ul>
     <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> - undo / redo (50 levels)</li>
     <li><kbd>Ctrl</kbd>+<kbd>S</kbd> - push to the cloud now (your work is already saved locally on every edit)</li>
     <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>X</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> - copy / cut / paste the selected day(s)</li>
-    <li><kbd>Shift</kbd>+<kbd>A</kbd> / <kbd>M</kbd> / <kbd>W</kbd> / <kbd>D</kbd> - switch scope to All / Month / Week / Day</li>
+    <li><kbd>Shift</kbd>+<kbd>O</kbd> / <kbd>M</kbd> / <kbd>W</kbd> / <kbd>D</kbd> - switch scope to Overview / Month / Week / Day</li>
     <li><kbd>←</kbd> / <kbd>→</kbd> (or <kbd>PageUp</kbd> / <kbd>PageDown</kbd>) - previous / next in the current scope view (Month, Week, Day)</li>
-    <li><kbd>Shift</kbd>+<kbd>&lt;</kbd> - toggle the left Cast/Team sidebar</li>
-    <li><kbd>Shift</kbd>+<kbd>&gt;</kbd> - toggle the right Day Tools sidebar</li>
+    <li><kbd>Shift</kbd>+<kbd>&lt;</kbd> / <kbd>Shift</kbd>+<kbd>&gt;</kbd> - in the main scheduler, toggle the left (Cast/Team) and right (Day Tools) sidebars. In the day editor and the Default Settings Contacts tab, they also expand / collapse all items.</li>
     <li><kbd>Esc</kbd> - close the current editor, modal, or selection</li>
     <li><kbd>Double-click</kbd> a cell field to edit inline without opening the day editor</li>
-    <li><kbd>Shift</kbd>+click or <kbd>Ctrl</kbd>+click to multi-select days for copy / paste / clear</li>
+    <li><kbd>Shift</kbd>+click or <kbd>Ctrl</kbd>+click to multi-select days. Then copy / paste / clear them, or drag-and-drop cast / groups / locations onto the selection to apply them to every selected day at once.</li>
   </ul>
 
-  <h2>Common questions</h2>
+  <h2 id="common-questions">Common questions</h2>
 
   <h3>Where is my data stored?</h3>
   <p>
@@ -249,18 +321,142 @@
     exported data or published a share link.
   </p>
 
-  <h2>Still stuck?</h2>
+    <h2 id="still-stuck">Still stuck?</h2>
 
-  <p>
-    Email us at <a href="mailto:hello@rehearsalblock.com">hello@rehearsalblock.com</a>.
-    See the <a href="/contact">contact page</a> for what to include
-    for the fastest response.
-  </p>
+    <p>
+      Email us at <a href="mailto:hello@rehearsalblock.com">hello@rehearsalblock.com</a>.
+      See the <a href="/contact">contact page</a> for what to include
+      for the fastest response.
+    </p>
+  </div>
 </div>
 
 <style>
-  .help-page {
+  /*
+   * Page layout: two-column grid at desktop width (TOC sidebar + content)
+   * that collapses to a single column at <= 960px where the TOC becomes
+   * a collapsible button bar above the content.
+   */
+  .help-layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 640px);
+    gap: var(--space-6);
+    max-width: 900px;
+    margin: 0 auto;
     padding: var(--space-6) var(--space-5);
+    scroll-behavior: smooth;
+  }
+
+  /* Scoped smooth scroll for the anchor links. */
+  :global(html) {
+    scroll-behavior: smooth;
+  }
+
+  /* Shift the scroll landing point down a bit so the h2 doesn't sit
+     flush against the top edge when jumped to. */
+  :global(.help-layout h2) {
+    scroll-margin-top: var(--space-5);
+  }
+
+  /* Sticky sidebar on desktop. Stays in view as the user scrolls the
+     content column. Aligned to the top of the grid cell. */
+  .help-toc {
+    position: sticky;
+    top: var(--space-5);
+    align-self: start;
+    max-height: calc(100vh - var(--space-6));
+    overflow-y: auto;
+  }
+
+  /* Toggle button header. Hidden on desktop (the TOC is always open),
+     shown on mobile as a tappable collapse/expand button. */
+  .toc-toggle {
+    display: none;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-plum);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .toc-toggle:hover {
+    background: var(--color-bg);
+    border-color: var(--color-plum-light);
+  }
+  .toc-toggle .toc-chevron {
+    margin-left: auto;
+    transition: transform var(--transition-fast);
+  }
+  .toc-toggle .toc-chevron.flipped {
+    transform: rotate(180deg);
+  }
+
+  .toc-list {
+    padding: var(--space-3);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .toc-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .toc-list li {
+    margin: 0;
+  }
+  .toc-list a {
+    display: block;
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+  .toc-list a:hover {
+    background: var(--color-bg-alt);
+    color: var(--color-teal);
+    text-decoration: none;
+  }
+
+  /* Mobile: TOC becomes a collapsible button above the content. */
+  @media (max-width: 960px) {
+    .help-layout {
+      grid-template-columns: minmax(0, 640px);
+      max-width: 640px;
+    }
+    .help-toc {
+      position: static;
+      max-height: none;
+      overflow: visible;
+      margin-bottom: var(--space-4);
+    }
+    .toc-toggle {
+      display: flex;
+    }
+    .toc-list {
+      display: none;
+      margin-top: var(--space-2);
+    }
+    .help-toc.is-open .toc-list {
+      display: block;
+    }
+  }
+
+  .help-page {
+    min-width: 0;
   }
 
   .construction-banner {

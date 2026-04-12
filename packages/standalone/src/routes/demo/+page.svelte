@@ -918,10 +918,10 @@
       }
     }
 
-    // Shift+A/M/W/D for scope views
+    // Shift+O/M/W/D for scope views (Overview / Month / Week / Day)
     if (e.shiftKey && !e.ctrlKey && !e.metaKey && !isEditingText()) {
       const scopeKey = e.key.toUpperCase();
-      if (scopeKey === "A") { e.preventDefault(); scopeMode = "auto"; return; }
+      if (scopeKey === "O") { e.preventDefault(); scopeMode = "auto"; return; }
       if (scopeKey === "M" || scopeKey === "W" || scopeKey === "D") {
         e.preventDefault();
         const mode = scopeKey === "M" ? "month" : scopeKey === "W" ? "week" : "day";

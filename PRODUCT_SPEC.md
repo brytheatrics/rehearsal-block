@@ -14,7 +14,7 @@ The demo at `/demo` is fully functional with sample data (Romeo & Juliet). All c
 - **Scheduler grid**: 7-column continuous calendar, day editor panel, event type pills, drag-drop for actors/crew/groups, per-call drop targeting, dress/perf mode with curtain time + labeled call blocks, conflict tracking with overlap detection, location presets with custom colors and 8 distinguishable shapes
 - **List view**: dense scrollable list, location-colored borders, blank-day support (dimmed, toggleable), font-size variables wired in, max-width 620px centered on desktop
 - **Inline cell editing**: double-click to edit description / time / notes directly in cell, 250ms delayed-click pattern to coexist with single-click DayEditor
-- **Scope selector**: All/Month/Week/Day with prev/next nav, keyboard shortcuts (Shift+A/M/W/D), auto-scroll to top when changing
+- **Scope selector**: Overview/Month/Week/Day with prev/next nav, keyboard shortcuts (Shift+O/M/W/D), auto-scroll to top when changing
 - **Toolbar**: sticky header with view toggle, scope selector, filter dropdown (date / person / event type / location), undo/redo, settings, export, collect conflicts, share, save. Optional text labels next to icons.
 - **Cast & Production Team sidebar**: single Cast/Team toggle, display mode dropdown (actor/character/both), collapse button, sticky header. Cross-pool first-name disambiguation. Groups (with All Called as a customizable pseudo-group) editable inline via floating popover with portaled color picker.
 - **Day editor**: full panel with Cast/Team toggle inside the "Who's called" picker, groups always visible (including All Called), per-call inline edit, conflict editing
