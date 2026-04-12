@@ -1,127 +1,313 @@
 <script lang="ts">
   /**
    * Show list page (/app). Displays a grid of show cards, one per
-   * production. When Phase 1 storage lands, the mock data below gets
-   * replaced with real showStorage.listShows() calls.
+   * production. Reads metadata from Supabase (client-direct via RLS)
+   * for the card grid - never decompresses doc blobs on this page.
    *
-   * Features wired up:
-   * - Grid of ShowCard components with hover actions (open, duplicate,
-   *   archive, export JSON, delete)
-   * - Empty state with "Create your first show" CTA
-   * - NewShowModal for creating a new show (name + dates)
-   * - Filter toggle to show/hide archived shows
-   *
-   * NOT wired up yet (needs Phase 1 storage):
-   * - Real data from IndexedDB / Supabase / R2
-   * - Actual navigation to /app/[showId] on card click
-   * - Real duplicate / archive / delete / export logic
+   * On localhost without real auth, falls back to IndexedDB-only listing.
    */
+  import { goto } from "$app/navigation";
+  import { onMount } from "svelte";
+  import { newEmptyScheduleDoc, type ScheduleDoc, DOCUMENT_VERSION } from "@rehearsal-block/core";
   import ShowCard from "$lib/components/app/ShowCard.svelte";
   import NewShowModal from "$lib/components/app/NewShowModal.svelte";
+  import { listShowsMeta, type ShowIndexRow } from "$lib/storage/index.js";
+  import { localListShows, localSaveShow, localDeleteShow } from "$lib/storage/local.js";
+  import type { StoredShow } from "$lib/storage/types.js";
 
   let { data } = $props();
 
   let newShowOpen = $state(false);
   let showArchived = $state(false);
+  let loading = $state(true);
+  let importInput: HTMLInputElement | undefined = $state();
 
-  // ---- Mock data (replaced by showStorage.listShows() in Phase 1) ----
-  type MockShow = {
+  // Show data - either from Supabase metadata or local IndexedDB
+  type ShowEntry = {
     id: string;
     name: string;
-    startDate: string;
-    endDate: string;
+    startDate: string | null;
+    endDate: string | null;
     castCount: number;
     updatedAt: string;
     archived: boolean;
   };
 
-  let mockShows = $state<MockShow[]>([
-    {
-      id: "1",
-      name: "Romeo & Juliet",
-      startDate: "2026-05-04",
-      endDate: "2026-06-14",
-      castCount: 8,
-      updatedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+  let shows = $state<ShowEntry[]>([]);
+
+  const isLocalhost = $derived(
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"),
+  );
+
+  function metaToEntry(row: ShowIndexRow): ShowEntry {
+    return {
+      id: row.id,
+      name: row.name,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      castCount: row.cast_count,
+      updatedAt: row.updated_at,
+      archived: !!row.archived_at,
+    };
+  }
+
+  function storedToEntry(show: StoredShow): ShowEntry {
+    return {
+      id: show.id,
+      name: show.name,
+      startDate: show.document.show.startDate,
+      endDate: show.document.show.endDate,
+      castCount: show.document.cast.length,
+      updatedAt: show.updatedAt,
       archived: false,
-    },
-    {
-      id: "2",
-      name: "A Midsummer Night's Dream",
-      startDate: "2026-08-01",
-      endDate: "2026-09-20",
-      castCount: 12,
-      updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(),
-      archived: false,
-    },
-    {
-      id: "3",
-      name: "The Crucible",
-      startDate: "2025-10-15",
-      endDate: "2025-11-22",
-      castCount: 15,
-      updatedAt: new Date(Date.now() - 120 * 24 * 60 * 60_000).toISOString(),
-      archived: true,
-    },
-  ]);
+    };
+  }
+
+  async function loadShows() {
+    loading = true;
+    try {
+      if (data.supabase && !isLocalhost) {
+        // Production: read metadata from Supabase (client-direct via RLS)
+        const rows = await listShowsMeta(data.supabase);
+        shows = rows.map(metaToEntry);
+      } else {
+        // Localhost dev: read from IndexedDB
+        const local = await localListShows();
+        shows = local.map(storedToEntry);
+      }
+    } catch (err) {
+      console.error("Failed to load shows:", err);
+      // Fall back to IndexedDB
+      try {
+        const local = await localListShows();
+        shows = local.map(storedToEntry);
+      } catch {
+        shows = [];
+      }
+    }
+    loading = false;
+  }
+
+  onMount(() => {
+    loadShows();
+  });
 
   const visibleShows = $derived(
     showArchived
-      ? mockShows
-      : mockShows.filter((s) => !s.archived),
+      ? shows
+      : shows.filter((s) => !s.archived),
   );
 
-  const archivedCount = $derived(mockShows.filter((s) => s.archived).length);
+  const archivedCount = $derived(shows.filter((s) => s.archived).length);
 
-  // ---- Stub handlers (real logic in Phase 1) ----
+  // ---- Handlers ----
 
   function handleOpen(id: string) {
-    // Phase 1: navigate to /app/[showId]
-    alert(`Open show ${id} (wired in Phase 1)`);
+    const show = shows.find((s) => s.id === id);
+    if (show?.archived) {
+      // Auto-unarchive and open
+      handleUnarchiveAndOpen(id);
+    } else {
+      goto(`/app/${id}`);
+    }
   }
 
-  function handleCreate(info: { name: string; startDate: string; endDate: string }) {
-    // Phase 1: create a real ScheduleDoc and save to storage
-    const newShow: MockShow = {
-      id: crypto.randomUUID(),
-      name: info.name,
-      startDate: info.startDate,
-      endDate: info.endDate,
-      castCount: 0,
-      updatedAt: new Date().toISOString(),
-      archived: false,
-    };
-    mockShows = [newShow, ...mockShows];
-    newShowOpen = false;
+  async function handleUnarchiveAndOpen(id: string) {
+    try {
+      await fetch(`/api/shows/${id}/archive`, { method: "POST" });
+      goto(`/app/${id}`);
+    } catch (err) {
+      console.error("Failed to unarchive:", err);
+      // Still try to navigate
+      goto(`/app/${id}`);
+    }
   }
 
-  function handleDuplicate(id: string) {
-    const original = mockShows.find((s) => s.id === id);
-    if (!original) return;
-    const copy: MockShow = {
-      ...original,
-      id: crypto.randomUUID(),
-      name: `${original.name} (Copy)`,
-      updatedAt: new Date().toISOString(),
-      archived: false,
-    };
-    mockShows = [copy, ...mockShows];
+  async function handleCreate(info: { name: string; startDate: string; endDate: string }) {
+    const id = crypto.randomUUID();
+    const doc = newEmptyScheduleDoc(info);
+
+    try {
+      if (!isLocalhost) {
+        // Production: create via API (writes R2 + Supabase)
+        await fetch("/api/shows", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, document: doc }),
+        });
+      }
+
+      // Always save to IndexedDB for local-first
+      const stored: StoredShow = {
+        id,
+        name: doc.show.name,
+        updatedAt: new Date().toISOString(),
+        document: doc,
+      };
+      await localSaveShow(stored);
+
+      newShowOpen = false;
+      goto(`/app/${id}`);
+    } catch (err) {
+      console.error("Failed to create show:", err);
+      alert("Failed to create show. Please try again.");
+    }
   }
 
-  function handleArchive(id: string) {
-    mockShows = mockShows.map((s) =>
-      s.id === id ? { ...s, archived: !s.archived, updatedAt: new Date().toISOString() } : s,
-    );
+  async function handleDuplicate(id: string) {
+    try {
+      // Need the full doc for duplication - fetch from API or IndexedDB
+      let doc: ScheduleDoc;
+      const localShow = await (await import("$lib/storage/local.js")).localLoadShow(id);
+
+      if (localShow) {
+        doc = JSON.parse(JSON.stringify(localShow.document));
+      } else {
+        const res = await fetch(`/api/shows/${id}`);
+        if (!res.ok) throw new Error("Failed to load show for duplication");
+        const data = await res.json();
+        doc = JSON.parse(JSON.stringify(data.document));
+      }
+
+      doc.show.name = `${doc.show.name} (Copy)`;
+      const newId = crypto.randomUUID();
+
+      if (!isLocalhost) {
+        await fetch("/api/shows", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: newId, document: doc }),
+        });
+      }
+
+      const stored: StoredShow = {
+        id: newId,
+        name: doc.show.name,
+        updatedAt: new Date().toISOString(),
+        document: doc,
+      };
+      await localSaveShow(stored);
+
+      await loadShows();
+    } catch (err) {
+      console.error("Failed to duplicate:", err);
+      alert("Failed to duplicate show. Please try again.");
+    }
   }
 
-  function handleExport(id: string) {
-    // Phase 1: download the show's ScheduleDoc as JSON
-    alert(`Export show ${id} as JSON (wired in Phase 1)`);
+  async function handleArchive(id: string) {
+    try {
+      if (!isLocalhost) {
+        await fetch(`/api/shows/${id}/archive`, { method: "POST" });
+      }
+      // Update local state
+      shows = shows.map((s) =>
+        s.id === id ? { ...s, archived: !s.archived, updatedAt: new Date().toISOString() } : s,
+      );
+    } catch (err) {
+      console.error("Failed to toggle archive:", err);
+    }
   }
 
-  function handleDelete(id: string) {
+  async function handleExport(id: string) {
+    try {
+      let doc: ScheduleDoc;
+      const localShow = await (await import("$lib/storage/local.js")).localLoadShow(id);
+
+      if (localShow) {
+        doc = localShow.document;
+      } else {
+        const res = await fetch(`/api/shows/${id}`);
+        if (!res.ok) throw new Error("Failed to load show for export");
+        const data = await res.json();
+        doc = data.document;
+      }
+
+      // Download as JSON
+      const json = JSON.stringify(doc, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const datePart = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `${doc.show.name || "show"}-${datePart}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // Log export activity
+      if (!isLocalhost) {
+        fetch(`/api/shows/${id}/export-activity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "exported_json" }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error("Failed to export:", err);
+      alert("Failed to export show. Please try again.");
+    }
+  }
+
+  async function handleDelete(id: string) {
     if (!confirm("Delete this show permanently? This can't be undone.")) return;
-    mockShows = mockShows.filter((s) => s.id !== id);
+    try {
+      if (!isLocalhost) {
+        await fetch(`/api/shows/${id}`, { method: "DELETE" });
+      }
+      await localDeleteShow(id);
+      shows = shows.filter((s) => s.id !== id);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      alert("Failed to delete show. Please try again.");
+    }
+  }
+
+  async function handleImport() {
+    importInput?.click();
+  }
+
+  async function onImportFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const doc = JSON.parse(text) as ScheduleDoc;
+
+      // Validate
+      if (!doc.version || !doc.show || !doc.cast || !doc.schedule) {
+        throw new Error("Invalid show file - missing required fields");
+      }
+
+      const id = crypto.randomUUID();
+      doc.show.name = doc.show.name || "Imported Show";
+
+      if (!isLocalhost) {
+        await fetch("/api/shows", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, document: doc }),
+        });
+      }
+
+      const stored: StoredShow = {
+        id,
+        name: doc.show.name,
+        updatedAt: new Date().toISOString(),
+        document: doc,
+      };
+      await localSaveShow(stored);
+
+      await loadShows();
+    } catch (err) {
+      console.error("Import failed:", err);
+      alert("Failed to import show. Make sure this is a valid Rehearsal Block JSON file.");
+    }
+
+    // Reset input so re-importing the same file triggers change
+    input.value = "";
   }
 </script>
 
@@ -148,6 +334,13 @@
       {/if}
       <button
         type="button"
+        class="btn btn-secondary btn-sm"
+        onclick={handleImport}
+      >
+        Import JSON
+      </button>
+      <button
+        type="button"
         class="btn btn-primary"
         onclick={() => (newShowOpen = true)}
       >
@@ -156,13 +349,21 @@
     </div>
   </header>
 
-  <!-- Calendar grid backdrop: 7 columns x 4 rows of faint cells.
-       Show cards sit in the first cells; remaining cells are empty
-       placeholders with a subtle dot in the corner. When there are
-       no shows, the empty state CTA replaces the first cell. -->
+  <!-- Hidden file input for JSON import -->
+  <input
+    type="file"
+    accept=".json"
+    class="sr-only"
+    bind:this={importInput}
+    onchange={onImportFile}
+  />
+
+  {#if loading}
+    <div class="loading-state">
+      <p>Loading shows...</p>
+    </div>
+  {:else}
   <div class="calendar-backdrop">
-    <!-- Weekday header row placeholder - decorative lines matching
-         the mockup, suggesting day-of-week labels above the grid -->
     <div class="weekday-headers">
       <div class="weekday-placeholder">
         <span class="weekday-line"></span>
@@ -174,7 +375,7 @@
         <span class="weekday-line"></span>
       </div>
     </div>
-    {#if mockShows.length === 0}
+    {#if shows.length === 0}
       <div class="calendar-cell calendar-cell-empty-state">
         <h2>Ready for your next production?</h2>
         <p>
@@ -182,13 +383,22 @@
           production team, locations, conflicts, every rehearsal day - it
           all lives in one place.
         </p>
-        <button
-          type="button"
-          class="btn btn-primary btn-lg"
-          onclick={() => (newShowOpen = true)}
-        >
-          + New Show
-        </button>
+        <div class="empty-actions">
+          <button
+            type="button"
+            class="btn btn-primary btn-lg"
+            onclick={() => (newShowOpen = true)}
+          >
+            + New Show
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            onclick={handleImport}
+          >
+            Import from JSON
+          </button>
+        </div>
       </div>
       {#each Array(11) as _, i (i)}
         <div class="calendar-cell calendar-cell-placeholder">
@@ -201,8 +411,8 @@
           <ShowCard
             id={show.id}
             name={show.name}
-            startDate={show.startDate}
-            endDate={show.endDate}
+            startDate={show.startDate ?? ""}
+            endDate={show.endDate ?? ""}
             castCount={show.castCount}
             updatedAt={show.updatedAt}
             archived={show.archived}
@@ -214,7 +424,6 @@
           />
         </div>
       {/each}
-      <!-- Fill remaining cells to complete the grid -->
       {#each Array(Math.max(0, 12 - visibleShows.length)) as _, i (i)}
         <div class="calendar-cell calendar-cell-placeholder">
           <span class="cell-dot"></span>
@@ -223,8 +432,7 @@
     {/if}
   </div>
 
-  {#if visibleShows.length === 0 && mockShows.length > 0}
-    <!-- All shows are archived and the filter is hiding them -->
+  {#if visibleShows.length === 0 && shows.length > 0}
     <div class="empty-state empty-state-muted">
       <p>All your shows are archived.</p>
       <button
@@ -235,6 +443,7 @@
         Show archived ({archivedCount})
       </button>
     </div>
+  {/if}
   {/if}
   </div>
 </div>
@@ -353,6 +562,14 @@
     margin: 0;
   }
 
+  .empty-actions {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
   .page-header {
     display: flex;
     align-items: center;
@@ -370,7 +587,6 @@
     font-family: "Playfair Display", Georgia, serif;
     padding-left: 14px;
   }
-
 
   .header-actions {
     display: flex;
@@ -400,6 +616,42 @@
     color: var(--color-text-inverse);
   }
 
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+  .btn-secondary:hover {
+    border-color: var(--color-text-muted);
+    color: var(--color-text);
+  }
+
+  .btn-sm {
+    font-size: 0.8125rem;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .loading-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: var(--color-text-muted);
+  }
+
   .empty-state-muted {
     display: flex;
     flex-direction: column;
@@ -421,6 +673,7 @@
     }
     .header-actions {
       justify-content: space-between;
+      flex-wrap: wrap;
     }
     .calendar-backdrop {
       grid-template-columns: repeat(2, minmax(0, 1fr));

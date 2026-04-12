@@ -8,3 +8,4 @@ export * from "./export.js";
 export * from "./holidays.js";
 export * from "./csv-import.js";
 export { sampleShow } from "./sample-show.js";
+export { newEmptyScheduleDoc } from "./new-show.js";
