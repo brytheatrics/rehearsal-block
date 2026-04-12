@@ -68,12 +68,21 @@ Use `preview_start` with the name `rehearsal-block` - `.claude/launch.json` is c
 
 ### Current paid-version wiring state
 - **Done**: Supabase auth + OAuth + magic link, `hooks.server.ts` with `/app` route guard, `/buy` Stripe checkout, `/api/stripe-webhook` signature-verified, `ShowStorage` interface + demo implementation, `/app` placeholder page with sign-out.
-- **Stub**: `lib/storage/local.ts` and `lib/storage/supabase.ts` throw on every method.
+- **Scaffolded**: `lib/storage/r2.ts` and `lib/storage/sync.ts` have interfaces defined but throw on all methods. `lib/storage/local.ts` and `lib/storage/supabase.ts` are older stubs that also throw. `supabase/migrations/001_init.sql` is a placeholder with a RAISE guard and the target schema inlined as comments.
 - **Missing**: everything else in the plan file's 10 phases.
 
+### What's deployed and prerendered
+- **6 prerendered static pages**: `/`, `/demo`, `/privacy`, `/terms`, `/contact`, `/help` - zero function invocations per visit, served from Netlify CDN.
+- **Hamburger menu on all viewport widths** with Help / Contact / Privacy / Terms links. Desktop shows primary nav (Demo / Sign In / Buy Now) alongside the hamburger; mobile collapses everything into the hamburger.
+- **Sign In / Buy Now / Buy Rehearsal Block** buttons open a `ComingSoonModal` with a path to `NotifyLaunchModal` for email signup. NOT disabled spans - real clickable buttons.
+- **/help page** has a collapsible TOC sidebar (sticky on desktop, collapsed on mobile), toolbar icon reference with real SVGs, keyboard shortcuts, and key concepts sections.
+- **Seamless header-to-hero gradient** on the landing page (transparent header + extended hero glow).
+- **Scope shortcut is Shift+O** (for Overview), not Shift+A.
+
 ### Demo paywall gating
-- `hostname !== "localhost"` = all writes, exports, advanced UI → paywall modal
+- `isDeployedDemo = hostname !== "localhost"` gates: Save, editing actor names/characters, adding actors, adding groups, editing group names, changing show title/dates, downloading PDF (preview still works), per-role conflict links, contact sheet downloads.
 - localhost dev = full editing allowed (testing)
+- Draft banners on `/privacy` and `/terms` use `{#if import.meta.env.DEV}` - visible on localhost, stripped from production builds entirely.
 - Once paid version ships, demo stays accessible via the hamburger inside `/app`, with a "Reset demo" button to wipe accumulated edits
 
 ## Data Model
@@ -103,6 +112,14 @@ See `PRODUCT_SPEC.md` "Database schema" for full definitions.
 
 ## Planned future sessions
 
-- **Paid version v1** - the 10-phase plan at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. When starting: *"Read the plan and start Phase 1."*
+- **Paid version v1** - the 10-phase plan at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. Phase 2.5 (prerender audit) and Phase 8 (static pages) are done. Phase 1 scaffolding is in place. When starting Phase 1 implementation: *"Read the plan and start Phase 1."*
 - **Landing-page hero loop animation** - replace the current scroll-pinned version. Details in SESSION_HISTORY.md.
-- **Help docs / tutorial packet** - multi-phase session to build end-user help docs. When starting: *"Read the planned help docs section in SESSION_HISTORY.md and start Phase 1 (exploration)."*
+- **Help docs / tutorial packet** - the /help page now has key concepts, toolbar reference, keyboard shortcuts, and FAQ. Full help docs (getting started guide, feature reference) are a separate future session. When starting: *"Read the planned help docs section in SESSION_HISTORY.md and start Phase 1 (exploration)."*
+
+## Most-recent session (2026-04-11)
+
+Two-part session: paid version planning + implementation of quick-win phases. 11 commits deployed.
+
+**Planning**: approved a 10-phase plan for the paid version at `.claude/plans/curious-cuddling-moth.md`. Key decisions: all blob storage on Cloudflare R2 Free, Supabase Free for metadata only, full local-first with 60s idle-based debounce, 7-day daily version history, refund policy with show_activity audit log enforcement, ops hardening.
+
+**Implemented**: CLAUDE.md/PRODUCT_SPEC.md/README.md rewrite, PATTERNS.md split, 6 prerendered routes, Phase 1 storage scaffolding (r2.ts, sync.ts, migrations placeholder, .env.example), Phase 8 static pages (/privacy /terms /contact /help), hamburger nav on all widths, ComingSoonModal for Sign In/Buy buttons, /help page with collapsible TOC + toolbar icons + keyboard shortcuts, Shift+O hotkey, seamless header-to-hero gradient, dev-only draft banners, paywall audit verified.
