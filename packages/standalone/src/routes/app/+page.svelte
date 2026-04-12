@@ -164,8 +164,37 @@
   {#if mockShows.length === 0}
     <!-- Empty state: no shows at all (brand new user) -->
     <div class="empty-state">
-      <svg class="empty-icon" width="64" height="64" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
-        <path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T800-80H200Zm0-80h600v-400H200v400Zm0-480h600v-80H200v80Zm300 240q-17 0-28.5-11.5T460-440q0-17 11.5-28.5T500-480q17 0 28.5 11.5T540-440q0 17-11.5 28.5T500-400Zm-160 0q-17 0-28.5-11.5T300-440q0-17 11.5-28.5T340-480q17 0 28.5 11.5T380-440q0 17-11.5 28.5T340-400Zm320 0q-17 0-28.5-11.5T620-440q0-17 11.5-28.5T660-480q17 0 28.5 11.5T700-440q0 17-11.5 28.5T660-400ZM500-240q-17 0-28.5-11.5T460-280q0-17 11.5-28.5T500-320q17 0 28.5 11.5T540-280q0 17-11.5 28.5T500-240Zm-160 0q-17 0-28.5-11.5T300-280q0-17 11.5-28.5T340-320q17 0 28.5 11.5T380-280q0 17-11.5 28.5T340-240Zm320 0q-17 0-28.5-11.5T620-280q0-17 11.5-28.5T660-320q17 0 28.5 11.5T700-280q0 17-11.5 28.5T660-240Z"/>
+      <!-- Stage curtain illustration: two draped curtain panels framing
+           an empty stage with a single spotlight circle. Plum curtains,
+           teal spotlight, warm wood stage floor. All inline SVG. -->
+      <svg class="empty-icon" width="160" height="120" viewBox="0 0 160 120" fill="none" aria-hidden="true">
+        <!-- Stage floor -->
+        <rect x="20" y="88" width="120" height="32" rx="2" fill="#5c4a3a" opacity="0.15"/>
+        <rect x="20" y="88" width="120" height="4" rx="1" fill="#5c4a3a" opacity="0.25"/>
+
+        <!-- Valance (top curtain bar) -->
+        <rect x="10" y="4" width="140" height="12" rx="3" fill="var(--color-plum)" opacity="0.8"/>
+        <rect x="10" y="12" width="140" height="8" rx="0" fill="var(--color-plum)" opacity="0.5"/>
+        <!-- Valance scallops -->
+        <ellipse cx="40" cy="20" rx="15" ry="6" fill="var(--color-plum)" opacity="0.4"/>
+        <ellipse cx="80" cy="20" rx="15" ry="6" fill="var(--color-plum)" opacity="0.4"/>
+        <ellipse cx="120" cy="20" rx="15" ry="6" fill="var(--color-plum)" opacity="0.4"/>
+
+        <!-- Left curtain -->
+        <path d="M10 16 C10 16, 14 40, 10 65 C8 75, 12 85, 10 92 L38 92 C36 80, 42 60, 38 40 C36 28, 40 20, 42 16 Z" fill="var(--color-plum)" opacity="0.6"/>
+        <path d="M10 16 C12 30, 8 50, 10 65" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.5"/>
+        <path d="M25 16 C27 35, 23 55, 25 75" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.3"/>
+
+        <!-- Right curtain -->
+        <path d="M150 16 C150 16, 146 40, 150 65 C152 75, 148 85, 150 92 L122 92 C124 80, 118 60, 122 40 C124 28, 120 20, 118 16 Z" fill="var(--color-plum)" opacity="0.6"/>
+        <path d="M150 16 C148 30, 152 50, 150 65" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.5"/>
+        <path d="M135 16 C133 35, 137 55, 135 75" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.3"/>
+
+        <!-- Spotlight on empty stage -->
+        <ellipse cx="80" cy="88" rx="28" ry="8" fill="var(--color-teal)" opacity="0.12"/>
+        <ellipse cx="80" cy="88" rx="18" ry="5" fill="var(--color-teal)" opacity="0.15"/>
+        <!-- Spotlight beam from above -->
+        <path d="M80 0 L62 88 L98 88 Z" fill="var(--color-teal)" opacity="0.04"/>
       </svg>
       <h2>Ready for your next production?</h2>
       <p>
@@ -290,8 +319,7 @@
   }
 
   .empty-icon {
-    color: var(--color-teal);
-    opacity: 0.4;
+    opacity: 0.8;
   }
 
   .empty-state h2 {
