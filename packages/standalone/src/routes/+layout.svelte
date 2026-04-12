@@ -126,44 +126,50 @@
             {/if}
           </nav>
 
-          <!-- Hamburger toggle: visible at ALL widths. -->
-          <button
-            type="button"
-            class="menu-toggle"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={menuOpen}
-            onclick={toggleMenu}
-          >
+          <!--
+            Hamburger wrapper. The dropdown below is absolutely positioned
+            against this wrapper (not the header), so it anchors to the
+            right edge of the button at every viewport width. Without this,
+            wide viewports (> 2000px, or anywhere .header-inner is narrower
+            than .app-header) would misalign the dropdown to the far right.
+          -->
+          <div class="menu-wrap">
+            <button
+              type="button"
+              class="menu-toggle"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
+              onclick={toggleMenu}
+            >
+              {#if menuOpen}
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              {:else}
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              {/if}
+            </button>
+
+            <!--
+              Hamburger dropdown. Rendered when the menu is open.
+
+              Contents are split into three groups:
+
+              1. .menu-primary-mobile - visible at mobile width only. Duplicates
+                 the primary nav items (which are hidden on mobile) so users
+                 still have a way to reach Demo / Sign In / Buy / My Shows when
+                 the top nav bar collapses.
+
+              2. .menu-secondary - visible at all widths. The static pages
+                 (Help, Contact, Privacy, Terms) plus Demo when signed in
+                 (when signed out, Demo is already in the top nav).
+
+              3. Sign out form - visible only when signed in.
+            -->
             {#if menuOpen}
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            {:else}
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" aria-hidden="true">
-                <path d="M4 7h16M4 12h16M4 17h16" />
-              </svg>
-            {/if}
-          </button>
-        </div>
-
-        <!--
-          Hamburger dropdown. Rendered when the menu is open.
-
-          Contents are split into three groups:
-
-          1. .menu-primary-mobile — visible at mobile width only. Duplicates
-             the primary nav items (which are hidden on mobile) so users still
-             have a way to reach Demo / Sign In / Buy / My Shows when the top
-             nav bar collapses.
-
-          2. .menu-secondary — visible at all widths. The static pages (Help,
-             Contact, Privacy, Terms) plus Demo when signed in (when signed
-             out, Demo is already in the top nav).
-
-          3. .menu-signout — visible only when signed in. Sign out form.
-        -->
-        {#if menuOpen}
-          <div class="menu-dropdown" role="menu">
+              <div class="menu-dropdown" role="menu">
             <div class="menu-primary-mobile">
               {#if data.user && data.profile?.has_paid}
                 <a href="/app" class="menu-item" onclick={closeMenu}>My Shows</a>
@@ -189,16 +195,18 @@
               <a href="/terms" class="menu-item" onclick={closeMenu}>Terms</a>
             </div>
 
-            {#if data.user}
-              <div class="menu-divider"></div>
-              <form method="POST" action="/login?/signout" class="menu-signout-form">
-                <button type="submit" class="menu-item menu-item-signout">
-                  Sign out
-                </button>
-              </form>
+                {#if data.user}
+                  <div class="menu-divider"></div>
+                  <form method="POST" action="/login?/signout" class="menu-signout-form">
+                    <button type="submit" class="menu-item menu-item-signout">
+                      Sign out
+                    </button>
+                  </form>
+                {/if}
+              </div>
             {/if}
           </div>
-        {/if}
+        </div>
       </div>
     </header>
 
@@ -338,6 +346,16 @@
     text-decoration: underline;
   }
 
+  /* Hamburger wrapper. The dropdown is positioned absolutely against this
+     element so it anchors to the right edge of the button regardless of
+     viewport width. Without wrapping, the dropdown's containing block would
+     be .app-header which spans the full viewport, misaligning with the
+     hamburger button on any viewport wider than .header-inner's max-width. */
+  .menu-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
   /* Hamburger toggle: visible at ALL widths now (previously mobile-only). */
   .menu-toggle {
     display: inline-flex;
@@ -356,13 +374,14 @@
     background: rgba(0, 0, 0, 0.04);
   }
 
-  /* Hamburger dropdown. Absolutely positioned relative to the header so it
-     overlays content below without pushing the layout down. On desktop it
-     anchors to the right; on mobile it spans full width (see @media below). */
+  /* Hamburger dropdown. Absolutely positioned relative to .menu-wrap so it
+     anchors directly under the hamburger button's right edge on desktop.
+     On mobile (@media below) it switches to a full-width fixed-position
+     panel underneath the header. */
   .menu-dropdown {
     position: absolute;
-    top: 100%;
-    right: var(--space-5);
+    top: calc(100% + 6px);
+    right: 0;
     min-width: 240px;
     background: #ffffff;
     border: 1px solid var(--color-border);
@@ -558,11 +577,14 @@
     .primary-nav {
       display: none;
     }
-    /* Full-width dropdown overlay, drops down below the header row. */
+    /* Full-width dropdown overlay on mobile. Switch to position: fixed so
+       the dropdown escapes .menu-wrap's sizing (which is just the button)
+       and spans the full viewport width under the 56px header row. */
     .menu-dropdown {
+      position: fixed;
+      top: 56px;
       left: 0;
       right: 0;
-      top: 56px;
       border-radius: 0;
       border-left: none;
       border-right: none;
