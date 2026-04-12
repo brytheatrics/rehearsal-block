@@ -149,7 +149,7 @@
           </svg>
         </span>
       </span>
-      <strong>Mode toggle (Calendar / List)</strong> - switches between the calendar grid and the list view.
+      <strong>Mode toggle (Calendar / List)</strong> - switches between the calendar grid and the list mode.
     </li>
     <li>
       <span class="toolbar-icon" aria-hidden="true">
