@@ -1,73 +1,115 @@
 -- Migration 001: initial paid-version schema
---
--- PLACEHOLDER - to be filled in during Phase 1 of the paid version plan.
--- See C:\Users\blake\.claude\plans\curious-cuddling-moth.md Phase 1.
---
--- When implementing, this migration must create:
---
---   1. shows_index table (metadata only, no document blob):
---      - id uuid PK
---      - owner_id uuid FK -> auth.users
---      - owner_email text (denormalized, survives auth migration)
---      - name text
---      - start_date date
---      - end_date date
---      - cast_count int
---      - document_hash text (client-computed SHA-256 of gzipped R2 blob)
---      - document_size_bytes int (for analytics)
---      - doc_version text (matches ScheduleDoc.version)
---      - last_saved_at timestamptz
---      - last_published_at timestamptz
---      - share_id text unique (8-char, for share links)
---      - conflict_share_token text unique (for conflict collection)
---      - archived_at timestamptz (nullable)
---      - created_at, updated_at timestamptz
---    RLS: owner_id = auth.uid() on all CRUD
---    Index: (owner_id, updated_at desc) for the show list query
---
---  2. show_activity table (audit log for refund eligibility + admin stats):
---    - id uuid PK
---    - show_id uuid FK -> shows_index
---    - user_id uuid FK -> auth.users
---    - action text ('created' | 'exported_json' | 'downloaded_pdf'
---                   | 'published_share' | 'archived' | 'unarchived'
---                   | 'deleted' | 'restored_from_snapshot')
---    - created_at timestamptz default now()
---    RLS: user can read their own rows; only service role can write
---    Index: (user_id, action, created_at desc) for refund eligibility query
---
---  3. page_views table (analytics, public routes only):
---    - id uuid PK
---    - path text
---    - visitor_hash text (SHA-256 of IP + UA + rotating daily salt)
---    - session_id text
---    - loaded_at timestamptz
---    - referrer_hash text (nullable)
---    - country text (nullable)
---
---  4. demo_sessions table:
---    - id uuid PK
---    - visitor_hash text
---    - session_id text
---    - started_at timestamptz
---    - duration_ms int
---    - interactions_count int
---    - referrer_hash text (nullable)
---
---  5. Custom access token hook function that embeds profiles.has_paid
---     into the JWT custom_claims so hooks.server.ts can read it without
---     a per-request profile query.
---
--- Migration pattern going forward:
---   - Numbered sequentially: 001_init.sql, 002_add_foo.sql, 003_fix_bar.sql
---   - Apply via `supabase db push` (Supabase CLI)
---   - Track applied state in standard supabase_migrations.schema_migrations
---   - NEVER edit a migration after it has been applied to prod - always add
---     a new one that fixes the earlier one
+-- Applied manually via Supabase SQL Editor on 2026-04-11.
+-- This file is the canonical record of what was run.
 
--- Placeholder: prevent this migration from running and creating empty state.
--- Remove this guard and write real DDL above when filling in Phase 1.
-DO $$
-BEGIN
-  RAISE EXCEPTION 'Migration 001_init.sql is still a placeholder - see Phase 1 of the paid version plan before applying';
-END $$;
+-- shows_index: metadata-only table for the paid version.
+-- Document bytes live in Cloudflare R2, not in this table.
+create table if not exists public.shows_index (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_email text,
+  name text not null default 'Untitled Show',
+  start_date date,
+  end_date date,
+  cast_count int not null default 0,
+  document_hash text,
+  document_size_bytes int,
+  doc_version text,
+  last_saved_at timestamptz,
+  last_published_at timestamptz,
+  share_id text unique,
+  conflict_share_token text unique,
+  archived_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- RLS: only the owner can see/modify their own shows
+alter table public.shows_index enable row level security;
+
+create policy "Owner can select own shows"
+  on public.shows_index for select
+  using (auth.uid() = owner_id);
+
+create policy "Owner can insert own shows"
+  on public.shows_index for insert
+  with check (auth.uid() = owner_id);
+
+create policy "Owner can update own shows"
+  on public.shows_index for update
+  using (auth.uid() = owner_id);
+
+create policy "Owner can delete own shows"
+  on public.shows_index for delete
+  using (auth.uid() = owner_id);
+
+-- Index for the show list query (sorted by most recently updated)
+create index if not exists idx_shows_owner_updated
+  on public.shows_index (owner_id, updated_at desc);
+
+
+-- show_activity: audit log for refund eligibility + admin stats.
+create table if not exists public.show_activity (
+  id uuid primary key default gen_random_uuid(),
+  show_id uuid references public.shows_index(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  action text not null,
+  created_at timestamptz not null default now()
+);
+
+-- RLS: users can read their own activity rows
+alter table public.show_activity enable row level security;
+
+create policy "User can read own activity"
+  on public.show_activity for select
+  using (auth.uid() = user_id);
+
+-- Only server-side (service role) can insert activity rows.
+-- No insert policy for authenticated users - the API endpoint
+-- uses the service role key to write activity.
+
+-- Index for refund eligibility check
+create index if not exists idx_activity_user_action
+  on public.show_activity (user_id, action, created_at desc);
+
+
+-- JWT custom access token hook: embeds has_paid from profiles into
+-- the JWT app_metadata so hooks.server.ts can read it without a
+-- per-request profile query.
+-- Enabled in Supabase dashboard: Authentication > Hooks >
+-- Customize Access Token (JWT) Claims > public.custom_access_token_hook
+create or replace function public.custom_access_token_hook(event jsonb)
+returns jsonb
+language plpgsql
+stable
+security definer
+as $$
+declare
+  claims jsonb;
+  user_has_paid boolean;
+begin
+  select coalesce(has_paid, false) into user_has_paid
+  from public.profiles
+  where id = (event->>'user_id')::uuid;
+
+  claims := event->'claims';
+
+  if claims->'app_metadata' is null then
+    claims := jsonb_set(claims, '{app_metadata}', '{}');
+  end if;
+
+  claims := jsonb_set(
+    claims,
+    '{app_metadata, has_paid}',
+    to_jsonb(coalesce(user_has_paid, false))
+  );
+
+  return jsonb_set(event, '{claims}', claims);
+end;
+$$;
+
+grant execute on function public.custom_access_token_hook(jsonb)
+  to supabase_auth_admin;
+
+revoke execute on function public.custom_access_token_hook(jsonb)
+  from public;

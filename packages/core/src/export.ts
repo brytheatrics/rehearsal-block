@@ -1441,4 +1441,9 @@ export function openPrintWindow(
   }
   popup.document.write(html);
   popup.document.close();
+  // Auto-trigger the print dialog so clicking "Print" in the export
+  // menu feels like a real print action. The user can cancel to
+  // preview the popup content, or proceed to print/save-as-PDF.
+  popup.focus();
+  popup.print();
 }
