@@ -11,7 +11,7 @@ needed.
 
 Long, multi-topic session. Touched mobile responsiveness, the settings modal organization, the list view, the cast/crew chip overflow treatment, the day editor's "Who's called" panel, and the PDF export pipeline. All changes verified and 0 typecheck errors at the end.
 
-**Mobile Phase 1** (the start of the session - see `MOBILE_AUDIT.md` at the repo root for the before-state):
+**Mobile Phase 1** (the start of the session - see the "Archived: Mobile audit (2026-04-10)" section at the end of this file for the before-state that this work addressed):
 - **`pnpm dev` now runs `vite dev --host`** so the dev server is accessible on the LAN. Real-device testing is just `http://<lan-ip>:5173/demo` from a phone on the same Wi-Fi
 - **`/demo` toolbar overflow fix.** The 12-button toolbar was 575px wide at 375px viewport, pushing horizontal scroll. Added a `@media (max-width: 768px)` rule that wraps groups 1-4 (7 buttons: view toggle / prev / scope / next / filter / undo / redo) on row 1 and forces group 5 (5 buttons: settings / export / collect / share / save) onto row 2 via `flex-basis: 100%` on `:nth-child(5)`. Also drops the inter-group separators on mobile.
 - **App header mobile rework** in `+layout.svelte`. Logo + 3 nav items used to wrap to 2 rows (142px tall). Now: logo left, hamburger button right, single 56px row. Tapping the hamburger drops a nav panel down (Demo / Sign In / Buy Now stacked). Click outside or Escape closes. The brand logo is capped to `height: 32px; max-width: 180px` on mobile.
@@ -523,3 +523,54 @@ Replaced the original HTML -> Puppeteer pipeline with a `pdfkit` renderer that d
 - `packages/standalone/src/routes/demo/+page.svelte` - dropdown item + modal rendering (state: `contactSheetOpen`)
 - `packages/standalone/src/routes/api/contact-sheet-pdf/+server.ts` - pdfkit endpoint
 - `packages/standalone/src/routes/api/pdf/+server.ts` - calendar Puppeteer endpoint (still used for calendar PDF)
+
+---
+
+## Archived: Mobile audit (2026-04-10)
+
+Baseline audit taken the day before the Mobile Phase 1 pass above. Preserved here because it documents the pre-fix measurements and issue inventory. The `MOBILE_AUDIT.md` file at the repo root has been deleted - this section is the canonical archive.
+
+Measurements taken at **iPhone SE (375x812)** unless noted.
+
+### Summary (as of 2026-04-10)
+
+The app was in better shape on mobile than expected. Three of the four key pages (`/`, `/view`, `/conflicts`) rendered without horizontal scroll at 375px. Only `/demo` had a hard blocker. The main issues were:
+
+1. **`/demo` toolbar overflowed horizontally** - single biggest bug. Pushed the whole page to 599px wide at a 375px viewport.
+2. **App header wrapped to 2 rows on mobile** (142px tall) - ate too much vertical space on every page.
+3. **Calendar (month/week) views on `/demo` unusable at phone width** - the inner 7-day grid stayed 7 columns, each cell ~40px wide and 841px tall. List view was the only usable mode on phones.
+4. **No mobile defaults** - the page opened in Calendar + Overview with both sidebars visible regardless of viewport.
+5. **Em dash in landing page copy** - "The cast \u2014" violated project style.
+
+### Per-page findings (pre-fix)
+
+**Landing page (`/`)**: No horizontal overflow. Hero pin animation correctly disabled on mobile (`.hero-pin` switched from `sticky` to `relative`). Feature rows stacked to 1 column via existing media queries. Mostly good. Issues: app header wrapped to 142px tall; hero copy contained a literal em dash.
+
+**Demo page (`/demo`)**: **Blocker: toolbar caused horizontal scroll.** The `.toolbar` element was 575px wide inside a 375px viewport. It had `flex-wrap: wrap` but its parent `.sticky-bar` gave it `flex: 0 0 auto` with no `min-width: 0`, so the toolbar took its content size (575px) instead of shrinking. 12 buttons on one row. `scrollWidth` = 599, `innerWidth` = 375, horizontal overflow = 224px.
+
+Calendar grid unusable at phone width. Inside `.week`, the computed grid template was `39.875px 39.8875px ...` × 7. Each day cell was 40px wide by 841px tall. Content (event type, time, location, cast chips, description) stacked vertically in a 40px column.
+
+Scheduler outer layout did collapse to 1 column on mobile - the 3-column `[left sidebar] [calendar] [right sidebar]` grid stacked into a single 312px column at mobile. Functional but reaching Cast/Team or the day-tool palette required scrolling past the entire calendar.
+
+Other numbers at 375px: app header 142px tall, top purchase banner 89px tall, left sidebar 304x590, scheduler total 312x4293. No mobile defaults - page opened in Calendar view, Overview scope, both sidebars expanded.
+
+**Shared view page (`/view`)**: already had 2 mobile breakpoints baked in - 768px for column-stacked header + smaller cells, 480px for calendar grid collapsing to 1 column with day-number prefix. Not live-tested at audit time.
+
+**Conflicts submission page (`/conflicts/[token]`)**: already mobile-friendly. Viewport 375px, no horizontal overflow. Cell size 44x44px (touch target). 520px breakpoint from `ConflictSubmitter.svelte` widened the "Add timed conflict" button. One concern: 6-column week of 44px cells was ~264px wide, fit but felt tight.
+
+### Toolbar button inventory (for the row-split fix)
+
+12 buttons at 40px each, in DOM order. Planned mobile split: row 1 = first 7 (navigation/view controls), row 2 = last 5 (actions).
+
+Row 1: View toggle, Previous, Scope, Next, Filter, Undo, Redo
+Row 2: Default Settings, Export, Collect conflicts, Share, Save
+
+### Existing mobile CSS as of 2026-04-10 (pre-fix, scattered)
+
+- `DayEditor.svelte` - `.backdrop` was `display: none` on desktop, enabled via media query on mobile
+- `ConflictSubmitter.svelte` - 520px breakpoint
+- `view/+page.svelte` - 768px and 480px breakpoints
+- Landing page `+page.svelte` - hero pin released, feature rows stacked
+- No unified mobile strategy prior to that session
+
+All five items in the audit's "Phase 1 scope" (toolbar row split, app header compact layout, mobile defaults with sticky prefs, em dash fix, `--host` in dev script) were completed in the 2026-04-11 session documented at the top of this file.
