@@ -130,15 +130,10 @@
 </svelte:head>
 
 <div class="shows-page container">
+  <div class="calendar-frame">
   <header class="page-header">
     <div>
-      <h1>My Shows</h1>
-      <p class="welcome">
-        Welcome back{data.user?.email ? `, ${data.user.email.split("@")[0]}` : ""}.
-        {#if mockShows.filter(s => !s.archived).length > 0}
-          You have {mockShows.filter(s => !s.archived).length} active {mockShows.filter(s => !s.archived).length === 1 ? "show" : "shows"}.
-        {/if}
-      </p>
+      <h1>{(data.user?.email?.split("@")[0] ?? "My").charAt(0).toUpperCase() + (data.user?.email?.split("@")[0] ?? "y").slice(1)}'s Shows</h1>
     </div>
     <div class="header-actions">
       {#if archivedCount > 0}
@@ -161,56 +156,74 @@
     </div>
   </header>
 
-  {#if mockShows.length === 0}
-    <!-- Empty state: no shows at all (brand new user) -->
-    <div class="empty-state">
-      <!-- Stage curtain illustration: two draped curtain panels framing
-           an empty stage with a single spotlight circle. Plum curtains,
-           teal spotlight, warm wood stage floor. All inline SVG. -->
-      <svg class="empty-icon" width="160" height="120" viewBox="0 0 160 120" fill="none" aria-hidden="true">
-        <!-- Stage floor -->
-        <rect x="20" y="88" width="120" height="32" rx="2" fill="#5c4a3a" opacity="0.15"/>
-        <rect x="20" y="88" width="120" height="4" rx="1" fill="#5c4a3a" opacity="0.25"/>
-
-        <!-- Valance (top curtain bar) -->
-        <rect x="10" y="4" width="140" height="12" rx="3" fill="var(--color-plum)" opacity="0.8"/>
-        <rect x="10" y="12" width="140" height="8" rx="0" fill="var(--color-plum)" opacity="0.5"/>
-        <!-- Valance scallops -->
-        <ellipse cx="40" cy="20" rx="15" ry="6" fill="var(--color-plum)" opacity="0.4"/>
-        <ellipse cx="80" cy="20" rx="15" ry="6" fill="var(--color-plum)" opacity="0.4"/>
-        <ellipse cx="120" cy="20" rx="15" ry="6" fill="var(--color-plum)" opacity="0.4"/>
-
-        <!-- Left curtain -->
-        <path d="M10 16 C10 16, 14 40, 10 65 C8 75, 12 85, 10 92 L38 92 C36 80, 42 60, 38 40 C36 28, 40 20, 42 16 Z" fill="var(--color-plum)" opacity="0.6"/>
-        <path d="M10 16 C12 30, 8 50, 10 65" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.5"/>
-        <path d="M25 16 C27 35, 23 55, 25 75" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.3"/>
-
-        <!-- Right curtain -->
-        <path d="M150 16 C150 16, 146 40, 150 65 C152 75, 148 85, 150 92 L122 92 C124 80, 118 60, 122 40 C124 28, 120 20, 118 16 Z" fill="var(--color-plum)" opacity="0.6"/>
-        <path d="M150 16 C148 30, 152 50, 150 65" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.5"/>
-        <path d="M135 16 C133 35, 137 55, 135 75" stroke="var(--color-plum-light)" stroke-width="0.5" opacity="0.3"/>
-
-        <!-- Spotlight on empty stage -->
-        <ellipse cx="80" cy="88" rx="28" ry="8" fill="var(--color-teal)" opacity="0.12"/>
-        <ellipse cx="80" cy="88" rx="18" ry="5" fill="var(--color-teal)" opacity="0.15"/>
-        <!-- Spotlight beam from above -->
-        <path d="M80 0 L62 88 L98 88 Z" fill="var(--color-teal)" opacity="0.04"/>
-      </svg>
-      <h2>Ready for your next production?</h2>
-      <p>
-        Create a show and start building your rehearsal schedule. Cast,
-        production team, locations, conflicts, every rehearsal day - it
-        all lives in one place.
-      </p>
-      <button
-        type="button"
-        class="btn btn-primary btn-lg"
-        onclick={() => (newShowOpen = true)}
-      >
-        + New Show
-      </button>
+  <!-- Calendar grid backdrop: 7 columns x 4 rows of faint cells.
+       Show cards sit in the first cells; remaining cells are empty
+       placeholders with a subtle dot in the corner. When there are
+       no shows, the empty state CTA replaces the first cell. -->
+  <div class="calendar-backdrop">
+    <!-- Weekday header row placeholder - decorative lines matching
+         the mockup, suggesting day-of-week labels above the grid -->
+    <div class="weekday-headers">
+      <div class="weekday-placeholder">
+        <span class="weekday-line"></span>
+      </div>
+      <div class="weekday-placeholder">
+        <span class="weekday-line"></span>
+      </div>
+      <div class="weekday-placeholder">
+        <span class="weekday-line"></span>
+      </div>
     </div>
-  {:else if visibleShows.length === 0}
+    {#if mockShows.length === 0}
+      <div class="calendar-cell calendar-cell-empty-state">
+        <h2>Ready for your next production?</h2>
+        <p>
+          Create a show and start building your rehearsal schedule. Cast,
+          production team, locations, conflicts, every rehearsal day - it
+          all lives in one place.
+        </p>
+        <button
+          type="button"
+          class="btn btn-primary btn-lg"
+          onclick={() => (newShowOpen = true)}
+        >
+          + New Show
+        </button>
+      </div>
+      {#each Array(11) as _, i (i)}
+        <div class="calendar-cell calendar-cell-placeholder">
+          <span class="cell-dot"></span>
+        </div>
+      {/each}
+    {:else}
+      {#each visibleShows as show (show.id)}
+        <div class="calendar-cell calendar-cell-filled">
+          <ShowCard
+            id={show.id}
+            name={show.name}
+            startDate={show.startDate}
+            endDate={show.endDate}
+            castCount={show.castCount}
+            updatedAt={show.updatedAt}
+            archived={show.archived}
+            onopen={handleOpen}
+            onarchive={handleArchive}
+            onduplicate={handleDuplicate}
+            ondelete={handleDelete}
+            onexport={handleExport}
+          />
+        </div>
+      {/each}
+      <!-- Fill remaining cells to complete the grid -->
+      {#each Array(Math.max(0, 12 - visibleShows.length)) as _, i (i)}
+        <div class="calendar-cell calendar-cell-placeholder">
+          <span class="cell-dot"></span>
+        </div>
+      {/each}
+    {/if}
+  </div>
+
+  {#if visibleShows.length === 0 && mockShows.length > 0}
     <!-- All shows are archived and the filter is hiding them -->
     <div class="empty-state empty-state-muted">
       <p>All your shows are archived.</p>
@@ -222,26 +235,8 @@
         Show archived ({archivedCount})
       </button>
     </div>
-  {:else}
-    <div class="shows-grid">
-      {#each visibleShows as show (show.id)}
-        <ShowCard
-          id={show.id}
-          name={show.name}
-          startDate={show.startDate}
-          endDate={show.endDate}
-          castCount={show.castCount}
-          updatedAt={show.updatedAt}
-          archived={show.archived}
-          onopen={handleOpen}
-          onarchive={handleArchive}
-          onduplicate={handleDuplicate}
-          ondelete={handleDelete}
-          onexport={handleExport}
-        />
-      {/each}
-    </div>
   {/if}
+  </div>
 </div>
 
 {#if newShowOpen}
@@ -257,43 +252,123 @@
     position: relative;
   }
 
-  /* Teal glow matching the landing page hero - sits behind the show
-     cards to give the page warmth instead of flat white. */
-  .shows-page::before {
-    content: "";
-    position: fixed;
-    top: -100px;
-    left: -5%;
-    width: 55%;
-    height: 120%;
-    background: radial-gradient(
-      ellipse at 30% 40%,
-      rgba(56, 129, 125, 0.18) 0%,
-      rgba(56, 129, 125, 0.05) 40%,
-      transparent 70%
-    );
-    pointer-events: none;
-    z-index: -1;
+  .calendar-frame {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-md);
+  }
+
+  .calendar-backdrop {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .weekday-headers {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 2px;
+    background: var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    padding: 10px 0;
+    opacity: 0.35;
+  }
+
+  .weekday-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .weekday-line {
+    display: block;
+    width: 30%;
+    height: 10px;
+    border-radius: 4px;
+    background: #ffffff;
+    opacity: 0.5;
+  }
+
+  .calendar-cell {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    min-height: 280px;
+    background: var(--color-surface);
+  }
+
+  .calendar-cell-placeholder {
+    position: relative;
+    background: var(--color-bg-alt);
+    border-color: var(--color-border);
+    opacity: 0.6;
+  }
+
+  .cell-dot {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    width: 12px;
+    height: 12px;
+    border-radius: var(--radius-sm);
+    background: var(--color-border-strong);
+    opacity: 0.6;
+  }
+
+  .calendar-cell-filled {
+    padding: 14px;
+    display: flex;
+  }
+  .calendar-cell-filled :global(.show-card) {
+    min-height: 0;
+    flex: 1;
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-3);
+    font-size: 0.9em;
+  }
+
+  .calendar-cell-empty-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--space-7) var(--space-5);
+    gap: var(--space-3);
+    border: 1px dashed var(--color-border-strong);
+    background: var(--color-bg-alt);
+  }
+
+  .calendar-cell-empty-state h2 {
+    font-size: 1.5rem;
+    margin: 0;
+  }
+
+  .calendar-cell-empty-state p {
+    max-width: 420px;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    margin: 0;
   }
 
   .page-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--color-border);
     gap: var(--space-4);
     flex-wrap: wrap;
   }
 
   .page-header h1 {
     margin: 0;
+    color: var(--color-plum-light);
   }
 
-  .welcome {
-    color: var(--color-text-muted);
-    font-size: 0.9375rem;
-    margin: var(--space-1) 0 0 0;
-  }
 
   .header-actions {
     display: flex;
@@ -323,43 +398,18 @@
     color: var(--color-text-inverse);
   }
 
-  .shows-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--space-4);
-  }
-
-  .empty-state {
+  .empty-state-muted {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: var(--space-8) var(--space-5);
-    gap: var(--space-3);
-  }
-
-  .empty-icon {
-    opacity: 0.8;
-  }
-
-  .empty-state h2 {
-    font-size: 1.5rem;
-    margin: 0;
-  }
-
-  .empty-state p {
-    max-width: 420px;
-    color: var(--color-text-muted);
-    line-height: 1.6;
-    margin: 0;
-  }
-
-  .empty-state-muted {
     padding: var(--space-6) var(--space-5);
+    gap: var(--space-3);
   }
   .empty-state-muted p {
     color: var(--color-text-subtle);
     font-size: 0.9375rem;
+    margin: 0;
   }
 
   @media (max-width: 768px) {
@@ -369,6 +419,12 @@
     }
     .header-actions {
       justify-content: space-between;
+    }
+    .calendar-backdrop {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .calendar-cell-empty-state {
+      grid-column: 1 / -1;
     }
   }
 </style>

@@ -134,7 +134,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    min-height: 160px;
+    min-height: 200px;
     overflow: hidden;
   }
   .show-card:hover {
