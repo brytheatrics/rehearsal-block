@@ -133,6 +133,12 @@
   <header class="page-header">
     <div>
       <h1>My Shows</h1>
+      <p class="welcome">
+        Welcome back{data.user?.email ? `, ${data.user.email.split("@")[0]}` : ""}.
+        {#if mockShows.filter(s => !s.archived).length > 0}
+          You have {mockShows.filter(s => !s.archived).length} active {mockShows.filter(s => !s.archived).length === 1 ? "show" : "shows"}.
+        {/if}
+      </p>
     </div>
     <div class="header-actions">
       {#if archivedCount > 0}
@@ -161,11 +167,11 @@
       <svg class="empty-icon" width="64" height="64" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
         <path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T800-80H200Zm0-80h600v-400H200v400Zm0-480h600v-80H200v80Zm300 240q-17 0-28.5-11.5T460-440q0-17 11.5-28.5T500-480q17 0 28.5 11.5T540-440q0 17-11.5 28.5T500-400Zm-160 0q-17 0-28.5-11.5T300-440q0-17 11.5-28.5T340-480q17 0 28.5 11.5T380-440q0 17-11.5 28.5T340-400Zm320 0q-17 0-28.5-11.5T620-440q0-17 11.5-28.5T660-480q17 0 28.5 11.5T700-440q0 17-11.5 28.5T660-400ZM500-240q-17 0-28.5-11.5T460-280q0-17 11.5-28.5T500-320q17 0 28.5 11.5T540-280q0 17-11.5 28.5T500-240Zm-160 0q-17 0-28.5-11.5T300-280q0-17 11.5-28.5T340-320q17 0 28.5 11.5T380-280q0 17-11.5 28.5T340-240Zm320 0q-17 0-28.5-11.5T620-280q0-17 11.5-28.5T660-320q17 0 28.5 11.5T700-280q0 17-11.5 28.5T660-240Z"/>
       </svg>
-      <h2>Create your first show</h2>
+      <h2>Ready for your next production?</h2>
       <p>
-        Each show holds a production's full rehearsal schedule - cast,
-        production team, locations, every day, and conflicts. Start one
-        and build from there.
+        Create a show and start building your rehearsal schedule. Cast,
+        production team, locations, conflicts, every rehearsal day - it
+        all lives in one place.
       </p>
       <button
         type="button"
@@ -218,7 +224,7 @@
 
 <style>
   .shows-page {
-    max-width: 1000px;
+    max-width: 1400px;
   }
 
   .page-header {
@@ -232,6 +238,12 @@
 
   .page-header h1 {
     margin: 0;
+  }
+
+  .welcome {
+    color: var(--color-text-muted);
+    font-size: 0.9375rem;
+    margin: var(--space-1) 0 0 0;
   }
 
   .header-actions {
