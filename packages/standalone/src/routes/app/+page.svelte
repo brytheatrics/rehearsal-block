@@ -254,6 +254,26 @@
 <style>
   .shows-page {
     max-width: 1400px;
+    position: relative;
+  }
+
+  /* Teal glow matching the landing page hero - sits behind the show
+     cards to give the page warmth instead of flat white. */
+  .shows-page::before {
+    content: "";
+    position: fixed;
+    top: -100px;
+    left: -5%;
+    width: 55%;
+    height: 120%;
+    background: radial-gradient(
+      ellipse at 30% 40%,
+      rgba(56, 129, 125, 0.18) 0%,
+      rgba(56, 129, 125, 0.05) 40%,
+      transparent 70%
+    );
+    pointer-events: none;
+    z-index: -1;
   }
 
   .page-header {
