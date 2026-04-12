@@ -7,7 +7,7 @@ Rehearsal Block is a web app for theatre directors and stage managers to build r
 - **`PRODUCT_SPEC.md`** - full product specification, architecture, database schema, roadmap
 - **`PATTERNS.md`** - implementation patterns and gotchas (read when touching related code - PDF, popovers, chips, mobile, inline editing, font sizes, reactive proxies)
 - **`SESSION_HISTORY.md`** - verbose per-session history
-- **`C:\Users\blake\.claude\plans\curious-cuddling-moth.md`** - the 10-phase paid-version implementation plan. **When starting work on the paid version, read this file first.**
+- **`C:\Users\blake\.claude\plans\curious-cuddling-butterfly.md`** - the 10-phase paid-version implementation plan. **When starting work on the paid version, read this file first.**
 
 ## Local Development
 
@@ -112,7 +112,8 @@ See `PRODUCT_SPEC.md` "Database schema" for full definitions.
 
 ## Planned future sessions
 
-- **Paid version v1** - the 10-phase plan at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. Phase 2.5 (prerender audit) and Phase 8 (static pages) are done. Phase 1 scaffolding is in place. When starting Phase 1 implementation: *"Read the plan and start Phase 1."*
+- **Paid version v1** - the 10-phase plan at `C:\Users\blake\.claude\plans\curious-cuddling-butterfly.md`. Phase 2.5 (prerender audit) and Phase 8 (static pages) are done. Phase 1 scaffolding is in place. When starting Phase 1 implementation: *"Read the plan and start Phase 1."*
+- **Beta testing** - plan at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. Starts after all phases in the paid version plan are complete. 5-15 invited testers, beta code activation via `/beta` page, full app access, BETA watermark on exports. Do not start beta work until all paid version phases ship.
 - **Landing-page hero loop animation** - replace the current scroll-pinned version. Details in SESSION_HISTORY.md.
 - **Help docs / tutorial packet** - the /help page now has key concepts, toolbar reference, keyboard shortcuts, and FAQ. Full help docs (getting started guide, feature reference) are a separate future session. When starting: *"Read the planned help docs section in SESSION_HISTORY.md and start Phase 1 (exploration)."*
 
@@ -120,6 +121,6 @@ See `PRODUCT_SPEC.md` "Database schema" for full definitions.
 
 Two-part session: paid version planning + implementation of quick-win phases. 11 commits deployed.
 
-**Planning**: approved a 10-phase plan for the paid version at `.claude/plans/curious-cuddling-moth.md`. Key decisions: all blob storage on Cloudflare R2 Free, Supabase Free for metadata only, full local-first with 60s idle-based debounce, 7-day daily version history, refund policy with show_activity audit log enforcement, ops hardening.
+**Planning**: approved a 10-phase plan for the paid version at `.claude/plans/curious-cuddling-butterfly.md`. Key decisions: all blob storage on Cloudflare R2 Free, Supabase Free for metadata only, full local-first with 60s idle-based debounce, 7-day daily version history, refund policy with show_activity audit log enforcement, ops hardening.
 
 **Implemented**: CLAUDE.md/PRODUCT_SPEC.md/README.md rewrite, PATTERNS.md split, 6 prerendered routes, Phase 1 storage scaffolding (r2.ts, sync.ts, migrations placeholder, .env.example), Phase 8 static pages (/privacy /terms /contact /help), hamburger nav on all widths, ComingSoonModal for Sign In/Buy buttons, /help page with collapsible TOC + toolbar icons + keyboard shortcuts, Shift+O hotkey, seamless header-to-hero gradient, dev-only draft banners, paywall audit verified. Phase 7: /api/healthcheck endpoint, GitHub Actions keepalive cron, CSP + security headers. Phase 3 UI: show list with calendar backdrop grid (3-col, plum gradient cards, archive/edit/duplicate/delete buttons, "[Name]'s Shows" header), NewShowModal, ShowCard component, localhost auth bypass for preview. Supabase tables (shows_index, show_activity) + JWT has_paid hook created. R2 buckets created. Real migration DDL in 001_init.sql.
