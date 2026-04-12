@@ -696,18 +696,26 @@
     min-height: calc(100vh - 80px);
     display: flex;
     align-items: center;
-    overflow: hidden;
+    overflow: visible;
     padding: var(--space-7) 0;
+    /* Pull the hero up so it sits directly below the header, eating
+       the .app-main padding-top. This closes the white gap between the
+       header and the hero glow so the teal wash extends seamlessly
+       behind the transparent header. */
+    margin-top: calc(-1 * var(--space-6));
   }
 
   .hero-glow {
     position: absolute;
-    top: -10%;
+    /* Extend the glow well above the hero's top edge so it reaches up
+       behind the transparent header (80px tall). The previous -10% only
+       reached ~72px up - not enough to cover the header. */
+    top: -200px;
     left: -5%;
     width: 55%;
-    height: 120%;
+    height: calc(120% + 200px);
     background: radial-gradient(
-      ellipse at 30% 40%,
+      ellipse at 30% 50%,
       rgba(56, 129, 125, 0.18) 0%,
       rgba(56, 129, 125, 0.05) 40%,
       transparent 70%

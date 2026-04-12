@@ -319,7 +319,7 @@
   }
 
   .app-header {
-    background: #ffffff;
+    background: transparent;
     color: var(--color-text);
     border-bottom: none;
     position: relative;
