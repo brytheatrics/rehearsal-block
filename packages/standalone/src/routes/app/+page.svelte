@@ -253,7 +253,7 @@
   }
 
   .calendar-frame {
-    border: 1px solid var(--color-border);
+    border: 1px solid #eff0f2;
     border-radius: var(--radius-lg);
     padding: var(--space-4);
     box-shadow: var(--shadow-md);
@@ -271,10 +271,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     margin-bottom: 2px;
-    background: var(--color-border-strong);
+    background: #dfe1e5;
     border-radius: var(--radius-sm);
     padding: 10px 0;
-    opacity: 0.35;
+    opacity: 0.3;
   }
 
   .weekday-placeholder {
@@ -289,11 +289,11 @@
     height: 10px;
     border-radius: 4px;
     background: #ffffff;
-    opacity: 0.5;
+    opacity: 0.7;
   }
 
   .calendar-cell {
-    border: 1px solid var(--color-border);
+    border: 1px solid #eff0f2;
     border-radius: var(--radius-md);
     min-height: 280px;
     background: var(--color-surface);
@@ -301,7 +301,7 @@
 
   .calendar-cell-placeholder {
     position: relative;
-    background: var(--color-bg-alt);
+    background: linear-gradient(180deg, #ffffff 0%, #ffffff 50%, #f8f8f9 100%);
     border-color: var(--color-border);
     opacity: 0.6;
   }
@@ -313,8 +313,8 @@
     width: 12px;
     height: 12px;
     border-radius: var(--radius-sm);
-    background: var(--color-border-strong);
-    opacity: 0.6;
+    background: #dfe1e5;
+    opacity: 0.45;
   }
 
   .calendar-cell-filled {
@@ -359,7 +359,7 @@
     justify-content: space-between;
     margin-bottom: var(--space-4);
     padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid #eff0f2;
     gap: var(--space-4);
     flex-wrap: wrap;
   }
@@ -367,6 +367,8 @@
   .page-header h1 {
     margin: 0;
     color: var(--color-plum-light);
+    font-family: "Playfair Display", Georgia, serif;
+    padding-left: 14px;
   }
 
 
