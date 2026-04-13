@@ -450,14 +450,14 @@
         ? html.replace(/font-size:\s*([\d.]+)px/g, (_m, v) => `font-size: ${(parseFloat(v) * s).toFixed(1)}px`)
         : html;
 
-      // Build @page CSS for the browser
+      // Build @page CSS
       const dim = pageSizes[pageSize];
       const w = orientation === "landscape" ? dim.h : dim.w;
       const h = orientation === "landscape" ? dim.w : dim.h;
       const m = marginValues[marginPreset];
       const pageRule = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
 
-      // Build header/footer HTML to inject as page-margin content
+      // Build header/footer
       const headerHtml = repeatTitle ? buildPdfHeaderHtml({
         repeatTitle: true,
         showName: show.show.name || "Schedule",
@@ -465,52 +465,60 @@
       }) : "";
       const footerHtml = hasFooter ? buildPdfFooterHtml(footerOpts) : "";
 
-      // Open in a new window with paged.js for proper pagination
       const win = window.open("", "_blank");
       if (!win) {
-        pdfError = "Pop-up blocked. Please allow pop-ups for this site and try again.";
+        pdfError = "Pop-up blocked. Please allow pop-ups for this site.";
         downloading = false;
         return;
       }
 
-      // Extract head and body from the generated HTML
       const headMatch = scaledHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
       const bodyMatch = scaledHtml.match(/<body[^>]*>([\s\S]*?)(?:<script[\s\S]*?)?<\/body>/i);
       const bodyClassMatch = scaledHtml.match(/<body\s+class="([^"]*)"/i);
 
+      // Use paged.js to polyfill CSS Paged Media for proper page breaks,
+      // margins, headers, and footers. The browser's native print support
+      // doesn't reliably handle break-inside:avoid or custom page margins.
       const printDoc = `<!DOCTYPE html>
 <html>
 <head>
   ${headMatch?.[1] ?? ""}
+  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"><\/script>
   <style>
     ${pageRule}
-    @media print {
-      body { margin: 0; padding: 0; }
-    }
-    .print-page-header {
-      position: running(header);
-      font-size: 9px;
-      color: #666;
-    }
-    .print-page-footer {
+    body { margin: 0; padding: 0; }
+
+    /* paged.js renders pages as visual divs - each gets a footer */
+    .pagedjs_page .pagedjs_margin-bottom-center {
       font-size: 8px;
       color: #888;
-      text-align: center;
-      padding-top: 4px;
-      border-top: 1px solid #e0e0e0;
+    }
+
+    /* Hide the paged.js rendering briefly, show after pagination */
+    .pagedjs_pages { opacity: 0; transition: opacity 0.3s; }
+    .pagedjs_pages.ready { opacity: 1; }
+
+    @media print {
+      /* paged.js already handles pagination - just print cleanly */
+      .pagedjs_page { break-after: page; }
+      .pagedjs_page:last-child { break-after: auto; }
     }
   </style>
 </head>
 <body class="${bodyClassMatch?.[1] ?? ""}">
-  ${headerHtml ? `<div class="print-page-header">${headerHtml}</div>` : ""}
+  ${headerHtml ? `<div style="display:none" class="running-header">${headerHtml}</div>` : ""}
   ${bodyMatch?.[1] ?? ""}
-  ${footerHtml ? `<div class="print-page-footer">${footerHtml}</div>` : ""}
+  ${footerHtml ? `<div style="display:none" class="running-footer">${footerHtml}</div>` : ""}
   <script>
-    document.fonts.ready.then(function() {
-      setTimeout(function() {
-        window.print();
-      }, 500);
-    });
+    // paged.js auto-runs via the polyfill script. After it finishes
+    // paginating, show the content and trigger print.
+    window.PagedConfig = {
+      auto: true,
+      after: function() {
+        document.querySelector('.pagedjs_pages')?.classList.add('ready');
+        setTimeout(function() { window.print(); }, 300);
+      }
+    };
   <\/script>
 </body>
 </html>`;
