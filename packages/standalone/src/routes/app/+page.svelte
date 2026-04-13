@@ -25,6 +25,13 @@
   let showArchived = $state(false);
   let loading = $state(true);
   let importInput: HTMLInputElement | undefined = $state();
+  let toastMessage = $state("");
+  let deleteConfirmId = $state<string | null>(null);
+
+  function showToast(msg: string) {
+    toastMessage = msg;
+    setTimeout(() => (toastMessage = ""), 3000);
+  }
 
   // Show data - either from Supabase metadata or local IndexedDB
   type ShowEntry = {
@@ -159,7 +166,7 @@
       goto(`/app/${id}`);
     } catch (err) {
       console.error("Failed to create show:", err);
-      alert("Failed to create show. Please try again.");
+      showToast("Failed to create show. Please try again.");
     }
   }
 
@@ -200,7 +207,7 @@
       await loadShows();
     } catch (err) {
       console.error("Failed to duplicate:", err);
-      alert("Failed to duplicate show. Please try again.");
+      showToast("Failed to duplicate show. Please try again.");
     }
   }
 
@@ -253,12 +260,18 @@
       }
     } catch (err) {
       console.error("Failed to export:", err);
-      alert("Failed to export show. Please try again.");
+      showToast("Failed to export show. Please try again.");
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this show permanently? This can't be undone.")) return;
+  function handleDelete(id: string) {
+    deleteConfirmId = id;
+  }
+
+  async function confirmDelete() {
+    const id = deleteConfirmId;
+    if (!id) return;
+    deleteConfirmId = null;
     try {
       if (!isLocalhost) {
         await fetch(`/api/shows/${id}`, { method: "DELETE" });
@@ -267,7 +280,7 @@
       shows = shows.filter((s) => s.id !== id);
     } catch (err) {
       console.error("Failed to delete:", err);
-      alert("Failed to delete show. Please try again.");
+      showToast("Failed to delete show. Please try again.");
     }
   }
 
@@ -311,7 +324,7 @@
       await loadShows();
     } catch (err) {
       console.error("Import failed:", err);
-      alert("Failed to import show. Make sure this is a valid Rehearsal Block JSON file.");
+      showToast("Failed to import show. Make sure this is a valid Rehearsal Block JSON file.");
     }
 
     // Reset input so re-importing the same file triggers change
@@ -486,6 +499,27 @@
     onclose={() => (editShowId = null)}
     onsaved={loadShows}
   />
+{/if}
+
+{#if deleteConfirmId}
+  {@const showName = shows.find(s => s.id === deleteConfirmId)?.name ?? "this show"}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="confirm-backdrop" onclick={() => (deleteConfirmId = null)}></div>
+  <div class="confirm-modal" role="dialog" aria-modal="true">
+    <h3>Delete show</h3>
+    <p>Permanently delete <strong>{showName}</strong>? This can't be undone.</p>
+    <div class="confirm-actions">
+      <button type="button" class="confirm-cancel" onclick={() => (deleteConfirmId = null)}>Cancel</button>
+      <button type="button" class="confirm-delete" onclick={confirmDelete}>Delete</button>
+    </div>
+  </div>
+{/if}
+
+{#if toastMessage}
+  <div class="toast" role="status" aria-live="polite">
+    {toastMessage}
+  </div>
 {/if}
 
 <style>
@@ -734,5 +768,98 @@
     .calendar-cell-empty-state {
       grid-column: 1 / -1;
     }
+  }
+
+  /* ---- Delete confirmation modal ---- */
+  .confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(45, 31, 61, 0.6);
+    z-index: 1000;
+  }
+
+  .confirm-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    max-width: calc(100vw - 2 * var(--space-4));
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 1010;
+    padding: var(--space-5);
+  }
+
+  .confirm-modal h3 {
+    margin: 0 0 var(--space-2);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .confirm-modal p {
+    margin: 0 0 var(--space-5);
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  .confirm-cancel {
+    font: inherit;
+    font-size: 0.8125rem;
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+  .confirm-cancel:hover {
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+  }
+
+  .confirm-delete {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--color-danger);
+    color: #fff;
+    cursor: pointer;
+  }
+  .confirm-delete:hover {
+    background: #b71c1c;
+  }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    bottom: var(--space-5);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-plum);
+    color: var(--color-text-inverse);
+    padding: var(--space-2) var(--space-5);
+    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    z-index: 2000;
+    animation: toast-in 200ms ease;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
 </style>
