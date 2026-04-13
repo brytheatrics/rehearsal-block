@@ -38,8 +38,37 @@
 
   const { show, onclose, readOnly = false, onpaywall }: Props = $props();
 
+  // ---- Defaults ----
+  const DEFAULTS = {
+    mode: "calendar" as "calendar" | "list",
+    pageSize: "letter" as "letter" | "a4" | "legal" | "tabloid",
+    orientation: "landscape" as "landscape" | "portrait",
+    marginPreset: "normal" as "none" | "small" | "normal" | "large",
+    scale: 100,
+    printBackgrounds: true,
+    pageBreakMode: "continuous" as "months" | "continuous",
+    showRunDates: true,
+    showFooterLogo: true,
+    showDownloadDate: false,
+    showPageNumbers: true,
+    repeatHeaders: true,
+    repeatTitle: false,
+  };
+
+  const PREFS_KEY = "rehearsal-block:export-prefs";
+
+  function loadSavedPrefs(): Partial<typeof DEFAULTS> {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }
+
+  const saved = loadSavedPrefs();
+
   // ---- View mode ----
-  let mode = $state<"calendar" | "list">("calendar");
+  let mode = $state<"calendar" | "list">(saved.mode ?? DEFAULTS.mode);
 
   // ---- Date range ----
   // svelte-ignore state_referenced_locally
@@ -50,18 +79,53 @@
   let endDate = $state<IsoDate>(show.show.endDate);
 
   // ---- Page settings ----
-  let pageSize = $state<"letter" | "a4" | "legal" | "tabloid">("letter");
-  let orientation = $state<"landscape" | "portrait">("landscape");
-  let marginPreset = $state<"none" | "small" | "normal" | "large">("normal");
-  let scale = $state(100);
-  let printBackgrounds = $state(true);
-  let pageBreakMode = $state<"months" | "continuous">("continuous");
-  let showRunDates = $state(true);
-  let showFooterLogo = $state(true);
-  let showDownloadDate = $state(false);
-  let showPageNumbers = $state(true);
-  let repeatHeaders = $state(true);
-  let repeatTitle = $state(false);
+  let pageSize = $state<"letter" | "a4" | "legal" | "tabloid">(saved.pageSize ?? DEFAULTS.pageSize);
+  let orientation = $state<"landscape" | "portrait">(saved.orientation ?? DEFAULTS.orientation);
+  let marginPreset = $state<"none" | "small" | "normal" | "large">(saved.marginPreset ?? DEFAULTS.marginPreset);
+  let scale = $state(saved.scale ?? DEFAULTS.scale);
+  let printBackgrounds = $state(saved.printBackgrounds ?? DEFAULTS.printBackgrounds);
+  let pageBreakMode = $state<"months" | "continuous">(saved.pageBreakMode ?? DEFAULTS.pageBreakMode);
+  let showRunDates = $state(saved.showRunDates ?? DEFAULTS.showRunDates);
+  let showFooterLogo = $state(saved.showFooterLogo ?? DEFAULTS.showFooterLogo);
+  let showDownloadDate = $state(saved.showDownloadDate ?? DEFAULTS.showDownloadDate);
+  let showPageNumbers = $state(saved.showPageNumbers ?? DEFAULTS.showPageNumbers);
+  let repeatHeaders = $state(saved.repeatHeaders ?? DEFAULTS.repeatHeaders);
+  let repeatTitle = $state(saved.repeatTitle ?? DEFAULTS.repeatTitle);
+
+  // Auto-save settings to localStorage when they change
+  $effect(() => {
+    const prefs = {
+      mode, pageSize, orientation, marginPreset, scale, printBackgrounds,
+      pageBreakMode, showRunDates, showFooterLogo, showDownloadDate,
+      showPageNumbers, repeatHeaders, repeatTitle,
+    };
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
+  });
+
+  function resetDateRange() {
+    startDate = mode === "calendar"
+      ? weekStartOf(show.show.startDate, show.settings.weekStartsOn)
+      : show.show.startDate;
+    endDate = show.show.endDate;
+  }
+
+  function resetAllSettings() {
+    mode = DEFAULTS.mode;
+    pageSize = DEFAULTS.pageSize;
+    orientation = DEFAULTS.orientation;
+    marginPreset = DEFAULTS.marginPreset;
+    scale = DEFAULTS.scale;
+    printBackgrounds = DEFAULTS.printBackgrounds;
+    pageBreakMode = DEFAULTS.pageBreakMode;
+    showRunDates = DEFAULTS.showRunDates;
+    showFooterLogo = DEFAULTS.showFooterLogo;
+    showDownloadDate = DEFAULTS.showDownloadDate;
+    showPageNumbers = DEFAULTS.showPageNumbers;
+    repeatHeaders = DEFAULTS.repeatHeaders;
+    repeatTitle = DEFAULTS.repeatTitle;
+    resetDateRange();
+    try { localStorage.removeItem(PREFS_KEY); } catch { /* ignore */ }
+  }
 
   // Auto-set orientation based on mode
   $effect(() => {
@@ -724,7 +788,10 @@
         </section>
 
         <section class="section">
-          <div class="section-label">Date range</div>
+          <div class="section-label-row">
+            <div class="section-label">Date range</div>
+            <button type="button" class="reset-link" onclick={resetDateRange}>Reset</button>
+          </div>
           <div class="row">
             <div class="field">
               <label for="export-start">From</label>
@@ -953,6 +1020,10 @@
   </div>
 
   <footer class="modal-footer">
+    <button type="button" class="reset-defaults-link" onclick={resetAllSettings}>
+      Reset to defaults
+    </button>
+    <div class="footer-right">
     {#if pdfError}
       <span class="pdf-error">{pdfError}</span>
     {/if}
@@ -974,6 +1045,7 @@
     >
       {downloading ? "Generating..." : "Download PDF"}
     </button>
+    </div>
   </footer>
 </div>
 
@@ -1289,12 +1361,50 @@
 
   .modal-footer {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-5);
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-alt);
+  }
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .reset-defaults-link {
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 0;
+  }
+  .reset-defaults-link:hover {
+    color: var(--color-danger);
+  }
+  .section-label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .reset-link {
+    font: inherit;
+    font-size: 0.6875rem;
+    color: var(--color-teal);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 0;
+  }
+  .reset-link:hover {
+    color: var(--color-teal-dark);
   }
 
   .pdf-error {
