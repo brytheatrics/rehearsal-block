@@ -414,12 +414,17 @@
       color: CAST_COLOR_PALETTE[colorIndex] ?? "#424242",
     };
     onaddmember?.(member);
-    queueMicrotask(() => {
-      const cards = castListEl?.querySelectorAll(".cast-card");
-      const last = cards?.[cards.length - 1];
-      last?.scrollIntoView({ block: "center", behavior: "auto" });
-      const firstInput = last?.querySelector<HTMLInputElement>(".cast-field-first");
-      firstInput?.focus();
+    // Expand the new card and focus the First Name field
+    expandedCast = new Set([...expandedCast, member.id]);
+    // Wait for Svelte to render the expanded card details before focusing
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        const cards = castListEl?.querySelectorAll(".mockup-card");
+        const last = cards?.[cards.length - 1];
+        last?.scrollIntoView({ block: "center", behavior: "auto" });
+        const firstInput = last?.querySelector<HTMLInputElement>(".cast-field");
+        firstInput?.focus();
+      });
     });
   }
 
@@ -639,12 +644,15 @@
       color: CAST_COLOR_PALETTE[colorIndex] ?? "#424242",
     };
     onaddcrew?.(member);
-    queueMicrotask(() => {
-      const cards = crewListEl?.querySelectorAll(".cast-card");
-      const last = cards?.[cards.length - 1];
-      last?.scrollIntoView({ block: "center", behavior: "auto" });
-      const firstInput = last?.querySelector<HTMLInputElement>(".cast-field-first");
-      firstInput?.focus();
+    expandedCrew = new Set([...expandedCrew, member.id]);
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        const cards = crewListEl?.querySelectorAll(".mockup-card");
+        const last = cards?.[cards.length - 1];
+        last?.scrollIntoView({ block: "center", behavior: "auto" });
+        const firstInput = last?.querySelector<HTMLInputElement>(".cast-field");
+        firstInput?.focus();
+      });
     });
   }
 
