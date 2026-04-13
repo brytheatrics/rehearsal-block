@@ -1,15 +1,27 @@
 <script lang="ts">
   /**
-   * New show creation modal. Collects the minimum info needed to create
-   * a blank ScheduleDoc: name, start date, end date. Time format is
-   * inherited from the user's browser locale by default.
+   * New show creation modal. Collects name + dates (required), then
+   * optionally lets the user configure all show settings before creating.
    *
-   * When Phase 1 storage lands, the `oncreate` callback will write the
-   * new show to IndexedDB + R2. For now it just returns the form data.
+   * Embeds DefaultsModal in "embedded" mode (no backdrop/chrome) so all
+   * Appearance, Schedule, Event Types, Locations, and Contacts settings
+   * are available without duplicating the 3,900-line DefaultsModal UI.
    */
+  import {
+    newEmptyScheduleDoc,
+    type CastMember,
+    type Conflict,
+    type CrewMember,
+    type EventType,
+    type ScheduleDoc,
+    type Settings,
+    type Show,
+  } from "@rehearsal-block/core";
+  import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
+
   interface Props {
     onclose: () => void;
-    oncreate: (data: { name: string; startDate: string; endDate: string }) => void;
+    oncreate: (doc: ScheduleDoc) => void;
   }
 
   const { onclose, oncreate }: Props = $props();
@@ -18,6 +30,20 @@
   let startDate = $state("");
   let endDate = $state("");
   let error = $state("");
+  let showSettings = $state(false);
+
+  // Temporary doc that DefaultsModal mutates via callbacks.
+  // On "Create show", this fully configured doc is passed upstream.
+  let tempDoc = $state<ScheduleDoc>(
+    newEmptyScheduleDoc({ name: "", startDate: "2026-01-01", endDate: "2026-03-01" }),
+  );
+
+  // Keep tempDoc.show in sync with the form fields
+  $effect(() => {
+    tempDoc.show.name = name.trim();
+    tempDoc.show.startDate = startDate || "2026-01-01";
+    tempDoc.show.endDate = endDate || "2026-03-01";
+  });
 
   function handleSubmit(e: Event) {
     e.preventDefault();
@@ -41,11 +67,156 @@
       return;
     }
 
-    oncreate({ name: trimmedName, startDate, endDate });
+    // Ensure final values are synced
+    tempDoc.show.name = trimmedName;
+    tempDoc.show.startDate = startDate;
+    tempDoc.show.endDate = endDate;
+
+    oncreate(tempDoc);
   }
 
   function handleKey(e: KeyboardEvent) {
     if (e.key === "Escape") onclose();
+  }
+
+  // ---- DefaultsModal callbacks: mutate tempDoc in place ----
+
+  function updateSettings(patch: Partial<Settings>) {
+    tempDoc.settings = { ...tempDoc.settings, ...patch };
+  }
+
+  function updateShow(patch: Partial<Show>) {
+    tempDoc.show = { ...tempDoc.show, ...patch };
+    // Sync form fields if show name/dates changed from the Show tab
+    if (patch.name !== undefined) name = patch.name;
+    if (patch.startDate !== undefined) startDate = patch.startDate;
+    if (patch.endDate !== undefined) endDate = patch.endDate;
+  }
+
+  function addEventType(type: EventType) {
+    tempDoc.eventTypes = [...tempDoc.eventTypes, type];
+  }
+  function updateEventType(id: string, patch: Partial<EventType>) {
+    tempDoc.eventTypes = tempDoc.eventTypes.map((t) =>
+      t.id === id ? { ...t, ...patch } : t,
+    );
+  }
+  function removeEventType(id: string) {
+    tempDoc.eventTypes = tempDoc.eventTypes.filter((t) => t.id !== id);
+    if (tempDoc.settings.defaultEventType === id) {
+      tempDoc.settings = { ...tempDoc.settings, defaultEventType: "" };
+    }
+  }
+  function assignEventType(typeId: string, iso: string) {
+    const existing = tempDoc.schedule[iso];
+    tempDoc.schedule = {
+      ...tempDoc.schedule,
+      [iso]: {
+        eventTypeId: typeId,
+        calls: existing?.calls ?? [],
+        description: existing?.description ?? "",
+        notes: existing?.notes ?? "",
+        location: existing?.location ?? "",
+      },
+    };
+    if (!tempDoc.settings.defaultsAssignedDates.includes(iso)) {
+      tempDoc.settings = {
+        ...tempDoc.settings,
+        defaultsAssignedDates: [...tempDoc.settings.defaultsAssignedDates, iso],
+      };
+    }
+  }
+
+  function addLocationPreset(locName: string) {
+    tempDoc.locationPresets = [...tempDoc.locationPresets, locName];
+    if (!tempDoc.locationPresetsV2) tempDoc.locationPresetsV2 = [];
+    tempDoc.locationPresetsV2 = [...tempDoc.locationPresetsV2, { name: locName }];
+  }
+  function removeLocationPreset(locName: string) {
+    tempDoc.locationPresets = tempDoc.locationPresets.filter((p) => p !== locName);
+    if (tempDoc.locationPresetsV2) {
+      tempDoc.locationPresetsV2 = tempDoc.locationPresetsV2.filter((p) => p.name !== locName);
+    }
+    if (tempDoc.settings.defaultLocation === locName) {
+      tempDoc.settings = { ...tempDoc.settings, defaultLocation: "" };
+    }
+  }
+  function updateLocationPreset(locName: string, patch: { color?: string; shape?: string }) {
+    if (!tempDoc.locationPresetsV2) tempDoc.locationPresetsV2 = [];
+    const idx = tempDoc.locationPresetsV2.findIndex((p) => p.name === locName);
+    if (idx >= 0) {
+      tempDoc.locationPresetsV2 = tempDoc.locationPresetsV2.map((p) =>
+        p.name === locName ? { ...p, ...patch } : p,
+      );
+    } else {
+      tempDoc.locationPresetsV2 = [...tempDoc.locationPresetsV2, { name: locName, ...patch }];
+    }
+  }
+
+  function convertGroups(mode: "collapse" | "expand") {
+    // No-op for new shows (no groups yet)
+  }
+
+  // ---- Cast callbacks ----
+  function addCastMember(member: CastMember) {
+    tempDoc.cast = [...tempDoc.cast, member];
+  }
+  function updateCastMember(id: string, patch: Partial<CastMember>) {
+    tempDoc.cast = tempDoc.cast.map((m) => (m.id === id ? { ...m, ...patch } : m));
+  }
+  function removeCastMember(id: string) {
+    tempDoc.cast = tempDoc.cast.filter((m) => m.id !== id);
+  }
+  function reorderCastMember(id: string, dir: "up" | "down") {
+    const idx = tempDoc.cast.findIndex((m) => m.id === id);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= tempDoc.cast.length) return;
+    const next = [...tempDoc.cast];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    tempDoc.cast = next;
+  }
+  function importCast(added: CastMember[], updates: { id: string; patch: Partial<CastMember> }[]) {
+    let cast = [...tempDoc.cast];
+    for (const u of updates) {
+      cast = cast.map((m) => (m.id === u.id ? { ...m, ...u.patch } : m));
+    }
+    tempDoc.cast = [...cast, ...added];
+  }
+
+  // ---- Crew callbacks ----
+  function addCrewMember(member: CrewMember) {
+    tempDoc.crew = [...tempDoc.crew, member];
+  }
+  function updateCrewMember(id: string, patch: Partial<CrewMember>) {
+    tempDoc.crew = tempDoc.crew.map((m) => (m.id === id ? { ...m, ...patch } : m));
+  }
+  function removeCrewMember(id: string) {
+    tempDoc.crew = tempDoc.crew.filter((m) => m.id !== id);
+  }
+  function reorderCrewMember(id: string, dir: "up" | "down") {
+    const idx = tempDoc.crew.findIndex((m) => m.id === id);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= tempDoc.crew.length) return;
+    const next = [...tempDoc.crew];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    tempDoc.crew = next;
+  }
+  function importCrew(added: CrewMember[], updates: { id: string; patch: Partial<CrewMember> }[]) {
+    let crew = [...tempDoc.crew];
+    for (const u of updates) {
+      crew = crew.map((m) => (m.id === u.id ? { ...m, ...u.patch } : m));
+    }
+    tempDoc.crew = [...crew, ...added];
+  }
+
+  // ---- Conflict callbacks ----
+  function addConflict(conflict: Conflict) {
+    tempDoc.conflicts = [...tempDoc.conflicts, conflict];
+  }
+  function removeConflict(id: string) {
+    tempDoc.conflicts = tempDoc.conflicts.filter((c) => c.id !== id);
   }
 </script>
 
@@ -55,52 +226,105 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onclose}></div>
 
-<div class="modal" role="dialog" aria-labelledby="new-show-title">
+<div class="modal" class:expanded={showSettings} role="dialog" aria-labelledby="new-show-title">
   <div class="modal-header">
     <h2 id="new-show-title">New show</h2>
     <button type="button" class="close-btn" aria-label="Close" onclick={onclose}>&times;</button>
   </div>
 
-  <form class="modal-body" onsubmit={handleSubmit} novalidate>
-    <div class="field">
-      <label for="show-name">Show name</label>
-      <input
-        id="show-name"
-        type="text"
-        bind:value={name}
-        placeholder="Romeo & Juliet"
-        autocomplete="off"
-      />
-    </div>
-
-    <div class="field-row">
+  <div class="modal-scroll">
+    <form class="modal-body" onsubmit={handleSubmit} novalidate>
       <div class="field">
-        <label for="show-start">Start date</label>
+        <label for="show-name">Show name</label>
         <input
-          id="show-start"
-          type="date"
-          bind:value={startDate}
+          id="show-name"
+          type="text"
+          bind:value={name}
+          placeholder="Romeo & Juliet"
+          autocomplete="off"
         />
       </div>
-      <div class="field">
-        <label for="show-end">End date</label>
-        <input
-          id="show-end"
-          type="date"
-          bind:value={endDate}
-        />
+
+      <div class="field-row">
+        <div class="field">
+          <label for="show-start">Start date</label>
+          <input
+            id="show-start"
+            type="date"
+            bind:value={startDate}
+          />
+        </div>
+        <div class="field">
+          <label for="show-end">End date</label>
+          <input
+            id="show-end"
+            type="date"
+            bind:value={endDate}
+          />
+        </div>
       </div>
-    </div>
 
-    {#if error}
-      <p class="error-msg">{error}</p>
-    {/if}
+      {#if error}
+        <p class="error-msg">{error}</p>
+      {/if}
 
-    <div class="actions">
-      <button type="button" class="ghost-btn" onclick={onclose}>Cancel</button>
-      <button type="submit" class="primary-btn">Create show</button>
-    </div>
-  </form>
+      <!-- Settings toggle -->
+      <button
+        type="button"
+        class="settings-toggle"
+        onclick={() => (showSettings = !showSettings)}
+      >
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          class:rotated={showSettings}
+          aria-hidden="true"
+        >
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+        Configure settings
+        <span class="settings-hint">(optional)</span>
+      </button>
+
+      {#if showSettings}
+        <div class="settings-embed">
+          <DefaultsModal
+            show={tempDoc}
+            embedded={true}
+            hideShowTab={true}
+            onchange={updateSettings}
+            onaddlocationpreset={addLocationPreset}
+            onremovelocationpreset={removeLocationPreset}
+            onupdatelocationpreset={updateLocationPreset}
+            onaddeventtype={addEventType}
+            onupdateeventtype={updateEventType}
+            onremoveeventtype={removeEventType}
+            onassigneventtype={assignEventType}
+            onclose={() => {}}
+            onconvertgroups={convertGroups}
+            onupdateshow={updateShow}
+            onaddmember={addCastMember}
+            onupdatemember={updateCastMember}
+            onremovemember={removeCastMember}
+            onreordermember={reorderCastMember}
+            onaddconflict={addConflict}
+            onremoveconflict={removeConflict}
+            onaddcrew={addCrewMember}
+            onupdatecrew={updateCrewMember}
+            onremovecrew={removeCrewMember}
+            onreordercrew={reorderCrewMember}
+            onimportcast={importCast}
+            onimportcrew={importCrew}
+          />
+        </div>
+      {/if}
+
+      <div class="actions">
+        <button type="button" class="ghost-btn" onclick={onclose}>Cancel</button>
+        <button type="submit" class="primary-btn">Create show</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <style>
@@ -118,6 +342,7 @@
     transform: translate(-50%, -50%);
     width: 440px;
     max-width: calc(100vw - 2 * var(--space-4));
+    max-height: calc(100vh - 2 * var(--space-4));
     background: var(--color-surface);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
@@ -125,6 +350,17 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transition: width 200ms ease;
+  }
+
+  .modal.expanded {
+    width: 720px;
+  }
+
+  .modal-scroll {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
   }
 
   .modal-header {
@@ -133,6 +369,7 @@
     justify-content: space-between;
     padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
   }
   .modal-header h2 {
     font-size: 1rem;
@@ -194,6 +431,41 @@
     font-size: 0.8125rem;
     color: var(--color-danger);
     margin: 0 0 var(--space-3);
+  }
+
+  .settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-teal-dark);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-2) 0;
+    margin-bottom: var(--space-2);
+  }
+  .settings-toggle:hover {
+    color: var(--color-teal);
+  }
+  .settings-toggle svg {
+    transition: transform 150ms ease;
+  }
+  .settings-toggle svg.rotated {
+    transform: rotate(90deg);
+  }
+  .settings-hint {
+    font-weight: 400;
+    color: var(--color-text-muted);
+  }
+
+  .settings-embed {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+    overflow: hidden;
   }
 
   .actions {

@@ -93,6 +93,11 @@
     onimportcrew?: (added: CrewMember[], updates: { id: string; patch: Partial<CrewMember> }[]) => void;
     /** Open the conflict collection modal (send link to actors). */
     oncollectconflicts?: () => void;
+    /** When true, render without backdrop/modal chrome - just tabs + content.
+     *  Used when embedded inside another modal (e.g. NewShowModal). */
+    embedded?: boolean;
+    /** When true, hide the "Show" tab (used when name/dates are in the parent form). */
+    hideShowTab?: boolean;
   }
 
   const {
@@ -124,6 +129,8 @@
     oncollectconflicts,
     contactsLocked = false,
     onpaywall,
+    embedded = false,
+    hideShowTab = false,
   }: Props = $props();
 
   /** Trigger the paywall modal from a locked action. Returns true so call
@@ -687,20 +694,28 @@
   }
 </script>
 
-<svelte:window onkeydown={onBackdropKey} onmousemove={onDragMove} onmouseup={onDragEnd} />
+<svelte:window
+  onkeydown={embedded ? undefined : onBackdropKey}
+  onmousemove={embedded ? undefined : onDragMove}
+  onmouseup={embedded ? undefined : onDragEnd}
+/>
 
+{#if !embedded}
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onclose}></div>
+{/if}
 
 <div
   class="modal"
   class:dragging
-  role="dialog"
-  aria-modal="true"
-  aria-label="Show defaults"
-  style:transform="translate(calc(-50% + {modalPos.x}px), {modalPos.y}px)"
+  class:modal-embedded={embedded}
+  role={embedded ? undefined : "dialog"}
+  aria-modal={embedded ? undefined : "true"}
+  aria-label={embedded ? undefined : "Show defaults"}
+  style:transform={embedded ? undefined : `translate(calc(-50% + ${modalPos.x}px), ${modalPos.y}px)`}
 >
+  {#if !embedded}
   <header class="modal-header">
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="header-top" onmousedown={onDragStart} style:cursor="grab">
@@ -712,6 +727,8 @@
         ×
       </button>
     </div>
+  </header>
+  {/if}
 
     <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
     <nav class="tab-nav" role="tablist">
@@ -721,7 +738,7 @@
         { id: "event-types", label: "Event Types" },
         { id: "locations", label: "Locations" },
         { id: "contacts", label: "Contacts" },
-        { id: "show", label: "Show" },
+        ...(hideShowTab ? [] : [{ id: "show", label: "Show" }]),
       ] as tab (tab.id)}
         <button
           type="button"
@@ -735,7 +752,6 @@
         </button>
       {/each}
     </nav>
-  </header>
 
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -2210,9 +2226,11 @@
 
   </div>
 
+  {#if !embedded}
   <footer class="modal-footer">
     <button type="button" class="btn btn-primary" onclick={onclose}>Done</button>
   </footer>
+  {/if}
 </div>
 
 {#if calendarType}
@@ -2246,6 +2264,19 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .modal-embedded {
+    position: static;
+    top: auto;
+    left: auto;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    transform: none !important;
+    box-shadow: none;
+    border-radius: 0;
+    z-index: auto;
   }
 
   .modal.dragging {

@@ -8,7 +8,7 @@
    */
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { newEmptyScheduleDoc, type ScheduleDoc, DOCUMENT_VERSION } from "@rehearsal-block/core";
+  import { type ScheduleDoc } from "@rehearsal-block/core";
   import ShowCard from "$lib/components/app/ShowCard.svelte";
   import NewShowModal from "$lib/components/app/NewShowModal.svelte";
   import { listShowsMeta, type ShowIndexRow } from "$lib/storage/index.js";
@@ -124,9 +124,8 @@
     }
   }
 
-  async function handleCreate(info: { name: string; startDate: string; endDate: string }) {
+  async function handleCreate(doc: ScheduleDoc) {
     const id = crypto.randomUUID();
-    const doc = newEmptyScheduleDoc(info);
 
     try {
       if (!isLocalhost) {
