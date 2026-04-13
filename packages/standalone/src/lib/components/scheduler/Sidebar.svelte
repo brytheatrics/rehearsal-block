@@ -278,6 +278,12 @@
     groupFormColor = undefined;
     groupColorFor = null;
     capturePopoverPos(e);
+    // Focus the group name input after the form renders
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        groupFormEl?.querySelector<HTMLInputElement>("input[type='text']")?.focus();
+      });
+    });
   }
 
   function openEditGroup(group: Group, e: MouseEvent) {

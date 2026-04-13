@@ -241,8 +241,11 @@
     // instant scroll (not smooth) so subsequent clicks land on stable
     // coordinates - smooth scroll animation can cause touch/mouse clicks
     // to miss the form while it's still animating into place.
-    queueMicrotask(() => {
-      conflictFormEl?.scrollIntoView({ block: "center", behavior: "auto" });
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        conflictFormEl?.scrollIntoView({ block: "center", behavior: "auto" });
+        conflictFormEl?.querySelector<HTMLSelectElement>("select")?.focus();
+      });
     });
   }
 
@@ -429,10 +432,14 @@
     const nextCollapsed = new Set(collapsedCalls);
     nextCollapsed.delete(newId);
     collapsedCalls = nextCollapsed;
-    queueMicrotask(() => {
-      const cards = callCardsContainer?.querySelectorAll(".call-card, .dp-call-card");
-      const last = cards?.[cards.length - 1];
-      last?.scrollIntoView({ block: "center", behavior: "auto" });
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        const cards = callCardsContainer?.querySelectorAll(".call-card, .dp-call-card");
+        const last = cards?.[cards.length - 1];
+        last?.scrollIntoView({ block: "center", behavior: "auto" });
+        const labelInput = last?.querySelector<HTMLInputElement>("input[type='text']");
+        labelInput?.focus();
+      });
     });
   }
 

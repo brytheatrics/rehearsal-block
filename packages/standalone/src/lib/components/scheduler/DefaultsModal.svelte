@@ -232,6 +232,16 @@
       textColor: pick.textColor,
       isDressPerf: false,
     });
+    // Focus the name input of the newly added type
+    requestAnimationFrame(() => {
+      queueMicrotask(() => {
+        const cards = document.querySelectorAll(".event-type-card");
+        const last = cards[cards.length - 1];
+        const input = last?.querySelector<HTMLInputElement>(".et-name");
+        if (input) { input.focus(); input.select(); }
+        last?.scrollIntoView({ block: "center", behavior: "auto" });
+      });
+    });
   }
 
   /** How many scheduled days currently reference a given event type. */
@@ -1194,7 +1204,7 @@
             <button type="button" class="mockup-action-btn" onclick={() => (addingHoliday = false)}>Cancel</button>
           </div>
         {:else}
-          <button type="button" class="add-location-btn" onclick={() => (addingHoliday = true)}>
+          <button type="button" class="add-location-btn" onclick={() => { addingHoliday = true; requestAnimationFrame(() => queueMicrotask(() => document.querySelector<HTMLInputElement>('.holiday-add-name')?.focus())); }}>
             + Add custom holiday
           </button>
         {/if}
