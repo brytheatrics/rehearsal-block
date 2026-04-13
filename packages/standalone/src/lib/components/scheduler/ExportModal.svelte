@@ -512,7 +512,16 @@
   }).join("\n")}
   <script>
     document.fonts.ready.then(function() {
-      setTimeout(function() { window.print(); }, 400);
+      setTimeout(function() {
+        window.print();
+        // Close the window after the print dialog is dismissed
+        window.onafterprint = function() { window.close(); };
+        // Fallback: if afterprint doesn't fire (some browsers),
+        // close after a short delay once focus returns
+        window.addEventListener('focus', function() {
+          setTimeout(function() { window.close(); }, 500);
+        }, { once: true });
+      }, 400);
     });
   <\/script>
 </body>
