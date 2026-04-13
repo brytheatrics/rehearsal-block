@@ -34,6 +34,15 @@
   let saved = $state(false);
   let loaded = $state(false);
 
+  // Blank weekday defaults for first-time My Defaults (all unchecked, no times).
+  // Users set their own schedule from scratch rather than inheriting the
+  // sample show's Mon-Sat 7-9:30pm pattern.
+  const blankWeekdays = Array.from({ length: 7 }, () => ({
+    enabled: false,
+    startTime: "",
+    endTime: "",
+  }));
+
   onMount(async () => {
     const defaults = await getUserDefaults();
     if (defaults) {
@@ -43,6 +52,9 @@
       if (defaults.locationPresetsV2) {
         tempDoc.locationPresetsV2 = defaults.locationPresetsV2;
       }
+    } else {
+      // First time opening My Defaults - start with blank weekdays
+      tempDoc.settings = { ...tempDoc.settings, weekdayDefaults: blankWeekdays };
     }
     loaded = true;
   });
@@ -64,6 +76,7 @@
   async function handleReset() {
     await clearUserDefaults();
     tempDoc = newEmptyScheduleDoc({ name: "Defaults Preview", startDate: "2026-01-01", endDate: "2026-03-01" });
+    tempDoc.settings = { ...tempDoc.settings, weekdayDefaults: blankWeekdays };
     saved = false;
   }
 
