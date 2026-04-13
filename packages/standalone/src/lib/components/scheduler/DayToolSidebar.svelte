@@ -51,10 +51,13 @@
   let addingLocation = $state(false);
   let newEventTypeName = $state("");
   let newLocationName = $state("");
+  let etInputEl = $state<HTMLInputElement | null>(null);
+  let locInputEl = $state<HTMLInputElement | null>(null);
 
   function startAddEventType() {
     addingEventType = true;
     newEventTypeName = "";
+    requestAnimationFrame(() => queueMicrotask(() => etInputEl?.focus()));
   }
   function cancelAddEventType() {
     addingEventType = false;
@@ -69,6 +72,7 @@
   function startAddLocation() {
     addingLocation = true;
     newLocationName = "";
+    requestAnimationFrame(() => queueMicrotask(() => locInputEl?.focus()));
   }
   function cancelAddLocation() {
     addingLocation = false;
@@ -186,7 +190,7 @@
             class="section-add-input"
             placeholder="New event type"
             bind:value={newEventTypeName}
-            autofocus
+            bind:this={etInputEl}
             onkeydown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); commitAddEventType(); }
               else if (e.key === "Escape") { e.preventDefault(); cancelAddEventType(); }
@@ -230,13 +234,12 @@
           <h4 class="section-title">Location</h4>
         </div>
         {#if addingLocation}
-          <!-- svelte-ignore a11y_autofocus -->
           <input
             type="text"
             class="section-add-input"
             placeholder="New location"
             bind:value={newLocationName}
-            autofocus
+            bind:this={locInputEl}
             onkeydown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); commitAddLocation(); }
               else if (e.key === "Escape") { e.preventDefault(); cancelAddLocation(); }
