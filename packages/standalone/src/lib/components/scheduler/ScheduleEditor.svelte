@@ -158,6 +158,7 @@
   let showEditorOpen = $state(false);
   let dateEditorOpen = $state(false);
   let exportOpen = $state(false);
+  let printOpen = $state(false);
   let contactSheetOpen = $state(false);
   let conflictRequestOpen = $state(false);
   /** How many pending conflict submissions are sitting in localStorage
@@ -3074,11 +3075,11 @@
                 class="export-option"
                 onclick={() => {
                   exportDropdownOpen = false;
-                  printPickerOpen = true;
+                  printOpen = true;
                 }}
               >
                 <strong>Print</strong>
-                <span>Send to printer</span>
+                <span>Preview and send to printer</span>
               </button>
               <button
                 type="button"
@@ -3392,6 +3393,14 @@
     onclose={() => (exportOpen = false)}
     readOnly={readOnly}
     onpaywall={() => onPaywall?.()}
+  />
+{/if}
+
+{#if printOpen}
+  <ExportModal
+    show={doc}
+    onclose={() => (printOpen = false)}
+    outputMode="print"
   />
 {/if}
 

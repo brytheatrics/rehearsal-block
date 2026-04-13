@@ -34,9 +34,11 @@
     /** When true, Download PDF opens the paywall instead of generating. */
     readOnly?: boolean;
     onpaywall?: () => void;
+    /** "pdf" opens with Download PDF button, "print" opens with Print button. */
+    outputMode?: "pdf" | "print";
   }
 
-  const { show, onclose, readOnly = false, onpaywall }: Props = $props();
+  const { show, onclose, readOnly = false, onpaywall, outputMode = "pdf" }: Props = $props();
 
   // ---- Defaults ----
   const DEFAULTS = {
@@ -766,10 +768,10 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onclose}></div>
 
-<div class="modal" role="dialog" aria-modal="true" aria-label="Download PDF">
+<div class="modal" role="dialog" aria-modal="true" aria-label={outputMode === "print" ? "Print" : "Download PDF"}>
   <header class="modal-header">
     <div>
-      <div class="eyebrow">Download PDF</div>
+      <div class="eyebrow">{outputMode === "print" ? "Print" : "Download PDF"}</div>
       <h2>{show.show.name || "Schedule"}</h2>
     </div>
     <button type="button" class="close-btn" onclick={onclose} aria-label="Close">
@@ -1092,7 +1094,7 @@
       }}
       disabled={downloading}
     >
-      {downloading ? "Generating..." : "Download PDF"}
+      {downloading ? "Generating..." : outputMode === "print" ? "Print" : "Download PDF"}
     </button>
     </div>
   </footer>
