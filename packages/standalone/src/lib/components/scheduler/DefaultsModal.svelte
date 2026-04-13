@@ -220,12 +220,16 @@
   }
 
   function addEventType() {
-    const fallback = EVENT_TYPE_COLOR_PALETTE[0]!;
+    // Auto-cycle through the palette so each new type gets a distinct color.
+    // Skip colors already in use by existing event types.
+    const usedBgs = new Set(show.eventTypes.map((t) => t.bgColor));
+    const available = EVENT_TYPE_COLOR_PALETTE.filter((c) => !usedBgs.has(c.bgColor));
+    const pick = available.length > 0 ? available[0]! : EVENT_TYPE_COLOR_PALETTE[show.eventTypes.length % EVENT_TYPE_COLOR_PALETTE.length]!;
     onaddeventtype({
       id: `et_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: "New type",
-      bgColor: fallback.bgColor,
-      textColor: fallback.textColor,
+      bgColor: pick.bgColor,
+      textColor: pick.textColor,
       isDressPerf: false,
     });
   }
@@ -1392,11 +1396,16 @@
 
     <section class="section">
       <div class="section-header">
-        <h3>Locations</h3>
-        <p class="hint">
-          Star a location to make it the default for new days. Click a name
-          to toggle it as default.
-        </p>
+        <div>
+          <h3>Locations</h3>
+          <p class="hint">
+            Star a location to make it the default for new days. Click a name
+            to toggle it as default.
+          </p>
+        </div>
+        <button type="button" class="ghost-btn" onclick={startAddLocation}>
+          + Add location
+        </button>
       </div>
       <label class="shape-toggle">
         <input
@@ -1501,12 +1510,6 @@
               onkeydown={onAddLocKey}
               onblur={commitAddLocation}
             />
-          </li>
-        {:else}
-          <li class="location-row add-row">
-            <button type="button" class="add-location-btn" onclick={startAddLocation}>
-              + Add location
-            </button>
           </li>
         {/if}
       </ul>
