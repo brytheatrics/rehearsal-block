@@ -497,7 +497,6 @@
     html, body { margin: 0; padding: 0; }
     .export-page {
       height: ${pageH}px;
-      padding: ${mPx}px;
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
