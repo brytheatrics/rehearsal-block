@@ -49,10 +49,10 @@
     pageBreakMode: "continuous" as "months" | "continuous",
     showRunDates: true,
     showFooterLogo: true,
-    showDownloadDate: false,
+    showDownloadDate: true,
     showPageNumbers: true,
     repeatHeaders: true,
-    repeatTitle: false,
+    repeatTitle: true,
   };
 
   const PREFS_KEY = "rehearsal-block:export-prefs";
