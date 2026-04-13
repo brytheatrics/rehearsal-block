@@ -253,7 +253,14 @@
           mDoc.close();
 
           const body = mDoc.body;
-          const children = Array.from(body.querySelectorAll(".print-page > *")) as HTMLElement[];
+          // Content is wrapped in .page-content inside .print-page
+          const children = Array.from(
+            body.querySelectorAll(".page-content > *") as NodeListOf<HTMLElement>
+          );
+          if (children.length === 0) {
+            // Fallback: try direct children of .print-page
+            children.push(...Array.from(body.querySelectorAll(".print-page > *") as NodeListOf<HTMLElement>));
+          }
           if (children.length === 0) {
             allPages.push([monthHtml]);
             continue;
