@@ -19,15 +19,22 @@
   let { data } = $props();
 
   let syncedStorage: SyncedStorage | null = null;
-  let currentSyncStatus = $state<"synced" | "pending" | "syncing" | "error" | "offline">("synced");
+  let cloudStatus = $state<"synced" | "pending" | "syncing" | "error">("synced");
   let isOnline = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
+  let saveFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Effective sync status: combines cloud status + online state + local feedback
+  const currentSyncStatus = $derived.by<"synced" | "pending" | "syncing" | "error" | "offline">(() => {
+    if (!isOnline) return "offline";
+    return cloudStatus;
+  });
 
   const isLocalhost = browser &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   // Track online/offline
   function handleOnline() { isOnline = true; }
-  function handleOffline() { isOnline = false; currentSyncStatus = "offline"; }
+  function handleOffline() { isOnline = false; }
 
   if (browser) {
     window.addEventListener("online", handleOnline);
@@ -90,9 +97,9 @@
         supabase,
       });
       // Track sync status changes
-      const unsub = syncedStorage.onSyncStatusChange((showId, status) => {
-        if (showId === data.showId) {
-          currentSyncStatus = isOnline ? status : "offline";
+      const unsub = syncedStorage.onSyncStatusChange((id, status) => {
+        if (id === data.showId) {
+          cloudStatus = status;
         }
       });
       return () => {
@@ -108,7 +115,6 @@
 
   async function handleSave(rawDoc: ScheduleDoc) {
     const showId = data.showId;
-    // Strip Svelte 5 reactive proxies before IndexedDB write
     const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
     await localSaveShow({
       id: showId,
@@ -116,13 +122,26 @@
       updatedAt: new Date().toISOString(),
       document: doc,
     });
-    if (syncedStorage) await syncedStorage.flush(showId);
+    if (syncedStorage) {
+      await syncedStorage.flush(showId);
+    } else {
+      // No sync layer (localhost) - flash synced briefly for feedback
+      cloudStatus = "syncing";
+      setTimeout(() => (cloudStatus = "synced"), 300);
+    }
   }
 
   function handleDocChange(rawDoc: ScheduleDoc) {
     const showId = data.showId;
-    // Strip Svelte 5 reactive proxies before IndexedDB write
     const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
+
+    // Show pending status while saving
+    if (!syncedStorage) {
+      cloudStatus = "pending";
+      if (saveFlashTimer) clearTimeout(saveFlashTimer);
+      saveFlashTimer = setTimeout(() => (cloudStatus = "synced"), 2000);
+    }
+
     localSaveShow({
       id: showId,
       name: doc.show.name,
