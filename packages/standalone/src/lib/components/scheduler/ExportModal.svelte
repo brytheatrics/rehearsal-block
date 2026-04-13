@@ -441,19 +441,82 @@
     downloading = true;
     pdfError = "";
     try {
-      // Client-side: open a print window with the styled HTML.
-      // The browser's "Save as PDF" option in the print dialog
-      // produces a clean PDF without needing a server-side Puppeteer.
-      const html = buildPrintHtml(show, { ...exportOpts, action: "print" });
+      // Build the HTML with all export settings baked in
+      const html = buildPrintHtml(show, { ...exportOpts, action: "pdf" });
+
+      // Apply scale by rewriting font-size values (same as server did)
+      const s = scale / 100;
+      const scaledHtml = s !== 1
+        ? html.replace(/font-size:\s*([\d.]+)px/g, (_m, v) => `font-size: ${(parseFloat(v) * s).toFixed(1)}px`)
+        : html;
+
+      // Build @page CSS for the browser
+      const dim = pageSizes[pageSize];
+      const w = orientation === "landscape" ? dim.h : dim.w;
+      const h = orientation === "landscape" ? dim.w : dim.h;
+      const m = marginValues[marginPreset];
+      const pageRule = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
+
+      // Build header/footer HTML to inject as page-margin content
+      const headerHtml = repeatTitle ? buildPdfHeaderHtml({
+        repeatTitle: true,
+        showName: show.show.name || "Schedule",
+        showRunDates: showRunDates ? formatUsDateRange(startDate, endDate) : "",
+      }) : "";
+      const footerHtml = hasFooter ? buildPdfFooterHtml(footerOpts) : "";
+
+      // Open in a new window with paged.js for proper pagination
       const win = window.open("", "_blank");
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        // The HTML includes an auto-print script that calls
-        // window.print() after fonts load, then closes the window.
-      } else {
+      if (!win) {
         pdfError = "Pop-up blocked. Please allow pop-ups for this site and try again.";
+        downloading = false;
+        return;
       }
+
+      // Extract head and body from the generated HTML
+      const headMatch = scaledHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+      const bodyMatch = scaledHtml.match(/<body[^>]*>([\s\S]*?)(?:<script[\s\S]*?)?<\/body>/i);
+      const bodyClassMatch = scaledHtml.match(/<body\s+class="([^"]*)"/i);
+
+      const printDoc = `<!DOCTYPE html>
+<html>
+<head>
+  ${headMatch?.[1] ?? ""}
+  <style>
+    ${pageRule}
+    @media print {
+      body { margin: 0; padding: 0; }
+    }
+    .print-page-header {
+      position: running(header);
+      font-size: 9px;
+      color: #666;
+    }
+    .print-page-footer {
+      font-size: 8px;
+      color: #888;
+      text-align: center;
+      padding-top: 4px;
+      border-top: 1px solid #e0e0e0;
+    }
+  </style>
+</head>
+<body class="${bodyClassMatch?.[1] ?? ""}">
+  ${headerHtml ? `<div class="print-page-header">${headerHtml}</div>` : ""}
+  ${bodyMatch?.[1] ?? ""}
+  ${footerHtml ? `<div class="print-page-footer">${footerHtml}</div>` : ""}
+  <script>
+    document.fonts.ready.then(function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    });
+  <\/script>
+</body>
+</html>`;
+
+      win.document.write(printDoc);
+      win.document.close();
     } catch (err) {
       console.error("PDF generation failed:", err);
       pdfError = "PDF generation failed. Please try again.";
