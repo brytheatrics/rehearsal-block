@@ -79,6 +79,7 @@
             <a href="/terms" class="menu-item" onclick={closeMenu}>Terms</a>
             {#if data.user}
               <div class="menu-divider"></div>
+              <a href="/app/account" class="menu-item" onclick={closeMenu}>Account</a>
               <div class="menu-email">{data.user.email}</div>
               <form method="POST" action="/login?/signout" class="menu-signout-form">
                 <button type="submit" class="menu-item menu-item-signout" onclick={closeMenu}>

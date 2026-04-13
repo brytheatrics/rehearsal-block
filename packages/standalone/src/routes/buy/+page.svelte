@@ -4,6 +4,7 @@
 
   let { data, form } = $props();
   let submitting = $state(false);
+  let consentChecked = $state(false);
 
   const canceled = page.url.searchParams.has("canceled");
 </script>
@@ -43,7 +44,18 @@
         submitting = false;
       };
     }}>
-      <button type="submit" class="btn btn-primary btn-lg btn-full" disabled={submitting}>
+      <label class="consent-checkbox">
+        <input type="checkbox" bind:checked={consentChecked} />
+        <span>
+          I want immediate access to Rehearsal Block and understand that I waive
+          my 14-day cooldown right under EU Consumer Rights Directive Article 16(m).
+          I understand refunds are only available within 7 days and are voided if
+          I export my data. I agree to the
+          <a href="/terms" target="_blank">Terms of Service</a> and
+          <a href="/privacy" target="_blank">Privacy Policy</a>.
+        </span>
+      </label>
+      <button type="submit" class="btn btn-primary btn-lg btn-full" disabled={submitting || !consentChecked}>
         {submitting ? "Starting checkout…" : "Continue to Checkout"}
       </button>
     </form>
@@ -121,6 +133,28 @@
     left: 0;
     color: var(--color-teal);
     font-weight: 700;
+  }
+
+  .consent-checkbox {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    margin-bottom: var(--space-4);
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+    cursor: pointer;
+  }
+
+  .consent-checkbox input[type="checkbox"] {
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+
+  .consent-checkbox a {
+    color: var(--color-teal);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   .btn-full {
