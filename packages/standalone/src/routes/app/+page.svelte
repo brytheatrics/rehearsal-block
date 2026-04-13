@@ -126,8 +126,10 @@
     }
   }
 
-  async function handleCreate(doc: ScheduleDoc) {
+  async function handleCreate(rawDoc: ScheduleDoc) {
     const id = crypto.randomUUID();
+    // Strip Svelte 5 reactive proxies - IndexedDB's structured clone chokes on them
+    const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
 
     try {
       if (!isLocalhost) {
