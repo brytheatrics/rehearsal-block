@@ -1318,6 +1318,7 @@
 
   .field {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
@@ -1341,6 +1342,8 @@
     background: var(--color-surface);
     color: var(--color-text);
     cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
   }
   .field input:focus,
   .field select:focus {
