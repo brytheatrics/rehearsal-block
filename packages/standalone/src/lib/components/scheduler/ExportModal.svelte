@@ -53,6 +53,7 @@
     showPageNumbers: true,
     repeatHeaders: true,
     repeatTitle: true,
+    showLocationShapes: false,
   };
 
   const PREFS_KEY = "rehearsal-block:export-prefs";
@@ -91,13 +92,14 @@
   let showPageNumbers = $state(saved.showPageNumbers ?? DEFAULTS.showPageNumbers);
   let repeatHeaders = $state(saved.repeatHeaders ?? DEFAULTS.repeatHeaders);
   let repeatTitle = $state(saved.repeatTitle ?? DEFAULTS.repeatTitle);
+  let showLocationShapes = $state(saved.showLocationShapes ?? DEFAULTS.showLocationShapes);
 
   // Auto-save settings to localStorage when they change
   $effect(() => {
     const prefs = {
       mode, pageSize, orientation, marginPreset, scale, printBackgrounds,
       pageBreakMode, showRunDates, showFooterLogo, showDownloadDate,
-      showPageNumbers, repeatHeaders, repeatTitle,
+      showPageNumbers, repeatHeaders, repeatTitle, showLocationShapes,
     };
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
   });
@@ -123,6 +125,7 @@
     showPageNumbers = DEFAULTS.showPageNumbers;
     repeatHeaders = DEFAULTS.repeatHeaders;
     repeatTitle = DEFAULTS.repeatTitle;
+    showLocationShapes = DEFAULTS.showLocationShapes;
     resetDateRange();
     try { localStorage.removeItem(PREFS_KEY); } catch { /* ignore */ }
   }
@@ -175,7 +178,12 @@
   });
 
   /** Live preview HTML, rebuilt whenever settings change. */
-  const previewHtml = $derived(buildPrintHtml(show, exportOpts));
+  /** Show object with export-specific overrides (e.g. location shapes toggle). */
+  const exportShow = $derived({
+    ...show,
+    settings: { ...show.settings, showLocationShapes },
+  });
+  const previewHtml = $derived(buildPrintHtml(exportShow, exportOpts));
 
   /** Head content extracted from the preview HTML for reuse in per-page iframes. */
   const headContent = $derived(
@@ -913,6 +921,14 @@
                 onchange={(e) => (printBackgrounds = e.currentTarget.checked)}
               />
               <span>Background colors</span>
+            </label>
+            <label class="toggle">
+              <input
+                type="checkbox"
+                checked={showLocationShapes}
+                onchange={(e) => (showLocationShapes = e.currentTarget.checked)}
+              />
+              <span>Location shapes</span>
             </label>
             <label class="toggle">
               <input
