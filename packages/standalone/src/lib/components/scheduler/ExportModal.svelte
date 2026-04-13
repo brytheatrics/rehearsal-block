@@ -535,8 +535,18 @@
         pdfError = "Pop-up blocked. Please allow pop-ups for this site.";
         URL.revokeObjectURL(url);
       } else {
-        win.addEventListener("afterprint", () => URL.revokeObjectURL(url));
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        // Close the print tab from the parent side when focus returns.
+        // The child also tries window.close() via afterprint/focus,
+        // but some browsers block self-close on blob URL tabs.
+        const cleanup = () => {
+          try { win.close(); } catch { /* cross-origin or already closed */ }
+          URL.revokeObjectURL(url);
+          window.removeEventListener("focus", onFocus);
+        };
+        const onFocus = () => setTimeout(cleanup, 500);
+        window.addEventListener("focus", onFocus, { once: true });
+        // Fallback timeout
+        setTimeout(cleanup, 120_000);
       }
     } catch (err) {
       console.error("PDF generation failed:", err);
