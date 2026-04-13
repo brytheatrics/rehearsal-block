@@ -2,12 +2,16 @@
   /**
    * Demo page - thin wrapper around ScheduleEditor.
    *
-   * Provides the sample show in read-only mode (on deployed) with
-   * paywall modals for locked features. On localhost, full editing
-   * is allowed for development testing.
+   * Two modes:
+   * - Anonymous visitors: teal demo banners, paywall modals, marketing
+   *   header/footer from root layout, "Buy" and "Notify" CTAs.
+   * - Signed-in users: no demo banners, app-style header (the root
+   *   layout is already skipped for /app, but /demo still uses it),
+   *   "Reset demo" button when they've made edits.
    */
   import { PaywallError } from "$lib/storage";
   import { demoStorage } from "$lib/storage/demo";
+  import { sampleShow } from "@rehearsal-block/core";
   import ScheduleEditor from "$lib/components/scheduler/ScheduleEditor.svelte";
   import ComingSoonModal from "$lib/components/ComingSoonModal.svelte";
   import NotifyLaunchModal from "$lib/components/NotifyLaunchModal.svelte";
@@ -17,9 +21,14 @@
   let paywallOpen = $state(false);
   let notifyLaunchOpen = $state(false);
   let comingSoonOpen = $state(false);
+  let hasEdits = $state(false);
+  let editorKey = $state(0); // increment to force re-mount of ScheduleEditor
 
   const isDeployedDemo =
     typeof window !== "undefined" && window.location.hostname !== "localhost";
+
+  /** True when the user is signed in (checked client-side after hydration). */
+  const isSignedIn = $derived(!!(data as any).user);
 
   async function handleSave(doc: import("@rehearsal-block/core").ScheduleDoc) {
     try {
@@ -38,6 +47,15 @@
     }
   }
 
+  function handleDocChange() {
+    hasEdits = true;
+  }
+
+  function resetDemo() {
+    hasEdits = false;
+    editorKey++;
+  }
+
   function closePaywall() {
     paywallOpen = false;
   }
@@ -51,38 +69,53 @@
 </svelte:head>
 
 <div class="demo-page">
-  <div class="demo-banner">
-    <div class="banner-text">
-      <strong>You're in demo mode.</strong> Explore a sample show. Changes stay on this page.
-      <button type="button" class="notify-link" onclick={() => (notifyLaunchOpen = true)}>
-        Notify me when it launches
+  {#if !isSignedIn}
+    <div class="demo-banner">
+      <div class="banner-text">
+        <strong>You're in demo mode.</strong> Explore a sample show. Changes stay on this page.
+        <button type="button" class="notify-link" onclick={() => (notifyLaunchOpen = true)}>
+          Notify me when it launches
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  {#if isSignedIn && hasEdits}
+    <div class="reset-bar">
+      <button type="button" class="reset-btn" onclick={resetDemo}>
+        Reset demo to original
       </button>
     </div>
-  </div>
+  {/if}
 
-  <ScheduleEditor
-    initialDoc={data.show}
-    readOnly={isDeployedDemo}
-    onSave={handleSave}
-    onPaywall={() => (paywallOpen = true)}
-    showDemoBanners={true}
-  />
+  {#key editorKey}
+    <ScheduleEditor
+      initialDoc={data.show}
+      readOnly={isDeployedDemo && !isSignedIn}
+      onSave={handleSave}
+      onPaywall={() => (paywallOpen = true)}
+      onDocChange={handleDocChange}
+      showDemoBanners={!isSignedIn}
+    />
+  {/key}
 
-  <div class="demo-banner demo-banner-bottom">
-    <div class="banner-text">
-      <strong>You're in demo mode.</strong> Explore a sample show. Changes stay on this page.
-      <button type="button" class="notify-link" onclick={() => (notifyLaunchOpen = true)}>
-        Notify me when it launches
+  {#if !isSignedIn}
+    <div class="demo-banner demo-banner-bottom">
+      <div class="banner-text">
+        <strong>You're in demo mode.</strong> Explore a sample show. Changes stay on this page.
+        <button type="button" class="notify-link" onclick={() => (notifyLaunchOpen = true)}>
+          Notify me when it launches
+        </button>
+      </div>
+      <button
+        type="button"
+        class="btn btn-primary"
+        onclick={() => (comingSoonOpen = true)}
+      >
+        Buy Rehearsal Block
       </button>
     </div>
-    <button
-      type="button"
-      class="btn btn-primary"
-      onclick={() => (comingSoonOpen = true)}
-    >
-      Buy Rehearsal Block
-    </button>
-  </div>
+  {/if}
 </div>
 
 {#if paywallOpen}
@@ -189,6 +222,29 @@
   .demo-banner-bottom {
     margin-top: var(--space-5);
     margin-bottom: 0;
+  }
+
+  .reset-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--space-2) var(--space-5);
+    max-width: 2000px;
+    margin: 0 auto var(--space-3);
+  }
+
+  .reset-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-teal);
+    background: none;
+    border: 1px solid var(--color-teal);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-3);
+    cursor: pointer;
+  }
+  .reset-btn:hover {
+    background: var(--color-info-bg);
   }
 
   .modal-backdrop {
