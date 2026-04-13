@@ -29,40 +29,46 @@
     const showId = data.showId;
 
     // Try IndexedDB first (instant)
-    const localShow = await localLoadShow(showId);
-    if (localShow) {
-      doc = localShow.document;
-      loading = false;
-    }
-
-    // If not in IndexedDB, fetch from API
-    if (!doc) {
-      try {
-        const res = await fetch(`/api/shows/${showId}`);
-        if (!res.ok) {
-          loadError = res.status === 404 ? "Show not found" : "Failed to load show";
-          loading = false;
-          return;
-        }
-        const show = await res.json();
-        doc = show.document;
-
-        // Cache in IndexedDB
-        await localSaveShow({
-          id: showId,
-          name: show.name,
-          updatedAt: show.updatedAt,
-          document: show.document,
-        });
-      } catch {
-        if (!doc) {
-          loadError = "Failed to load show. Check your connection.";
-        }
+    try {
+      const localShow = await localLoadShow(showId);
+      if (localShow) {
+        doc = localShow.document;
+        loading = false;
+        setupSync();
+        return;
       }
-      loading = false;
+    } catch (e) {
+      console.warn("IndexedDB load failed:", e);
     }
 
-    // Set up sync layer for cloud push (production only)
+    // Not in IndexedDB - fetch from API
+    try {
+      const res = await fetch(`/api/shows/${showId}`);
+      if (!res.ok) {
+        loadError = res.status === 404
+          ? "Show not found."
+          : `Failed to load show (${res.status}).`;
+        loading = false;
+        return;
+      }
+      const show = await res.json();
+      doc = show.document;
+
+      // Cache in IndexedDB for next time
+      await localSaveShow({
+        id: showId,
+        name: show.name,
+        updatedAt: show.updatedAt,
+        document: show.document,
+      });
+    } catch {
+      loadError = "Failed to load show. Check your connection and try again.";
+    }
+    loading = false;
+    if (doc) setupSync();
+  });
+
+  function setupSync() {
     if (!isLocalhost && data.user) {
       const supabase = createSupabaseBrowserClient();
       syncedStorage = createSyncedStorage({
@@ -70,7 +76,7 @@
         supabase,
       });
     }
-  });
+  }
 
   onDestroy(() => {
     syncedStorage?.destroy();

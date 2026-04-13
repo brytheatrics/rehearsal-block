@@ -10,15 +10,28 @@
  * - "meta": sync metadata (hashes, timestamps) keyed by show id
  */
 
-import { createStore, get, set, del, keys, getMany } from "idb-keyval";
+import { createStore, get, set, del, keys, getMany, type UseStore } from "idb-keyval";
 import type { StoredShow } from "./types.js";
 
 const DB_NAME = "rehearsal-block";
 const SHOWS_STORE = "shows";
 const META_STORE = "meta";
 
-const showsStore = createStore(DB_NAME, SHOWS_STORE);
-const metaStore = createStore(`${DB_NAME}-meta`, META_STORE);
+// Lazily initialized - idb-keyval's createStore calls indexedDB.open()
+// which doesn't exist during SSR. Deferring to first use ensures we
+// only touch IndexedDB in the browser.
+let _showsStore: UseStore | undefined;
+let _metaStore: UseStore | undefined;
+
+function showsStore(): UseStore {
+  if (!_showsStore) _showsStore = createStore(DB_NAME, SHOWS_STORE);
+  return _showsStore;
+}
+
+function metaStore(): UseStore {
+  if (!_metaStore) _metaStore = createStore(`${DB_NAME}-meta`, META_STORE);
+  return _metaStore;
+}
 
 export interface SyncMeta {
   /** SHA-256 hash of the last gzipped blob successfully synced to cloud. */
@@ -30,34 +43,34 @@ export interface SyncMeta {
 // ---- Show CRUD (IndexedDB) ----
 
 export async function localListShows(): Promise<StoredShow[]> {
-  const allKeys = await keys<string>(showsStore);
+  const allKeys = await keys<string>(showsStore());
   if (allKeys.length === 0) return [];
-  const shows = await getMany<StoredShow>(allKeys, showsStore);
+  const shows = await getMany<StoredShow>(allKeys, showsStore());
   return shows.filter(Boolean).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export async function localLoadShow(id: string): Promise<StoredShow | null> {
-  const show = await get<StoredShow>(id, showsStore);
+  const show = await get<StoredShow>(id, showsStore());
   return show ?? null;
 }
 
 export async function localSaveShow(show: StoredShow): Promise<StoredShow> {
-  await set(show.id, show, showsStore);
+  await set(show.id, show, showsStore());
   return show;
 }
 
 export async function localDeleteShow(id: string): Promise<void> {
-  await del(id, showsStore);
-  await del(id, metaStore);
+  await del(id, showsStore());
+  await del(id, metaStore());
 }
 
 // ---- Sync metadata ----
 
 export async function getSyncMeta(showId: string): Promise<SyncMeta> {
-  const meta = await get<SyncMeta>(showId, metaStore);
+  const meta = await get<SyncMeta>(showId, metaStore());
   return meta ?? { lastSyncedHash: null, lastSyncedAt: null };
 }
 
 export async function setSyncMeta(showId: string, meta: SyncMeta): Promise<void> {
-  await set(showId, meta, metaStore);
+  await set(showId, meta, metaStore());
 }
