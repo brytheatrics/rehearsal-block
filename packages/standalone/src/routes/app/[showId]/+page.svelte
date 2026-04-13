@@ -76,31 +76,35 @@
     };
   });
 
-  async function handleSave(updatedDoc: ScheduleDoc) {
+  async function handleSave(rawDoc: ScheduleDoc) {
     const showId = data.showId;
+    // Strip Svelte 5 reactive proxies before IndexedDB write
+    const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
     await localSaveShow({
       id: showId,
-      name: updatedDoc.show.name,
+      name: doc.show.name,
       updatedAt: new Date().toISOString(),
-      document: updatedDoc,
+      document: doc,
     });
     if (syncedStorage) await syncedStorage.flush(showId);
   }
 
-  function handleDocChange(updatedDoc: ScheduleDoc) {
+  function handleDocChange(rawDoc: ScheduleDoc) {
     const showId = data.showId;
+    // Strip Svelte 5 reactive proxies before IndexedDB write
+    const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
     localSaveShow({
       id: showId,
-      name: updatedDoc.show.name,
+      name: doc.show.name,
       updatedAt: new Date().toISOString(),
-      document: updatedDoc,
+      document: doc,
     });
     if (syncedStorage) {
       syncedStorage.saveShow({
         id: showId,
-        name: updatedDoc.show.name,
+        name: doc.show.name,
         updatedAt: new Date().toISOString(),
-        document: updatedDoc,
+        document: doc,
       });
     }
   }
