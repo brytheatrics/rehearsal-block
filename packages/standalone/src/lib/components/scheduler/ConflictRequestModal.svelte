@@ -127,71 +127,77 @@
     perActorCastLinks.length + perActorCrewLinks.length,
   );
 
-  // ---- localStorage snapshot (so actor-facing page can find the show) ----
-  // In production this comes from Supabase via the conflict_share_token.
-  // For local testing, we write the current show state to localStorage
-  // whenever the modal is open so the /conflicts routes can read it.
-  const SHOW_KEY = $derived(`rehearsal-block:conflict-show:${showToken}`);
-  const SUBMISSIONS_KEY = $derived(`rehearsal-block:conflict-submissions:${showToken}`);
+  // ---- Publish show snapshot for conflict collection ----
+  // Writes to R2 via the API so the /conflicts pages can fetch cross-device.
+  // Also writes to localStorage as a fallback for same-device testing.
 
   $effect(() => {
     if (typeof window === "undefined") return;
+    // Publish to API on mount/update
+    fetch("/api/conflict-share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc: show, existingToken: showToken }),
+    }).catch(() => {});
+    // Fallback: also write to localStorage
     try {
-      localStorage.setItem(SHOW_KEY, JSON.stringify(show));
-    } catch {
-      // QuotaExceeded or similar - ignore, the worst case is the link
-      // won't work locally, which the actor page handles with an error.
-    }
+      localStorage.setItem(`rehearsal-block:conflict-show:${showToken}`, JSON.stringify(show));
+    } catch { /* ignore */ }
   });
 
-  // ---- Pending submissions (read from localStorage) ----
+  // ---- Pending submissions (from API, backed by R2) ----
   let pendingSubmissions = $state<Submission[]>([]);
 
-  function readSubmissions(): Submission[] {
-    if (typeof window === "undefined") return [];
+  async function refreshSubmissions() {
     try {
-      const raw = localStorage.getItem(SUBMISSIONS_KEY);
-      if (!raw) return [];
-      return JSON.parse(raw) as Submission[];
+      const res = await fetch(`/api/conflict-submissions/${encodeURIComponent(showToken)}`);
+      if (res.ok) {
+        const data = await res.json();
+        pendingSubmissions = data.submissions ?? [];
+        return;
+      }
+    } catch { /* fall through */ }
+    // Fallback: localStorage
+    try {
+      const raw = localStorage.getItem(`rehearsal-block:conflict-submissions:${showToken}`);
+      pendingSubmissions = raw ? JSON.parse(raw) : [];
     } catch {
-      return [];
+      pendingSubmissions = [];
     }
-  }
-
-  function writeSubmissions(subs: Submission[]) {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(subs));
-    pendingSubmissions = subs;
-  }
-
-  function refreshSubmissions() {
-    pendingSubmissions = readSubmissions();
   }
 
   onMount(() => {
     refreshSubmissions();
-    // Listen for submissions coming in from other tabs (actor-facing page)
-    const handler = (e: StorageEvent) => {
-      if (e.key === SUBMISSIONS_KEY) refreshSubmissions();
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    // Poll for new submissions every 30s while the modal is open
+    const interval = setInterval(refreshSubmissions, 30_000);
+    return () => clearInterval(interval);
   });
 
   // ---- Accept / Reject ----
 
-  function acceptSubmission(sub: Submission) {
+  async function acceptSubmission(sub: Submission) {
     onacceptconflicts?.(sub.conflicts);
-    // Remove from localStorage (inbox pattern, not archive)
-    const remaining = readSubmissions().filter((s) => s.id !== sub.id);
-    writeSubmissions(remaining);
-    // Auto-switch tabs if inbox is now empty
-    if (remaining.length === 0) tab = "generate";
+    // Remove from server
+    try {
+      await fetch(`/api/conflict-submissions/${encodeURIComponent(showToken)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionId: sub.id }),
+      });
+    } catch { /* ignore */ }
+    pendingSubmissions = pendingSubmissions.filter((s) => s.id !== sub.id);
+    if (pendingSubmissions.length === 0) tab = "generate";
   }
 
-  function rejectSubmission(sub: Submission) {
-    const remaining = readSubmissions().filter((s) => s.id !== sub.id);
-    writeSubmissions(remaining);
+  async function rejectSubmission(sub: Submission) {
+    try {
+      await fetch(`/api/conflict-submissions/${encodeURIComponent(showToken)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionId: sub.id }),
+      });
+    } catch { /* ignore */ }
+    pendingSubmissions = pendingSubmissions.filter((s) => s.id !== sub.id);
   }
 
   function formatSubmittedAt(iso: string): string {

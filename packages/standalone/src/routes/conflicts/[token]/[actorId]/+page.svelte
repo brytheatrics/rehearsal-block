@@ -24,50 +24,51 @@
   let matchedActor = $state<Member | null>(null);
   let loadError = $state<string | null>(null);
 
-  function loadShow() {
+  async function loadShow() {
     if (!token) {
       loadError = "Missing token in URL.";
       return;
     }
+
+    let parsed: ScheduleDoc | null = null;
+
+    // Try API first (R2-backed, works cross-device)
     try {
-      const key = `rehearsal-block:conflict-show:${token}`;
-      const raw = localStorage.getItem(key);
-      if (!raw) {
-        loadError =
-          "This conflict request link hasn't been opened by the director yet, or it was created in a different browser. Local testing only works in the same browser.";
-        return;
+      const res = await fetch(`/api/conflict-share?token=${encodeURIComponent(token)}`);
+      if (res.ok) {
+        const data = await res.json();
+        parsed = data.doc;
       }
-      const parsed = JSON.parse(raw) as ScheduleDoc;
-      if (!parsed || !parsed.show || !Array.isArray(parsed.cast) || !Array.isArray(parsed.crew)) {
-        loadError = "The show data for this link is corrupted.";
-        return;
-      }
-      show = parsed;
-      // Match by id slice in either cast or crew
-      const found: Member | undefined =
-        (parsed.cast as Member[]).find((m) => m.id.startsWith(actorIdSlice)) ??
-        (parsed.crew as Member[]).find((m) => m.id.startsWith(actorIdSlice));
-      if (!found) {
-        loadError =
-          "This per-role link doesn't match anyone in the cast or production team. The director may have removed you or regenerated the links.";
-        return;
-      }
-      matchedActor = found;
-      loadError = null;
-    } catch (err) {
-      loadError = "Could not load this link. Please ask the director to resend it.";
-      console.error(err);
+    } catch { /* fall through */ }
+
+    // Fallback: localStorage (same-device testing)
+    if (!parsed) {
+      try {
+        const key = `rehearsal-block:conflict-show:${token}`;
+        const raw = localStorage.getItem(key);
+        if (raw) parsed = JSON.parse(raw) as ScheduleDoc;
+      } catch { /* ignore */ }
     }
+
+    if (!parsed?.show || !Array.isArray(parsed.cast) || !Array.isArray(parsed.crew)) {
+      loadError = "This conflict link was not found. It may have expired or the director hasn't published it yet.";
+      return;
+    }
+
+    show = parsed;
+    const found: Member | undefined =
+      (parsed.cast as Member[]).find((m) => m.id.startsWith(actorIdSlice)) ??
+      (parsed.crew as Member[]).find((m) => m.id.startsWith(actorIdSlice));
+    if (!found) {
+      loadError = "This per-role link doesn't match anyone in the cast or production team. The director may have removed you or regenerated the links.";
+      return;
+    }
+    matchedActor = found;
+    loadError = null;
   }
 
   onMount(() => {
     loadShow();
-    const key = `rehearsal-block:conflict-show:${token}`;
-    const handler = (e: StorageEvent) => {
-      if (e.key === key) loadShow();
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
   });
 </script>
 

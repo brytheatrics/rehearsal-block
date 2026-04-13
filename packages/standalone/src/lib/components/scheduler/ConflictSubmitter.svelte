@@ -135,44 +135,52 @@
   );
 
   // ---- Persistence: load previous submission on mount ----
+  // Uses the API endpoint backed by R2. Falls back to localStorage
+  // for same-device testing when the API is unavailable.
 
-  function storageKeyForSubmissions(): string {
-    return `rehearsal-block:conflict-submissions:${token}`;
-  }
+  let cachedSubmissions: Submission[] | null = null;
 
-  function readSubmissions(): Submission[] {
+  async function fetchSubmissions(): Promise<Submission[]> {
+    if (cachedSubmissions) return cachedSubmissions;
     try {
-      const raw = localStorage.getItem(storageKeyForSubmissions());
-      if (!raw) return [];
-      return JSON.parse(raw) as Submission[];
+      const res = await fetch(`/api/conflict-submissions/${encodeURIComponent(token)}`);
+      if (res.ok) {
+        const data = await res.json();
+        cachedSubmissions = data.submissions ?? [];
+        return cachedSubmissions!;
+      }
     } catch {
-      return [];
+      // API unavailable - fall back to localStorage
     }
-  }
-
-  function writeSubmissions(subs: Submission[]) {
-    localStorage.setItem(storageKeyForSubmissions(), JSON.stringify(subs));
+    try {
+      const key = `rehearsal-block:conflict-submissions:${token}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        cachedSubmissions = JSON.parse(raw) as Submission[];
+        return cachedSubmissions!;
+      }
+    } catch { /* ignore */ }
+    return [];
   }
 
   /** If the actor already submitted, load their previous conflicts for editing. */
-  onMount(() => {
+  onMount(async () => {
     if (!selectedActorId) return;
-    const subs = readSubmissions();
+    const subs = await fetchSubmissions();
     const mine = subs.find((s) => s.actorId === selectedActorId);
     if (mine) {
       stagedConflicts = [...mine.conflicts];
-      // Don't set submitted=true - let them edit and resubmit
     }
   });
 
   // Reload staged conflicts when the actor dropdown changes (single-link mode)
   $effect(() => {
-    // Only react when the actor selection changes, not when stagedConflicts itself changes
     const id = selectedActorId;
-    if (!id || initialActorId) return; // per-actor mode handles this via onMount
-    const subs = readSubmissions();
-    const mine = subs.find((s) => s.actorId === id);
-    stagedConflicts = mine ? [...mine.conflicts] : [];
+    if (!id || initialActorId) return;
+    fetchSubmissions().then((subs) => {
+      const mine = subs.find((s) => s.actorId === id);
+      stagedConflicts = mine ? [...mine.conflicts] : [];
+    });
   });
 
   // ---- Calendar interaction ----
@@ -310,20 +318,34 @@
     return parts.join(" ").trim() || "Unknown";
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!selectedActor || !canSubmit) return;
-    const subs = readSubmissions();
-    // Replace any existing submission for this actor (LWW)
-    const filtered = subs.filter((s) => s.actorId !== selectedActor.id);
-    const next: Submission = {
-      id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      actorId: selectedActor.id,
-      actorName: displayNameFor(selectedActor),
-      conflicts: stagedConflicts,
-      submittedAt: new Date().toISOString(),
-    };
-    writeSubmissions([...filtered, next]);
-    submittedAt = next.submittedAt;
+    try {
+      await fetch(`/api/conflict-submissions/${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: selectedActor.id,
+          actorName: displayNameFor(selectedActor),
+          conflicts: stagedConflicts,
+        }),
+      });
+    } catch {
+      // Fallback: write to localStorage for same-device testing
+      const key = `rehearsal-block:conflict-submissions:${token}`;
+      const subs = (() => { try { return JSON.parse(localStorage.getItem(key) ?? "[]"); } catch { return []; } })();
+      const filtered = subs.filter((s: Submission) => s.actorId !== selectedActor!.id);
+      filtered.push({
+        id: `sub_${Date.now()}`,
+        actorId: selectedActor.id,
+        actorName: displayNameFor(selectedActor),
+        conflicts: stagedConflicts,
+        submittedAt: new Date().toISOString(),
+      });
+      localStorage.setItem(key, JSON.stringify(filtered));
+    }
+    cachedSubmissions = null; // invalidate cache
+    submittedAt = new Date().toISOString();
     submitted = true;
   }
 

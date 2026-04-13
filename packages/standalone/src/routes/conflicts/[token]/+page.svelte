@@ -2,19 +2,9 @@
   /**
    * Actor-facing conflict submission page - single-link mode.
    *
-   * Flow:
-   * 1. Director opens ConflictRequestModal, which writes the current show
-   *    doc to localStorage keyed by token.
-   * 2. Director sends this URL to their cast.
-   * 3. Actor opens it in any browser tab on the same device, sees the
-   *    calendar, picks their name from a dropdown, adds conflicts, submits.
-   *
-   * Token resolution: deterministic hash of show.name + startDate, same
-   * as the one the modal computes (see hashString() in that file).
-   *
-   * NOTE: this is a local-testing implementation. In production (Priority 2),
-   * the token lookup will hit Supabase via the conflict_share_token column
-   * on the shows table, and this route will work cross-device.
+   * Fetches the show snapshot from the API (backed by R2), then
+   * renders the ConflictSubmitter for the actor to pick their
+   * conflicts. Falls back to localStorage for same-device testing.
    */
   import type { ScheduleDoc } from "@rehearsal-block/core";
   import { page } from "$app/state";
@@ -26,41 +16,44 @@
   let show = $state<ScheduleDoc | null>(null);
   let loadError = $state<string | null>(null);
 
-  function loadShow() {
+  async function loadShow() {
     if (!token) {
       loadError = "Missing token in URL.";
       return;
     }
     try {
+      // Try API first (R2-backed, works cross-device)
+      const res = await fetch(`/api/conflict-share?token=${encodeURIComponent(token)}`);
+      if (res.ok) {
+        const data = await res.json();
+        show = data.doc;
+        loadError = null;
+        return;
+      }
+    } catch { /* API unavailable, fall through */ }
+
+    // Fallback: localStorage (same-device testing)
+    try {
       const key = `rehearsal-block:conflict-show:${token}`;
       const raw = localStorage.getItem(key);
       if (!raw) {
-        loadError =
-          "This conflict request link hasn't been opened by the director yet, or it was created in a different browser. Local testing only works in the same browser.";
+        loadError = "This conflict link was not found. It may have expired or the director hasn't published it yet.";
         return;
       }
       const parsed = JSON.parse(raw) as ScheduleDoc;
-      if (!parsed || !parsed.show || !Array.isArray(parsed.cast)) {
+      if (!parsed?.show || !Array.isArray(parsed.cast)) {
         loadError = "The show data for this link is corrupted.";
         return;
       }
       show = parsed;
       loadError = null;
-    } catch (err) {
+    } catch {
       loadError = "Could not load this link. Please ask the director to resend it.";
-      console.error(err);
     }
   }
 
   onMount(() => {
     loadShow();
-    // If the director updates the show while this tab is open, refresh
-    const key = `rehearsal-block:conflict-show:${token}`;
-    const handler = (e: StorageEvent) => {
-      if (e.key === key) loadShow();
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
   });
 </script>
 
