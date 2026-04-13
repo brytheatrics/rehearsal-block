@@ -340,7 +340,8 @@
           const footerHtml = _hasFooter
             ? buildPdfFooterHtml(_footerOpts, idx + 1, total)
             : "";
-          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${headerHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${headerHtml}</div>` : ""}<div style="flex:1;padding:0 ${_marginPx}px">${pageBlocks}</div>${footerHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${footerHtml}</div>` : ""}</body></html>`;
+          const contentPadTop = headerHtml ? 0 : _marginPx;
+          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${headerHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${headerHtml}</div>` : ""}<div style="flex:1;padding:${contentPadTop}px ${_marginPx}px 0">${pageBlocks}</div>${footerHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${footerHtml}</div>` : ""}</body></html>`;
         });
       }
     });
@@ -512,7 +513,6 @@
 </head>
 <body>
   ${pageData.map((p) => {
-    // Replace min-height:100vh with nothing (the .export-page height handles it)
     const style = p.style.replace(/min-height:\s*100vh;?/g, "").replace(/margin:\s*0;?/g, "").replace(/padding:\s*0;?/g, "");
     return `<div class="export-page ${p.cls}" style="${style}">${p.content}</div>`;
   }).join("\n")}
