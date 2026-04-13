@@ -201,35 +201,104 @@
 
     if (_mode === "months") {
       // Months mode: each month is a .print-page div from buildPrintHtml.
-      // Extract the header (show title) and rebuild each page with the
-      // same flex layout as continuous mode so footers pin to the bottom.
+      // If a month's content exceeds the page height (e.g. at high scale),
+      // split it across multiple pages using the same measurement approach
+      // as continuous mode.
       const firstPageIdx = _body.indexOf('<div class="print-page">');
       const printHeaderHtml = firstPageIdx > 0 ? _body.substring(0, firstPageIdx) : "";
       const pageRegex = /<div class="print-page">([\s\S]*?)(?=<div class="print-page">|$)/g;
-      const rawPages: string[] = [];
+      const rawMonths: string[] = [];
       let match;
       while ((match = pageRegex.exec(_body)) !== null) {
-        // Strip any existing .page-footer from the content (we'll add our own)
         const content = (match[1] ?? "").replace(/<div class="page-footer">[\s\S]*?<\/div>/, "");
-        rawPages.push(content);
+        rawMonths.push(content);
       }
-      if (rawPages.length === 0) rawPages.push(_body);
+      if (rawMonths.length === 0) rawMonths.push(_body);
 
-      const total = rawPages.length;
-      measuredPageChunks = rawPages.map((pc, idx) => {
-        const showHeaderOnThisPage = _repeatTitle || idx === 0;
-        const headerHtml = showHeaderOnThisPage
-          ? buildPdfHeaderHtml({
-              repeatTitle: true,
-              showName: _showName,
-              showRunDates: _showRunDates,
-            })
-          : "";
-        const footerHtml = _hasFooter
-          ? buildPdfFooterHtml(_footerOpts, idx + 1, total)
-          : "";
-        const contentPadTop = headerHtml ? 0 : _marginPx;
-        return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${headerHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${headerHtml}</div>` : ""}<div style="flex:1;padding:${contentPadTop}px ${_marginPx}px 0">${showHeaderOnThisPage ? printHeaderHtml : ""}<div class="print-page">${pc}</div></div>${footerHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${footerHtml}</div>` : ""}</body></html>`;
+      // Measure each month in a hidden iframe and split if needed
+      const measurer = document.createElement("iframe");
+      measurer.style.position = "absolute";
+      measurer.style.left = "-9999px";
+      measurer.style.top = "0";
+      measurer.style.width = `${_pageW}px`;
+      measurer.style.height = `${_pageH * 10}px`;
+      measurer.style.border = "none";
+      document.body.appendChild(measurer);
+
+      const mDoc = measurer.contentDocument;
+      if (!mDoc) {
+        document.body.removeChild(measurer);
+        // Fallback: no measurement, one page per month
+        measuredPageChunks = rawMonths.map((pc) =>
+          `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}">${printHeaderHtml}<div class="print-page">${pc}</div></body></html>`);
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        const footerHeight = _hasFooter ? 24 : 0;
+        const titleHeight = printHeaderHtml ? 50 : 0;
+        const headerHeight = 40; // Puppeteer-style header approximate
+        const contentArea = _pageH - _marginPx * 2 - footerHeight;
+
+        const allPages: string[][] = [];
+
+        for (let mi = 0; mi < rawMonths.length; mi++) {
+          const monthHtml = rawMonths[mi]!;
+
+          // Render month into the measurer
+          mDoc.open();
+          mDoc.write(`<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="padding:${_marginPx}px">${mi === 0 ? printHeaderHtml : ""}<div class="print-page">${monthHtml}</div></body></html>`);
+          mDoc.close();
+
+          const body = mDoc.body;
+          const children = Array.from(body.querySelectorAll(".print-page > *")) as HTMLElement[];
+          if (children.length === 0) {
+            allPages.push([monthHtml]);
+            continue;
+          }
+
+          // Check total height
+          const totalH = children.reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+          const firstPageArea = contentArea - (mi === 0 || _repeatTitle ? titleHeight + headerHeight : 0);
+
+          if (totalH <= firstPageArea) {
+            // Fits on one page
+            allPages.push([monthHtml]);
+          } else {
+            // Split this month across pages
+            let currentBlocks: string[] = [];
+            let currentH = 0;
+            const pageArea = contentArea - (_repeatTitle ? headerHeight : 0);
+            let availH = firstPageArea;
+
+            for (const child of children) {
+              const h = child.getBoundingClientRect().height;
+              if (currentH + h > availH && currentBlocks.length > 0) {
+                allPages.push(currentBlocks);
+                currentBlocks = [];
+                currentH = 0;
+                availH = pageArea;
+              }
+              currentBlocks.push(child.outerHTML);
+              currentH += h;
+            }
+            if (currentBlocks.length > 0) allPages.push(currentBlocks);
+          }
+        }
+
+        document.body.removeChild(measurer);
+
+        const total = allPages.length;
+        measuredPageChunks = allPages.map((blocks, idx) => {
+          const showHeaderOnThisPage = _repeatTitle || idx === 0;
+          const hdrHtml = showHeaderOnThisPage
+            ? buildPdfHeaderHtml({ repeatTitle: true, showName: _showName, showRunDates: _showRunDates })
+            : "";
+          const ftrHtml = _hasFooter ? buildPdfFooterHtml(_footerOpts, idx + 1, total) : "";
+          const contentPadTop = hdrHtml ? 0 : _marginPx;
+          const pageContent = Array.isArray(blocks) ? blocks.join("") : blocks;
+          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${hdrHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${hdrHtml}</div>` : ""}<div style="flex:1;padding:${contentPadTop}px ${_marginPx}px 0">${showHeaderOnThisPage && idx === 0 ? printHeaderHtml : ""}<div class="print-page">${pageContent}</div></div>${ftrHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${ftrHtml}</div>` : ""}</body></html>`;
+        });
       });
       return;
     }
