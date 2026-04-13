@@ -1395,7 +1395,7 @@
     {:else if activeTab === "locations"}
 
     <section class="section">
-      <div class="section-header">
+      <div class="section-header section-header-row">
         <div>
           <h3>Locations</h3>
           <p class="hint">

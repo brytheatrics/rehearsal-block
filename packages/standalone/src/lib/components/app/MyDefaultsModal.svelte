@@ -48,12 +48,14 @@
   });
 
   async function handleSave() {
-    const defaults: UserDefaults = {
+    // Clone via JSON to strip Svelte 5 reactive proxies before
+    // writing to IndexedDB (structuredClone fails on proxies).
+    const defaults: UserDefaults = JSON.parse(JSON.stringify({
       settings: tempDoc.settings,
       eventTypes: tempDoc.eventTypes,
       locationPresets: tempDoc.locationPresets,
       locationPresetsV2: tempDoc.locationPresetsV2,
-    };
+    }));
     await saveUserDefaults(defaults);
     saved = true;
     setTimeout(() => (saved = false), 2000);
