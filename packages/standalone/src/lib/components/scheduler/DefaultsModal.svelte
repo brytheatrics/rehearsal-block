@@ -1124,7 +1124,7 @@
         </label>
       </div>
 
-      {#if (show.settings.showHolidays ?? true) && !embedded}
+      {#if (show.settings.showHolidays ?? true) && !(hideShowTab && hideContactsTab)}
         {@const allHolidays = holidaysInRange(
           show.show.startDate,
           show.show.endDate,

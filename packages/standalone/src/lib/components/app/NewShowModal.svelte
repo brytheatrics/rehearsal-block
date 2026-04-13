@@ -33,6 +33,7 @@
   let endDate = $state("");
   let error = $state("");
   let showSettings = $state(false);
+  const hasDates = $derived(!!(startDate && endDate && endDate >= startDate));
 
   // Temporary doc that DefaultsModal mutates via callbacks.
   // On "Create show", this fully configured doc is passed upstream.
@@ -283,10 +284,12 @@
         <p class="error-msg">{error}</p>
       {/if}
 
-      <!-- Settings toggle -->
+      <!-- Settings toggle - requires dates so holidays can show the right range -->
       <button
         type="button"
         class="settings-toggle"
+        class:disabled={!hasDates}
+        disabled={!hasDates}
         onclick={() => (showSettings = !showSettings)}
       >
         <svg
@@ -298,7 +301,7 @@
           <path d="M9 18l6-6-6-6" />
         </svg>
         Configure settings
-        <span class="settings-hint">(optional)</span>
+        <span class="settings-hint">{hasDates ? "(optional)" : "(set dates first)"}</span>
       </button>
 
       {#if showSettings}
