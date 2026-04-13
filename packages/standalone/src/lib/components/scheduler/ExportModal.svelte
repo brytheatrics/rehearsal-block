@@ -286,12 +286,14 @@
             currentPageHeight += printHeaderHeight;
           }
 
-          // Always repeat the month label + weekday row on new pages
-          // so readers know which days of the week they're looking at
-          if (_repeatHeaders && lastMonthLabel) {
-            currentPageBlocks.push(lastMonthLabel);
-            if (lastWeekdayRow) currentPageBlocks.push(lastWeekdayRow);
-            currentPageHeight += 40;
+          // Always repeat the weekday row (and month label if available)
+          // on new pages so readers know which days they're looking at
+          if (_repeatHeaders && lastWeekdayRow) {
+            if (lastMonthLabel) {
+              currentPageBlocks.push(lastMonthLabel);
+            }
+            currentPageBlocks.push(lastWeekdayRow);
+            currentPageHeight += lastMonthLabel ? 40 : 24;
           }
         }
 
@@ -482,15 +484,19 @@
       // Each page is a div that exactly fills one printed page.
       // The preview body had min-height:100vh - replace with the exact
       // pixel height so it matches the @page size after margins.
+      // Use @page margin:0 because the preview chunks already have
+      // inline padding for margins. Adding @page margin on top would
+      // double the spacing and shrink the content area.
       const combinedHtml = `<!DOCTYPE html>
 <html>
 <head>
   ${firstHead}
   <style>
-    @page { size: ${w}mm ${h}mm; margin: ${m}mm; }
+    @page { size: ${w}mm ${h}mm; margin: 0; }
     html, body { margin: 0; padding: 0; }
     .export-page {
-      height: ${pageH - mPx * 2}px;
+      height: ${pageH}px;
+      padding: ${mPx}px;
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
