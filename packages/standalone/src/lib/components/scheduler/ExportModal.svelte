@@ -455,54 +455,61 @@
       // Extract the <head> from the first chunk (all chunks share the same styles)
       const firstHead = chunks[0]!.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
 
-      // Extract each chunk's <body> content
-      const pageBodies = chunks.map((chunk) => {
+      // Extract each chunk's body content AND its inline body styles.
+      // The preview chunks use inline styles on <body> for flex layout,
+      // padding, and min-height. We preserve those exactly.
+      const pageData = chunks.map((chunk) => {
+        const bodyStyleMatch = chunk.match(/<body[^>]*style="([^"]*)"/i);
+        const bodyClassMatch = chunk.match(/<body[^>]*class="([^"]*)"/i);
         const bodyMatch = chunk.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        return bodyMatch?.[1] ?? "";
+        return {
+          style: bodyStyleMatch?.[1] ?? "",
+          cls: bodyClassMatch?.[1] ?? "",
+          content: bodyMatch?.[1] ?? "",
+        };
       });
 
-      // Build @page CSS
+      // Build @page CSS - use the exact page dimensions.
+      // The preview already measured content to fit within these bounds,
+      // so the @page size must match exactly.
       const dim = pageSizes[pageSize];
       const w = orientation === "landscape" ? dim.h : dim.w;
       const h = orientation === "landscape" ? dim.w : dim.h;
       const m = marginValues[marginPreset];
-      const pageRule = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
-
-      // Assemble into a single document with page breaks between pages.
-      // Don't set a fixed height - the preview already calculated exactly
-      // what fits on each page. Just use break-after:page to split them.
-      // The @page margin handles the spacing, and each page's content
-      // uses flex to pin the footer to the bottom.
       const mPx = Math.round(m * (96 / 25.4));
-      const contentH = pageHeightPx - mPx * 2;
+      const pageH = pageHeightPx;
+
+      // Each page is a div that exactly fills one printed page.
+      // The preview body had min-height:100vh - replace with the exact
+      // pixel height so it matches the @page size after margins.
       const combinedHtml = `<!DOCTYPE html>
 <html>
 <head>
   ${firstHead}
   <style>
-    ${pageRule}
+    @page { size: ${w}mm ${h}mm; margin: ${m}mm; }
     html, body { margin: 0; padding: 0; }
     .export-page {
+      height: ${pageH - mPx * 2}px;
       display: flex;
       flex-direction: column;
-      min-height: ${contentH}px;
       box-sizing: border-box;
+      overflow: hidden;
       break-after: page;
       page-break-after: always;
-      page-break-inside: avoid;
     }
     .export-page:last-child {
       break-after: auto;
       page-break-after: auto;
     }
-    /* Pin footer to bottom of page */
-    .export-page > div:last-child {
-      margin-top: auto;
-    }
   </style>
 </head>
 <body>
-  ${pageBodies.map((body) => `<div class="export-page">${body}</div>`).join("\n")}
+  ${pageData.map((p) => {
+    // Replace min-height:100vh with nothing (the .export-page height handles it)
+    const style = p.style.replace(/min-height:\s*100vh;?/g, "").replace(/margin:\s*0;?/g, "").replace(/padding:\s*0;?/g, "");
+    return `<div class="export-page ${p.cls}" style="${style}">${p.content}</div>`;
+  }).join("\n")}
   <script>
     document.fonts.ready.then(function() {
       setTimeout(function() { window.print(); }, 400);
