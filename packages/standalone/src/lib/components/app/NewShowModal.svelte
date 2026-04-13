@@ -276,6 +276,7 @@
             id="show-end"
             type="date"
             bind:value={endDate}
+            min={startDate || undefined}
           />
         </div>
       </div>
