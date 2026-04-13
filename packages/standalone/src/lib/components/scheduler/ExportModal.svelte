@@ -54,6 +54,7 @@
     repeatHeaders: true,
     repeatTitle: true,
     showLocationShapes: false,
+    colorMode: "color" as "color" | "bw",
   };
 
   const PREFS_KEY = "rehearsal-block:export-prefs";
@@ -93,13 +94,14 @@
   let repeatHeaders = $state(saved.repeatHeaders ?? DEFAULTS.repeatHeaders);
   let repeatTitle = $state(saved.repeatTitle ?? DEFAULTS.repeatTitle);
   let showLocationShapes = $state(saved.showLocationShapes ?? DEFAULTS.showLocationShapes);
+  let colorMode = $state<"color" | "bw">(saved.colorMode ?? DEFAULTS.colorMode);
 
   // Auto-save settings to localStorage when they change
   $effect(() => {
     const prefs = {
       mode, pageSize, orientation, marginPreset, scale, printBackgrounds,
       pageBreakMode, showRunDates, showFooterLogo, showDownloadDate,
-      showPageNumbers, repeatHeaders, repeatTitle, showLocationShapes,
+      showPageNumbers, repeatHeaders, repeatTitle, showLocationShapes, colorMode,
     };
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
   });
@@ -126,6 +128,7 @@
     repeatHeaders = DEFAULTS.repeatHeaders;
     repeatTitle = DEFAULTS.repeatTitle;
     showLocationShapes = DEFAULTS.showLocationShapes;
+    colorMode = DEFAULTS.colorMode;
     resetDateRange();
     try { localStorage.removeItem(PREFS_KEY); } catch { /* ignore */ }
   }
@@ -183,7 +186,12 @@
     ...show,
     settings: { ...show.settings, showLocationShapes },
   });
-  const previewHtml = $derived(buildPrintHtml(exportShow, exportOpts));
+  const rawPreviewHtml = $derived(buildPrintHtml(exportShow, exportOpts));
+  const previewHtml = $derived(
+    colorMode === "bw"
+      ? rawPreviewHtml.replace("</head>", '<style>body{filter:grayscale(1)!important;-webkit-filter:grayscale(1)!important}</style></head>')
+      : rawPreviewHtml,
+  );
 
   /** Head content extracted from the preview HTML for reuse in per-page iframes. */
   const headContent = $derived(
@@ -930,6 +938,25 @@
               />
               <span>Location shapes</span>
             </label>
+          </div>
+          <div class="section-label" style="margin-top:var(--space-3)">Color</div>
+          <div class="btn-group-row">
+            <button
+              type="button"
+              class="btn-chip"
+              class:selected={colorMode === "color"}
+              onclick={() => (colorMode = "color")}
+            >
+              Color
+            </button>
+            <button
+              type="button"
+              class="btn-chip"
+              class:selected={colorMode === "bw"}
+              onclick={() => (colorMode = "bw")}
+            >
+              Black & white
+            </button>
             <label class="toggle">
               <input
                 type="checkbox"
@@ -1421,6 +1448,26 @@
   }
   .reset-link:hover {
     color: var(--color-teal-dark);
+  }
+  .btn-group-row {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .btn-chip {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+  .btn-chip.selected {
+    background: var(--color-plum);
+    border-color: var(--color-plum);
+    color: var(--color-text-inverse);
   }
 
   .pdf-error {
