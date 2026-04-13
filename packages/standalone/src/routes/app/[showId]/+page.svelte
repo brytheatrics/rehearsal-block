@@ -96,9 +96,24 @@
         userId: data.user.id,
         supabase,
       });
-      // Track sync status changes
+      // Track sync status changes with 5s minimum spinner
+      let syncingMinTimer: ReturnType<typeof setTimeout> | null = null;
       const unsub = syncedStorage.onSyncStatusChange((id, status) => {
-        if (id === data.showId) {
+        if (id !== data.showId) return;
+        if (status === "syncing") {
+          cloudStatus = "syncing";
+          // Ensure spinner shows for at least 5s
+          if (syncingMinTimer) clearTimeout(syncingMinTimer);
+          syncingMinTimer = setTimeout(() => {
+            syncingMinTimer = null;
+            // If still syncing, let the next status update clear it
+            // If already done, clear now
+            if (cloudStatus === "syncing") cloudStatus = "synced";
+          }, 5000);
+        } else if (status === "synced") {
+          // Only clear if the 5s minimum has passed
+          if (!syncingMinTimer) cloudStatus = "synced";
+        } else {
           cloudStatus = status;
         }
       });
@@ -138,17 +153,15 @@
     const showId = data.showId;
     const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
 
-    // Show syncing spinner while saving
-    cloudStatus = "syncing";
-    if (saveFlashTimer) clearTimeout(saveFlashTimer);
-    saveFlashTimer = setTimeout(() => (cloudStatus = "synced"), 5000);
-
+    // Save to IndexedDB (silent - instant local save)
     localSaveShow({
       id: showId,
       name: doc.show.name,
       updatedAt: new Date().toISOString(),
       document: doc,
     });
+
+    // Queue cloud sync (spinner shows when the sync layer actually fires)
     if (syncedStorage) {
       syncedStorage.saveShow({
         id: showId,
