@@ -842,6 +842,7 @@
           Individual actors
         </button>
       </div>
+      {#if !embedded}
       <div class="convert-row">
         <button
           type="button"
@@ -858,6 +859,7 @@
           Expand groups into actors
         </button>
       </div>
+      {/if}
     </section>
 
     <section class="section">
