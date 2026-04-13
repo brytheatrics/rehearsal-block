@@ -17,7 +17,9 @@
     type Settings,
     type Show,
   } from "@rehearsal-block/core";
+  import { onMount } from "svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
+  import { getUserDefaults } from "$lib/storage/local.js";
 
   interface Props {
     onclose: () => void;
@@ -37,6 +39,19 @@
   let tempDoc = $state<ScheduleDoc>(
     newEmptyScheduleDoc({ name: "", startDate: "2026-01-01", endDate: "2026-03-01" }),
   );
+
+  // Pre-fill from saved "My Defaults" if available
+  onMount(async () => {
+    const defaults = await getUserDefaults();
+    if (defaults) {
+      tempDoc.settings = { ...tempDoc.settings, ...defaults.settings };
+      tempDoc.eventTypes = defaults.eventTypes;
+      tempDoc.locationPresets = defaults.locationPresets;
+      if (defaults.locationPresetsV2) {
+        tempDoc.locationPresetsV2 = defaults.locationPresetsV2;
+      }
+    }
+  });
 
   // Keep tempDoc.show in sync with the form fields
   $effect(() => {

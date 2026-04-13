@@ -98,6 +98,8 @@
     embedded?: boolean;
     /** When true, hide the "Show" tab (used when name/dates are in the parent form). */
     hideShowTab?: boolean;
+    /** When true, hide the "Contacts" tab (used in My Defaults where cast/crew are per-show). */
+    hideContactsTab?: boolean;
   }
 
   const {
@@ -131,6 +133,7 @@
     onpaywall,
     embedded = false,
     hideShowTab = false,
+    hideContactsTab = false,
   }: Props = $props();
 
   /** Trigger the paywall modal from a locked action. Returns true so call
@@ -737,7 +740,7 @@
         { id: "schedule", label: "Schedule" },
         { id: "event-types", label: "Event Types" },
         { id: "locations", label: "Locations" },
-        { id: "contacts", label: "Contacts" },
+        ...(hideContactsTab ? [] : [{ id: "contacts", label: "Contacts" }]),
         ...(hideShowTab ? [] : [{ id: "show", label: "Show" }]),
       ] as tab (tab.id)}
         <button

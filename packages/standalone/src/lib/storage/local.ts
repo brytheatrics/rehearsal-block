@@ -12,16 +12,19 @@
 
 import { createStore, get, set, del, keys, getMany, type UseStore } from "idb-keyval";
 import type { StoredShow } from "./types.js";
+import type { Settings, EventType, LocationPreset } from "@rehearsal-block/core";
 
 const DB_NAME = "rehearsal-block";
 const SHOWS_STORE = "shows";
 const META_STORE = "meta";
+const DEFAULTS_STORE = "defaults";
 
 // Lazily initialized - idb-keyval's createStore calls indexedDB.open()
 // which doesn't exist during SSR. Deferring to first use ensures we
 // only touch IndexedDB in the browser.
 let _showsStore: UseStore | undefined;
 let _metaStore: UseStore | undefined;
+let _defaultsStore: UseStore | undefined;
 
 function showsStore(): UseStore {
   if (!_showsStore) _showsStore = createStore(DB_NAME, SHOWS_STORE);
@@ -31,6 +34,11 @@ function showsStore(): UseStore {
 function metaStore(): UseStore {
   if (!_metaStore) _metaStore = createStore(`${DB_NAME}-meta`, META_STORE);
   return _metaStore;
+}
+
+function defaultsStore(): UseStore {
+  if (!_defaultsStore) _defaultsStore = createStore(`${DB_NAME}-defaults`, DEFAULTS_STORE);
+  return _defaultsStore;
 }
 
 export interface SyncMeta {
@@ -73,4 +81,28 @@ export async function getSyncMeta(showId: string): Promise<SyncMeta> {
 
 export async function setSyncMeta(showId: string, meta: SyncMeta): Promise<void> {
   await set(showId, meta, metaStore());
+}
+
+// ---- User defaults (cross-show preferences) ----
+
+export interface UserDefaults {
+  settings: Settings;
+  eventTypes: EventType[];
+  locationPresets: string[];
+  locationPresetsV2?: LocationPreset[];
+}
+
+const DEFAULTS_KEY = "user-defaults";
+
+export async function getUserDefaults(): Promise<UserDefaults | null> {
+  const defaults = await get<UserDefaults>(DEFAULTS_KEY, defaultsStore());
+  return defaults ?? null;
+}
+
+export async function saveUserDefaults(defaults: UserDefaults): Promise<void> {
+  await set(DEFAULTS_KEY, defaults, defaultsStore());
+}
+
+export async function clearUserDefaults(): Promise<void> {
+  await del(DEFAULTS_KEY, defaultsStore());
 }
