@@ -3079,7 +3079,7 @@
                 }}
               >
                 <strong>Print</strong>
-                <span>Preview and send to printer</span>
+                <span>Configure page settings and send to printer</span>
               </button>
               <button
                 type="button"
