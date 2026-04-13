@@ -12,6 +12,7 @@
   import ShowCard from "$lib/components/app/ShowCard.svelte";
   import NewShowModal from "$lib/components/app/NewShowModal.svelte";
   import MyDefaultsModal from "$lib/components/app/MyDefaultsModal.svelte";
+  import EditShowModal from "$lib/components/app/EditShowModal.svelte";
   import { listShowsMeta, type ShowIndexRow } from "$lib/storage/index.js";
   import { localListShows, localSaveShow, localDeleteShow } from "$lib/storage/local.js";
   import type { StoredShow } from "$lib/storage/types.js";
@@ -20,6 +21,7 @@
 
   let newShowOpen = $state(false);
   let defaultsOpen = $state(false);
+  let editShowId = $state<string | null>(null);
   let showArchived = $state(false);
   let loading = $state(true);
   let importInput: HTMLInputElement | undefined = $state();
@@ -108,11 +110,14 @@
   function handleOpen(id: string) {
     const show = shows.find((s) => s.id === id);
     if (show?.archived) {
-      // Auto-unarchive and open
       handleUnarchiveAndOpen(id);
     } else {
       goto(`/app/${id}`);
     }
+  }
+
+  function handleEdit(id: string) {
+    editShowId = id;
   }
 
   async function handleUnarchiveAndOpen(id: string) {
@@ -432,6 +437,7 @@
             updatedAt={show.updatedAt}
             archived={show.archived}
             onopen={handleOpen}
+            onedit={handleEdit}
             onarchive={handleArchive}
             onduplicate={handleDuplicate}
             ondelete={handleDelete}
@@ -472,6 +478,14 @@
 
 {#if defaultsOpen}
   <MyDefaultsModal onclose={() => (defaultsOpen = false)} />
+{/if}
+
+{#if editShowId}
+  <EditShowModal
+    showId={editShowId}
+    onclose={() => (editShowId = null)}
+    onsaved={loadShows}
+  />
 {/if}
 
 <style>

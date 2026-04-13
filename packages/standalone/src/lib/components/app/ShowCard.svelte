@@ -10,6 +10,7 @@
     updatedAt: string;
     archived: boolean;
     onopen: (id: string) => void;
+    onedit: (id: string) => void;
     onarchive: (id: string) => void;
     onduplicate: (id: string) => void;
     ondelete: (id: string) => void;
@@ -18,7 +19,7 @@
 
   const {
     id, name, startDate, endDate, castCount, updatedAt, archived,
-    onopen, onarchive, onduplicate, ondelete, onexport,
+    onopen, onedit, onarchive, onduplicate, ondelete, onexport,
   }: Props = $props();
 
   const dateRange = $derived(
@@ -86,8 +87,8 @@
     <button
       type="button"
       class="action-btn"
-      title="Edit"
-      onclick={(e) => { e.stopPropagation(); onopen(id); }}
+      title="Show settings"
+      onclick={(e) => { e.stopPropagation(); onedit(id); }}
     >
       <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
         <path d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z"/>
