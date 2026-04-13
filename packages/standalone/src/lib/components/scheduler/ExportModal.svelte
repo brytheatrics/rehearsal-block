@@ -1166,7 +1166,7 @@
 
   .split-layout {
     display: grid;
-    grid-template-columns: 380px 1fr;
+    grid-template-columns: 410px 1fr;
     gap: var(--space-5);
     flex: 1;
     min-height: 0;
