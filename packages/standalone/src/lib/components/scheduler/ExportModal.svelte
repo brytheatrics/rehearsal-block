@@ -441,23 +441,24 @@
     downloading = true;
     pdfError = "";
     try {
-      // Build the HTML with all export settings baked in
-      const html = buildPrintHtml(show, { ...exportOpts, action: "pdf" });
+      // Build the full HTML with export settings
+      const html = buildPrintHtml(show, { ...exportOpts, action: "print" });
 
       // Apply scale by rewriting font-size values (same as server did)
       const s = scale / 100;
-      const scaledHtml = s !== 1
+      let finalHtml = s !== 1
         ? html.replace(/font-size:\s*([\d.]+)px/g, (_m, v) => `font-size: ${(parseFloat(v) * s).toFixed(1)}px`)
         : html;
 
-      // Build @page CSS
+      // Inject @page CSS for page size, orientation, and margins
       const dim = pageSizes[pageSize];
       const w = orientation === "landscape" ? dim.h : dim.w;
       const h = orientation === "landscape" ? dim.w : dim.h;
       const m = marginValues[marginPreset];
-      const pageRule = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
+      const pageStyle = `<style>@page { size: ${w}mm ${h}mm; margin: ${m}mm; }</style>`;
+      finalHtml = finalHtml.replace("</head>", `${pageStyle}</head>`);
 
-      // Build header/footer
+      // Build header/footer and inject before closing </body>
       const headerHtml = repeatTitle ? buildPdfHeaderHtml({
         repeatTitle: true,
         showName: show.show.name || "Schedule",
@@ -465,66 +466,32 @@
       }) : "";
       const footerHtml = hasFooter ? buildPdfFooterHtml(footerOpts) : "";
 
-      const win = window.open("", "_blank");
+      if (headerHtml || footerHtml) {
+        const extra = `<style>
+          .pdf-injected-header { border-bottom: 2px solid #4b5563; padding-bottom: 6px; margin-bottom: 12px; }
+          .pdf-injected-footer { border-top: 1px solid #e0e0e0; padding-top: 4px; margin-top: 12px; font-size: 8px; color: #888; text-align: center; }
+        </style>`;
+        const headerBlock = headerHtml ? `<div class="pdf-injected-header">${headerHtml}</div>` : "";
+        const footerBlock = footerHtml ? `<div class="pdf-injected-footer">${footerHtml}</div>` : "";
+        finalHtml = finalHtml.replace("</head>", `${extra}</head>`);
+        // Inject header at start of body content and footer at end
+        finalHtml = finalHtml.replace(/<body([^>]*)>/, `<body$1>${headerBlock}`);
+        finalHtml = finalHtml.replace(/<\/body>/, `${footerBlock}</body>`);
+      }
+
+      // Open as a blob URL so the document loads fully (scripts, fonts, etc.)
+      const blob = new Blob([finalHtml], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
+
       if (!win) {
         pdfError = "Pop-up blocked. Please allow pop-ups for this site.";
-        downloading = false;
-        return;
+        URL.revokeObjectURL(url);
+      } else {
+        // Clean up the blob URL after the window loads
+        win.addEventListener("afterprint", () => URL.revokeObjectURL(url));
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
-
-      const headMatch = scaledHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-      const bodyMatch = scaledHtml.match(/<body[^>]*>([\s\S]*?)(?:<script[\s\S]*?)?<\/body>/i);
-      const bodyClassMatch = scaledHtml.match(/<body\s+class="([^"]*)"/i);
-
-      // Use paged.js to polyfill CSS Paged Media for proper page breaks,
-      // margins, headers, and footers. The browser's native print support
-      // doesn't reliably handle break-inside:avoid or custom page margins.
-      const printDoc = `<!DOCTYPE html>
-<html>
-<head>
-  ${headMatch?.[1] ?? ""}
-  <script src="https://unpkg.com/pagedjs/dist/paged.polyfill.js"><\/script>
-  <style>
-    ${pageRule}
-    body { margin: 0; padding: 0; }
-
-    /* paged.js renders pages as visual divs - each gets a footer */
-    .pagedjs_page .pagedjs_margin-bottom-center {
-      font-size: 8px;
-      color: #888;
-    }
-
-    /* Hide the paged.js rendering briefly, show after pagination */
-    .pagedjs_pages { opacity: 0; transition: opacity 0.3s; }
-    .pagedjs_pages.ready { opacity: 1; }
-
-    @media print {
-      /* paged.js already handles pagination - just print cleanly */
-      .pagedjs_page { break-after: page; }
-      .pagedjs_page:last-child { break-after: auto; }
-    }
-  </style>
-</head>
-<body class="${bodyClassMatch?.[1] ?? ""}">
-  ${headerHtml ? `<div style="display:none" class="running-header">${headerHtml}</div>` : ""}
-  ${bodyMatch?.[1] ?? ""}
-  ${footerHtml ? `<div style="display:none" class="running-footer">${footerHtml}</div>` : ""}
-  <script>
-    // paged.js auto-runs via the polyfill script. After it finishes
-    // paginating, show the content and trigger print.
-    window.PagedConfig = {
-      auto: true,
-      after: function() {
-        document.querySelector('.pagedjs_pages')?.classList.add('ready');
-        setTimeout(function() { window.print(); }, 300);
-      }
-    };
-  <\/script>
-</body>
-</html>`;
-
-      win.document.write(printDoc);
-      win.document.close();
     } catch (err) {
       console.error("PDF generation failed:", err);
       pdfError = "PDF generation failed. Please try again.";
