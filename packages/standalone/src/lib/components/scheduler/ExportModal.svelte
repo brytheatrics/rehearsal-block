@@ -469,9 +469,12 @@
       const pageRule = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
 
       // Assemble into a single document with page breaks between pages.
-      // Each .export-page uses flex column so the footer pins to the
-      // bottom of the page (matching the preview's layout).
-      const contentH = pageHeightPx - Math.round(m * (96 / 25.4)) * 2;
+      // Don't set a fixed height - the preview already calculated exactly
+      // what fits on each page. Just use break-after:page to split them.
+      // The @page margin handles the spacing, and each page's content
+      // uses flex to pin the footer to the bottom.
+      const mPx = Math.round(m * (96 / 25.4));
+      const contentH = pageHeightPx - mPx * 2;
       const combinedHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -480,14 +483,13 @@
     ${pageRule}
     html, body { margin: 0; padding: 0; }
     .export-page {
-      width: ${pageWidthPx - Math.round(m * (96 / 25.4)) * 2}px;
-      min-height: ${contentH}px;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      min-height: ${contentH}px;
       box-sizing: border-box;
       break-after: page;
       page-break-after: always;
+      page-break-inside: avoid;
     }
     .export-page:last-child {
       break-after: auto;
