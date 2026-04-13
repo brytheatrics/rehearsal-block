@@ -957,6 +957,12 @@
             >
               Black & white
             </button>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-label">Header</div>
+          <div class="toggle-grid">
             <label class="toggle">
               <input
                 type="checkbox"
