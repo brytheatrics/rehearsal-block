@@ -14,12 +14,32 @@
   import { createSyncedStorage, type SyncedStorage } from "$lib/storage/sync.js";
   import { createSupabaseBrowserClient } from "$lib/supabase/client.js";
 
+  import { onDestroy } from "svelte";
+
   let { data } = $props();
 
   let syncedStorage: SyncedStorage | null = null;
+  let currentSyncStatus = $state<"synced" | "pending" | "syncing" | "error" | "offline">("synced");
+  let isOnline = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
 
   const isLocalhost = browser &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  // Track online/offline
+  function handleOnline() { isOnline = true; }
+  function handleOffline() { isOnline = false; currentSyncStatus = "offline"; }
+
+  if (browser) {
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+  }
+
+  onDestroy(() => {
+    if (browser) {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    }
+  });
 
   // Use a promise for the {#await} block - Svelte handles reactivity natively
   let loadPromise = $state<Promise<ScheduleDoc>>(loadDoc());
@@ -69,6 +89,16 @@
         userId: data.user.id,
         supabase,
       });
+      // Track sync status changes
+      const unsub = syncedStorage.onSyncStatusChange((showId, status) => {
+        if (showId === data.showId) {
+          currentSyncStatus = isOnline ? status : "offline";
+        }
+      });
+      return () => {
+        unsub();
+        syncedStorage?.destroy();
+      };
     }
 
     return () => {
@@ -127,6 +157,7 @@
     readOnly={false}
     onSave={handleSave}
     onDocChange={handleDocChange}
+    syncStatus={isOnline ? currentSyncStatus : "offline"}
   />
 {:catch err}
   <div class="error-state">
