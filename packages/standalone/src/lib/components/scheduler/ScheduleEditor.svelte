@@ -3183,11 +3183,18 @@
             aria-label="Save"
             onclick={tryToSave}
           >
-            <svg width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
-              <path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H520q-33 0-56.5-23.5T440-240v-206l-64 62-56-56 160-160 160 160-56 56-64-62v206h220q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41h100v80H260Zm220-280Z" fill="currentColor"/>
-            </svg>
-            {#if syncStatus === "pending" || syncStatus === "syncing" || syncStatus === "error" || syncStatus === "offline"}
-              <span class="save-dot"></span>
+            {#if syncStatus === "pending" || syncStatus === "syncing" || syncStatus === "offline"}
+              <svg class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="50 20" />
+              </svg>
+            {:else if syncStatus === "error"}
+              <svg class="save-error-icon" width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
+                <path d="M480-280q17 0 28.5-11.5T520-320q0-17-11.5-28.5T480-360q-17 0-28.5 11.5T440-320q0 17 11.5 28.5T480-280Zm-40-160h80v-240h-80v240Zm40 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z" fill="currentColor"/>
+              </svg>
+            {:else}
+              <svg width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
+                <path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H520q-33 0-56.5-23.5T440-240v-206l-64 62-56-56 160-160 160 160-56 56-64-62v206h220q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41h100v80H260Zm220-280Z" fill="currentColor"/>
+              </svg>
             {/if}
             {#if showToolbarLabels}<span class="toolbar-btn-label">Save</span>{/if}
           </button>
@@ -3909,17 +3916,12 @@
   .save-offline {
     color: var(--color-teal) !important;
   }
-  .save-dot {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--color-teal);
+  .spinner {
+    animation: spin 1s linear infinite;
   }
-  .save-error .save-dot {
-    background: var(--color-danger);
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .toolbar-btn.filter-active {

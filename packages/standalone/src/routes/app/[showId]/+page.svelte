@@ -123,11 +123,14 @@
       document: doc,
     });
     if (syncedStorage) {
-      await syncedStorage.flush(showId);
-    } else {
-      // No sync layer (localhost) - flash synced briefly for feedback
       cloudStatus = "syncing";
-      setTimeout(() => (cloudStatus = "synced"), 300);
+      await syncedStorage.flush(showId);
+      // Keep spinner visible for at least 5s so users see it working
+      setTimeout(() => { if (cloudStatus === "syncing") cloudStatus = "synced"; }, 5000);
+    } else {
+      // No sync layer (localhost) - show syncing spinner for 5s
+      cloudStatus = "syncing";
+      setTimeout(() => (cloudStatus = "synced"), 5000);
     }
   }
 
@@ -135,12 +138,10 @@
     const showId = data.showId;
     const doc: ScheduleDoc = JSON.parse(JSON.stringify(rawDoc));
 
-    // Show pending status while saving
-    if (!syncedStorage) {
-      cloudStatus = "pending";
-      if (saveFlashTimer) clearTimeout(saveFlashTimer);
-      saveFlashTimer = setTimeout(() => (cloudStatus = "synced"), 2000);
-    }
+    // Show syncing spinner while saving
+    cloudStatus = "syncing";
+    if (saveFlashTimer) clearTimeout(saveFlashTimer);
+    saveFlashTimer = setTimeout(() => (cloudStatus = "synced"), 5000);
 
     localSaveShow({
       id: showId,
