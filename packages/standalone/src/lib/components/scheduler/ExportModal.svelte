@@ -1177,7 +1177,7 @@
     flex-direction: column;
     gap: var(--space-4);
     overflow-y: auto;
-    padding-right: var(--space-3);
+    padding-right: var(--space-5);
   }
 
   .preview-panel {
