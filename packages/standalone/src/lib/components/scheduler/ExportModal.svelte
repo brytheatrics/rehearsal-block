@@ -441,46 +441,75 @@
     downloading = true;
     pdfError = "";
     try {
-      // Build the full HTML with export settings
-      const html = buildPrintHtml(show, { ...exportOpts, action: "print" });
+      // Use the same pre-paginated chunks the preview uses. Each chunk
+      // is a full HTML page - we extract just the body content, combine
+      // them into a single document with break-after:page between pages,
+      // so the print dialog produces the exact same pagination as the preview.
+      const chunks = measuredPageChunks;
+      if (!chunks.length) {
+        pdfError = "No pages to export.";
+        downloading = false;
+        return;
+      }
 
-      // Apply scale by rewriting font-size values (same as server did)
-      const s = scale / 100;
-      let finalHtml = s !== 1
-        ? html.replace(/font-size:\s*([\d.]+)px/g, (_m, v) => `font-size: ${(parseFloat(v) * s).toFixed(1)}px`)
-        : html;
+      // Extract the <head> from the first chunk (all chunks share the same styles)
+      const firstHead = chunks[0]!.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
 
-      // Inject @page CSS for page size, orientation, and margins
+      // Extract each chunk's <body> content
+      const pageBodies = chunks.map((chunk) => {
+        const bodyMatch = chunk.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        return bodyMatch?.[1] ?? "";
+      });
+
+      // Build @page CSS
       const dim = pageSizes[pageSize];
       const w = orientation === "landscape" ? dim.h : dim.w;
       const h = orientation === "landscape" ? dim.w : dim.h;
-      const m = marginValues[marginPreset];
-      const pageStyle = `<style>@page { size: ${w}mm ${h}mm; margin: ${m}mm; }</style>`;
-      finalHtml = finalHtml.replace("</head>", `${pageStyle}</head>`);
+      const pageRule = `@page { size: ${w}mm ${h}mm; margin: 0; }`;
 
-      // Build header/footer and inject before closing </body>
-      const headerHtml = repeatTitle ? buildPdfHeaderHtml({
-        repeatTitle: true,
-        showName: show.show.name || "Schedule",
-        showRunDates: showRunDates ? formatUsDateRange(startDate, endDate) : "",
-      }) : "";
-      const footerHtml = hasFooter ? buildPdfFooterHtml(footerOpts) : "";
-
-      if (headerHtml || footerHtml) {
-        const extra = `<style>
-          .pdf-injected-header { border-bottom: 2px solid #4b5563; padding-bottom: 6px; margin-bottom: 12px; }
-          .pdf-injected-footer { border-top: 1px solid #e0e0e0; padding-top: 4px; margin-top: 12px; font-size: 8px; color: #888; text-align: center; }
-        </style>`;
-        const headerBlock = headerHtml ? `<div class="pdf-injected-header">${headerHtml}</div>` : "";
-        const footerBlock = footerHtml ? `<div class="pdf-injected-footer">${footerHtml}</div>` : "";
-        finalHtml = finalHtml.replace("</head>", `${extra}</head>`);
-        // Inject header at start of body content and footer at end
-        finalHtml = finalHtml.replace(/<body([^>]*)>/, `<body$1>${headerBlock}`);
-        finalHtml = finalHtml.replace(/<\/body>/, `${footerBlock}</body>`);
+      // Assemble into a single document with page breaks between pages
+      const combinedHtml = `<!DOCTYPE html>
+<html>
+<head>
+  ${firstHead}
+  <style>
+    ${pageRule}
+    html, body { margin: 0; padding: 0; }
+    .export-page {
+      width: ${pageWidthPx}px;
+      height: ${pageHeightPx}px;
+      overflow: hidden;
+      box-sizing: border-box;
+      break-after: page;
+      page-break-after: always;
+    }
+    .export-page:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
+    @media print {
+      .export-page {
+        break-after: page;
+        page-break-after: always;
       }
+      .export-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  ${pageBodies.map((body) => `<div class="export-page">${body}</div>`).join("\n")}
+  <script>
+    document.fonts.ready.then(function() {
+      setTimeout(function() { window.print(); }, 400);
+    });
+  <\/script>
+</body>
+</html>`;
 
-      // Open as a blob URL so the document loads fully (scripts, fonts, etc.)
-      const blob = new Blob([finalHtml], { type: "text/html" });
+      const blob = new Blob([combinedHtml], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const win = window.open(url, "_blank");
 
@@ -488,7 +517,6 @@
         pdfError = "Pop-up blocked. Please allow pop-ups for this site.";
         URL.revokeObjectURL(url);
       } else {
-        // Clean up the blob URL after the window loads
         win.addEventListener("afterprint", () => URL.revokeObjectURL(url));
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
