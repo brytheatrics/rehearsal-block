@@ -41,7 +41,15 @@
     newEmptyScheduleDoc({ name: "", startDate: "2026-01-01", endDate: "2026-03-01" }),
   );
 
-  // Pre-fill from saved "My Defaults" if available
+  // Pre-fill from saved "My Defaults" if available.
+  // If no defaults are saved, start with blank weekday call times
+  // (all unchecked, no times) so the user sets their own schedule.
+  const blankWeekdays = Array.from({ length: 7 }, () => ({
+    enabled: false,
+    startTime: "",
+    endTime: "",
+  }));
+
   onMount(async () => {
     const defaults = await getUserDefaults();
     if (defaults) {
@@ -51,6 +59,9 @@
       if (defaults.locationPresetsV2) {
         tempDoc.locationPresetsV2 = defaults.locationPresetsV2;
       }
+    } else {
+      // No saved defaults - start with blank weekdays like My Defaults
+      tempDoc.settings = { ...tempDoc.settings, weekdayDefaults: blankWeekdays };
     }
   });
 
