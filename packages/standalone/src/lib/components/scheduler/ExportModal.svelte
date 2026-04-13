@@ -441,17 +441,19 @@
     downloading = true;
     pdfError = "";
     try {
-      const blob = await generatePdf();
-      const filename =
-        (show.show.name || "Schedule").replace(/\s+/g, "_") + "_Schedule.pdf";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Client-side: open a print window with the styled HTML.
+      // The browser's "Save as PDF" option in the print dialog
+      // produces a clean PDF without needing a server-side Puppeteer.
+      const html = buildPrintHtml(show, { ...exportOpts, action: "print" });
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        // The HTML includes an auto-print script that calls
+        // window.print() after fonts load, then closes the window.
+      } else {
+        pdfError = "Pop-up blocked. Please allow pop-ups for this site and try again.";
+      }
     } catch (err) {
       console.error("PDF generation failed:", err);
       pdfError = "PDF generation failed. Please try again.";
