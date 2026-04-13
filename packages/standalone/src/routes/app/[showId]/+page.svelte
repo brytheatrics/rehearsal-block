@@ -4,10 +4,10 @@
    *
    * Loads the document from IndexedDB (instant) with an API fallback,
    * then renders the shared ScheduleEditor. Every edit triggers an
-   * auto-save to IndexedDB via the onDocChange callback. The sync
-   * layer handles idle-debounced cloud push.
+   * auto-save to IndexedDB via the onDocChange callback.
    */
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
+  import { browser } from "$app/environment";
   import type { ScheduleDoc } from "@rehearsal-block/core";
   import ScheduleEditor from "$lib/components/scheduler/ScheduleEditor.svelte";
   import { localLoadShow, localSaveShow } from "$lib/storage/local.js";
@@ -16,59 +16,53 @@
 
   let { data } = $props();
 
-  let doc = $state<ScheduleDoc | null>(null);
-  let loading = $state(true);
-  let loadError = $state<string | null>(null);
-  let syncedStorage = $state<SyncedStorage | null>(null);
+  let syncedStorage: SyncedStorage | null = null;
 
-  const isLocalhost =
-    typeof window !== "undefined" &&
+  const isLocalhost = browser &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
-  onMount(async () => {
+  // Use a promise for the {#await} block - Svelte handles reactivity natively
+  let loadPromise = $state<Promise<ScheduleDoc>>(loadDoc());
+
+  async function loadDoc(): Promise<ScheduleDoc> {
+    if (!browser) {
+      // SSR: return a never-resolving promise so the loading state shows
+      return new Promise(() => {});
+    }
+
     const showId = data.showId;
 
-    // Try IndexedDB first (instant)
+    // Try IndexedDB first
     try {
       const localShow = await localLoadShow(showId);
-      if (localShow) {
-        doc = localShow.document;
-        loading = false;
-        setupSync();
-        return;
-      }
-    } catch (e) {
-      console.warn("IndexedDB load failed:", e);
+      if (localShow) return localShow.document;
+    } catch { /* IndexedDB unavailable */ }
+
+    // Fall back to API
+    const res = await fetch(`/api/shows/${showId}`);
+    if (!res.ok) {
+      throw new Error(
+        res.status === 404 ? "Show not found." : `Failed to load show (${res.status}).`,
+      );
     }
+    const show = await res.json();
 
-    // Not in IndexedDB - fetch from API
-    try {
-      const res = await fetch(`/api/shows/${showId}`);
-      if (!res.ok) {
-        loadError = res.status === 404
-          ? "Show not found."
-          : `Failed to load show (${res.status}).`;
-        loading = false;
-        return;
-      }
-      const show = await res.json();
-      doc = show.document;
+    // Cache in IndexedDB
+    localSaveShow({
+      id: showId,
+      name: show.name,
+      updatedAt: show.updatedAt,
+      document: show.document,
+    }).catch(() => {});
 
-      // Cache in IndexedDB for next time
-      await localSaveShow({
-        id: showId,
-        name: show.name,
-        updatedAt: show.updatedAt,
-        document: show.document,
-      });
-    } catch {
-      loadError = "Failed to load show. Check your connection and try again.";
-    }
-    loading = false;
-    if (doc) setupSync();
-  });
+    return show.document as ScheduleDoc;
+  }
 
-  function setupSync() {
+  onMount(() => {
+    // Re-trigger load on mount in case the SSR promise was a no-op
+    loadPromise = loadDoc();
+
+    // Set up sync layer for cloud push (production only)
     if (!isLocalhost && data.user) {
       const supabase = createSupabaseBrowserClient();
       syncedStorage = createSyncedStorage({
@@ -76,10 +70,10 @@
         supabase,
       });
     }
-  }
 
-  onDestroy(() => {
-    syncedStorage?.destroy();
+    return () => {
+      syncedStorage?.destroy();
+    };
   });
 
   async function handleSave(updatedDoc: ScheduleDoc) {
@@ -90,24 +84,17 @@
       updatedAt: new Date().toISOString(),
       document: updatedDoc,
     });
-
-    // Force immediate cloud sync
-    if (syncedStorage) {
-      await syncedStorage.flush(showId);
-    }
+    if (syncedStorage) await syncedStorage.flush(showId);
   }
 
   function handleDocChange(updatedDoc: ScheduleDoc) {
     const showId = data.showId;
-    // Auto-save to IndexedDB on every change (instant)
     localSaveShow({
       id: showId,
       name: updatedDoc.show.name,
       updatedAt: new Date().toISOString(),
       document: updatedDoc,
     });
-
-    // Schedule cloud sync via the sync layer
     if (syncedStorage) {
       syncedStorage.saveShow({
         id: showId,
@@ -120,30 +107,30 @@
 </script>
 
 <svelte:head>
-  <title>{doc?.show.name ?? data.showTitle ?? "Show"} - Rehearsal Block</title>
+  <title>{data.showTitle ?? "Show"} - Rehearsal Block</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Roboto:wght@400;500;700&family=Lato:wght@400;700&family=Merriweather:wght@400;700&family=Open+Sans:wght@400;600;700&family=Questrial&display=swap" />
 </svelte:head>
 
-{#if loading}
+{#await loadPromise}
   <div class="loading-state">
     <p>Loading show...</p>
   </div>
-{:else if loadError}
-  <div class="error-state">
-    <h2>Could not load show</h2>
-    <p>{loadError}</p>
-    <a href="/app" class="btn btn-primary">Back to My Shows</a>
-  </div>
-{:else if doc}
+{:then doc}
   <ScheduleEditor
     initialDoc={doc}
     readOnly={false}
     onSave={handleSave}
     onDocChange={handleDocChange}
   />
-{/if}
+{:catch err}
+  <div class="error-state">
+    <h2>Could not load show</h2>
+    <p>{err.message}</p>
+    <a href="/app" class="btn btn-primary">Back to My Shows</a>
+  </div>
+{/await}
 
 <style>
   .loading-state,
