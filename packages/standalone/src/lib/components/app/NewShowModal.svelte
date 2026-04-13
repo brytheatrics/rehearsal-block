@@ -356,9 +356,9 @@
 
   .modal {
     position: fixed;
-    top: 50%;
+    top: 5vh;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     width: 440px;
     max-width: calc(100vw - 2 * var(--space-4));
     max-height: calc(100vh - 2 * var(--space-4));
