@@ -286,9 +286,9 @@
             currentPageHeight += printHeaderHeight;
           }
 
-          // If repeat headers is on and this is a week-row (not a month header),
-          // prepend the last month label + weekday row
-          if (_repeatHeaders && child.classList.contains("week-row") && lastMonthLabel) {
+          // Always repeat the month label + weekday row on new pages
+          // so readers know which days of the week they're looking at
+          if (_repeatHeaders && lastMonthLabel) {
             currentPageBlocks.push(lastMonthLabel);
             if (lastWeekdayRow) currentPageBlocks.push(lastWeekdayRow);
             currentPageHeight += 40;
@@ -749,7 +749,7 @@
                 checked={repeatHeaders}
                 onchange={(e) => (repeatHeaders = e.currentTarget.checked)}
               />
-              <span>Repeat headers on split pages</span>
+              <span>Days of the week on all pages</span>
             </label>
           </div>
         </section>
