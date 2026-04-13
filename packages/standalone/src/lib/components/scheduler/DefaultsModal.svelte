@@ -1122,7 +1122,7 @@
         </label>
       </div>
 
-      {#if show.settings.showHolidays ?? true}
+      {#if (show.settings.showHolidays ?? true) && !embedded}
         {@const allHolidays = holidaysInRange(
           show.show.startDate,
           show.show.endDate,
