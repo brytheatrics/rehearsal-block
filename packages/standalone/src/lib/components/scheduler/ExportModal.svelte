@@ -1166,7 +1166,7 @@
 
   .split-layout {
     display: grid;
-    grid-template-columns: 410px 1fr;
+    grid-template-columns: 320px 1fr;
     gap: var(--space-5);
     flex: 1;
     min-height: 0;
@@ -1177,6 +1177,7 @@
     flex-direction: column;
     gap: var(--space-4);
     overflow-y: auto;
+    padding-right: var(--space-3);
   }
 
   .preview-panel {
