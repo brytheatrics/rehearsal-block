@@ -346,9 +346,10 @@
       <button
         type="button"
         class="btn btn-secondary btn-sm"
+        title="Import a previously exported .json show file"
         onclick={handleImport}
       >
-        Import JSON
+        Import Show
       </button>
       <button
         type="button"
@@ -405,9 +406,10 @@
           <button
             type="button"
             class="btn btn-secondary"
+            title="Import a previously exported .json show file"
             onclick={handleImport}
           >
-            Import from JSON
+            Import Show File
           </button>
         </div>
       </div>

@@ -105,6 +105,18 @@
     </button>
     <button
       type="button"
+      class="action-btn"
+      title="Export show as a .json file you can back up or import later"
+      onclick={(e) => { e.stopPropagation(); onexport(id); }}
+    >
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M3 10v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <line x1="8" y1="10" x2="8" y2="2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M5.5 4.5L8 2l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </button>
+    <button
+      type="button"
       class="action-btn action-btn-danger"
       title="Delete"
       onclick={(e) => { e.stopPropagation(); ondelete(id); }}
