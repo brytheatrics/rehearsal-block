@@ -515,43 +515,45 @@
     const style = p.style.replace(/min-height:\s*100vh;?/g, "").replace(/margin:\s*0;?/g, "").replace(/padding:\s*0;?/g, "");
     return `<div class="export-page ${p.cls}" style="${style}">${p.content}</div>`;
   }).join("\n")}
-  <script>
-    document.fonts.ready.then(function() {
-      setTimeout(function() {
-        window.print();
-        // Close the window after the print dialog is dismissed
-        window.onafterprint = function() { window.close(); };
-        // Fallback: if afterprint doesn't fire (some browsers),
-        // close after a short delay once focus returns
-        window.addEventListener('focus', function() {
-          setTimeout(function() { window.close(); }, 500);
-        }, { once: true });
-      }, 400);
-    });
-  <\/script>
+
 </body>
 </html>`;
 
-      const blob = new Blob([combinedHtml], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const win = window.open(url, "_blank");
+      // Use a hidden iframe to print - no new tab to close.
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.left = "-9999px";
+      iframe.style.top = "0";
+      iframe.style.width = `${pageWidthPx}px`;
+      iframe.style.height = `${pageHeightPx}px`;
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
 
-      if (!win) {
-        pdfError = "Pop-up blocked. Please allow pop-ups for this site.";
-        URL.revokeObjectURL(url);
+      const iframeDoc = iframe.contentDocument;
+      if (!iframeDoc) {
+        pdfError = "Could not create print frame.";
+        document.body.removeChild(iframe);
       } else {
-        // Close the print tab from the parent side when focus returns.
-        // The child also tries window.close() via afterprint/focus,
-        // but some browsers block self-close on blob URL tabs.
-        const cleanup = () => {
-          try { win.close(); } catch { /* cross-origin or already closed */ }
-          URL.revokeObjectURL(url);
-          window.removeEventListener("focus", onFocus);
+        iframeDoc.open();
+        iframeDoc.write(combinedHtml);
+        iframeDoc.close();
+
+        // Wait for fonts then print from the iframe
+        const iframeWin = iframe.contentWindow!;
+        const doPrint = () => {
+          iframeWin.focus();
+          iframeWin.print();
+          // Clean up the iframe after printing
+          setTimeout(() => {
+            try { document.body.removeChild(iframe); } catch { /* already removed */ }
+          }, 1000);
         };
-        const onFocus = () => setTimeout(cleanup, 500);
-        window.addEventListener("focus", onFocus, { once: true });
-        // Fallback timeout
-        setTimeout(cleanup, 120_000);
+
+        if (iframeDoc.fonts) {
+          iframeDoc.fonts.ready.then(() => setTimeout(doPrint, 300));
+        } else {
+          setTimeout(doPrint, 500);
+        }
       }
     } catch (err) {
       console.error("PDF generation failed:", err);
