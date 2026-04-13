@@ -6,8 +6,17 @@
  * Based on the official Supabase + SvelteKit SSR guide.
  */
 
+import * as Sentry from "@sentry/sveltekit";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type Handle, redirect } from "@sveltejs/kit";
+import { PUBLIC_SENTRY_DSN } from "$env/static/public";
+
+if (PUBLIC_SENTRY_DSN) {
+  Sentry.init({
+    dsn: PUBLIC_SENTRY_DSN,
+    tracesSampleRate: 0,
+  });
+}
 import { sequence } from "@sveltejs/kit/hooks";
 import { PUBLIC_SUPABASE_PUBLISHABLE_KEY, PUBLIC_SUPABASE_URL } from "$env/static/public";
 
@@ -112,4 +121,5 @@ const authGuard: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
-export const handle: Handle = sequence(supabase, authGuard);
+export const handle: Handle = sequence(Sentry.sentryHandle(), supabase, authGuard);
+export const handleError = Sentry.handleErrorWithSentry();
