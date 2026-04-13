@@ -673,7 +673,7 @@
           title="Add group"
           onclick={(e) => {
             e.stopPropagation();
-            if (onaddgroupblocked) onaddgroupblocked();
+            if (editGroupLocked && onaddgroupblocked) onaddgroupblocked();
             else openAddGroup(e);
           }}
         >
