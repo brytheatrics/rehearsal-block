@@ -210,7 +210,9 @@
       const rawMonths: string[] = [];
       let match;
       while ((match = pageRegex.exec(_body)) !== null) {
-        const content = (match[1] ?? "").replace(/<div class="page-footer">[\s\S]*?<\/div>/, "");
+        const content = (match[1] ?? "")
+          .replace(/<div class="page-footer">[\s\S]*?<\/div>/, "")
+          .replace(/<div class="print-header">[\s\S]*?<\/div>\s*/, "");
         rawMonths.push(content);
       }
       if (rawMonths.length === 0) rawMonths.push(_body);
@@ -297,7 +299,7 @@
           const ftrHtml = _hasFooter ? buildPdfFooterHtml(_footerOpts, idx + 1, total) : "";
           const contentPadTop = hdrHtml ? 0 : _marginPx;
           const pageContent = Array.isArray(blocks) ? blocks.join("") : blocks;
-          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${hdrHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${hdrHtml}</div>` : ""}<div style="flex:1;padding:${contentPadTop}px ${_marginPx}px 0">${showHeaderOnThisPage && idx === 0 ? printHeaderHtml : ""}<div class="print-page">${pageContent}</div></div>${ftrHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${ftrHtml}</div>` : ""}</body></html>`;
+          return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${hdrHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${hdrHtml}</div>` : ""}<div style="flex:1;padding:${contentPadTop}px ${_marginPx}px 0"><div class="print-page">${pageContent}</div></div>${ftrHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${ftrHtml}</div>` : ""}</body></html>`;
         });
       });
       return;
