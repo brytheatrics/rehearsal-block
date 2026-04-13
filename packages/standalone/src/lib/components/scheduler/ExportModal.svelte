@@ -465,9 +465,13 @@
       const dim = pageSizes[pageSize];
       const w = orientation === "landscape" ? dim.h : dim.w;
       const h = orientation === "landscape" ? dim.w : dim.h;
-      const pageRule = `@page { size: ${w}mm ${h}mm; margin: 0; }`;
+      const m = marginValues[marginPreset];
+      const pageRule = `@page { size: ${w}mm ${h}mm; margin: ${m}mm; }`;
 
-      // Assemble into a single document with page breaks between pages
+      // Assemble into a single document with page breaks between pages.
+      // Each .export-page uses flex column so the footer pins to the
+      // bottom of the page (matching the preview's layout).
+      const contentH = pageHeightPx - Math.round(m * (96 / 25.4)) * 2;
       const combinedHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -476,8 +480,10 @@
     ${pageRule}
     html, body { margin: 0; padding: 0; }
     .export-page {
-      width: ${pageWidthPx}px;
-      height: ${pageHeightPx}px;
+      width: ${pageWidthPx - Math.round(m * (96 / 25.4)) * 2}px;
+      min-height: ${contentH}px;
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
       box-sizing: border-box;
       break-after: page;
@@ -487,15 +493,9 @@
       break-after: auto;
       page-break-after: auto;
     }
-    @media print {
-      .export-page {
-        break-after: page;
-        page-break-after: always;
-      }
-      .export-page:last-child {
-        break-after: auto;
-        page-break-after: auto;
-      }
+    /* Pin footer to bottom of page */
+    .export-page > div:last-child {
+      margin-top: auto;
     }
   </style>
 </head>
