@@ -1,0 +1,111 @@
+# Nightly pg_dump backup of Supabase to R2.
+# Runs at 3:17 AM UTC daily (off-peak, avoids :00/:30 crowding).
+# Keeps 30 daily + 12 monthly + 3 yearly backups.
+#
+# Required secrets:
+#   SUPABASE_DB_URL       - Postgres connection string (pooled)
+#   R2_ACCESS_KEY_ID      - Cloudflare R2 credentials
+#   R2_SECRET_ACCESS_KEY
+#   R2_ACCOUNT_ID
+#   R2_BUCKET_NAME        - Target bucket for backups
+
+name: Supabase Backup
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          pg_dump "$SUPABASE_DB_URL" \
+            --no-owner --no-privileges --clean --if-exists \
+            | gzip > "supabase-${DATE}.sql.gz"
+          echo "BACKUP_FILE=supabase-${DATE}.sql.gz" >> $GITHUB_ENV
+          echo "DATE=${DATE}" >> $GITHUB_ENV
+
+      - name: Install AWS CLI
+        run: |
+          curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          # Upload daily backup
+          aws s3 cp "$BACKUP_FILE" \
+            "s3://${R2_BUCKET_NAME}/backups/pg/daily/${BACKUP_FILE}" \
+            --endpoint-url "$ENDPOINT"
+
+          # Monthly backup (first of month)
+          DAY=$(date -u +%d)
+          if [ "$DAY" = "01" ]; then
+            aws s3 cp "$BACKUP_FILE" \
+              "s3://${R2_BUCKET_NAME}/backups/pg/monthly/${BACKUP_FILE}" \
+              --endpoint-url "$ENDPOINT"
+          fi
+
+          # Yearly backup (Jan 1)
+          MONTH=$(date -u +%m)
+          if [ "$DAY" = "01" ] && [ "$MONTH" = "01" ]; then
+            aws s3 cp "$BACKUP_FILE" \
+              "s3://${R2_BUCKET_NAME}/backups/pg/yearly/${BACKUP_FILE}" \
+              --endpoint-url "$ENDPOINT"
+          fi
+
+      - name: Prune old daily backups (keep 30)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          CUTOFF=$(date -u -d "30 days ago" +%Y-%m-%d)
+          aws s3 ls "s3://${R2_BUCKET_NAME}/backups/pg/daily/" \
+            --endpoint-url "$ENDPOINT" \
+            | awk '{print $4}' \
+            | while read f; do
+                FDATE=$(echo "$f" | grep -oP '\d{4}-\d{2}-\d{2}')
+                if [ -n "$FDATE" ] && [ "$FDATE" \< "$CUTOFF" ]; then
+                  aws s3 rm "s3://${R2_BUCKET_NAME}/backups/pg/daily/$f" \
+                    --endpoint-url "$ENDPOINT"
+                fi
+              done
+
+      - name: Prune old monthly backups (keep 12)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          CUTOFF=$(date -u -d "365 days ago" +%Y-%m-%d)
+          aws s3 ls "s3://${R2_BUCKET_NAME}/backups/pg/monthly/" \
+            --endpoint-url "$ENDPOINT" \
+            | awk '{print $4}' \
+            | while read f; do
+                FDATE=$(echo "$f" | grep -oP '\d{4}-\d{2}-\d{2}')
+                if [ -n "$FDATE" ] && [ "$FDATE" \< "$CUTOFF" ]; then
+                  aws s3 rm "s3://${R2_BUCKET_NAME}/backups/pg/monthly/$f" \
+                    --endpoint-url "$ENDPOINT"
+                fi
+              done

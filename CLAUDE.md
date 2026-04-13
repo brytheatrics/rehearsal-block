@@ -84,6 +84,7 @@ Use `preview_start` with the name `rehearsal-block` - `.claude/launch.json` is c
 - localhost dev = full editing allowed (testing)
 - Draft banners on `/privacy` and `/terms` use `{#if import.meta.env.DEV}` - visible on localhost, stripped from production builds entirely.
 - Once paid version ships, demo stays accessible via the hamburger inside `/app`, with a "Reset demo" button to wipe accumulated edits
+- **LEGAL TEXT NOT FINAL**: The /privacy, /terms, and refund policy pages use draft placeholder text from the implementation plan. All legal copy MUST be reviewed and replaced by a lawyer or legal template service (TermsFeed, Termly, etc.) before purchasing is opened to real customers. The EU consumer rights waiver language in particular needs professional legal review.
 
 ## Data Model
 

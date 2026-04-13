@@ -1,0 +1,49 @@
+# Daily cleanup of R2 show snapshots older than 7 days.
+# Show snapshots are created by the PUT /api/shows/[id] handler
+# on the first save of each calendar day. This workflow prunes
+# anything older than 7 days to keep R2 storage manageable.
+#
+# Required secrets:
+#   R2_ACCESS_KEY_ID
+#   R2_SECRET_ACCESS_KEY
+#   R2_ACCOUNT_ID
+#   R2_BUCKET_NAME
+
+name: Prune R2 Snapshots
+
+on:
+  schedule:
+    - cron: "42 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install AWS CLI
+        run: |
+          curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Prune snapshots older than 7 days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          CUTOFF=$(date -u -d "7 days ago" +%Y-%m-%d)
+
+          # List all snapshot objects and delete old ones
+          aws s3 ls "s3://${R2_BUCKET_NAME}/snapshots/" \
+            --recursive --endpoint-url "$ENDPOINT" \
+            | awk '{print $4}' \
+            | while read key; do
+                FDATE=$(echo "$key" | grep -oP '\d{4}-\d{2}-\d{2}')
+                if [ -n "$FDATE" ] && [ "$FDATE" \< "$CUTOFF" ]; then
+                  aws s3 rm "s3://${R2_BUCKET_NAME}/$key" \
+                    --endpoint-url "$ENDPOINT"
+                fi
+              done
