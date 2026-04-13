@@ -279,14 +279,34 @@
             let currentH = 0;
             const pageArea = contentArea - (_repeatTitle ? headerHeight : 0);
             let availH = firstPageArea;
+            let lastWeekdayRowHtml = "";
+            let lastMonthLabelHtml = "";
 
             for (const child of children) {
               const h = child.getBoundingClientRect().height;
+
+              // Track weekday row and month label for repeat headers
+              if (child.classList.contains("weekday-row")) {
+                lastWeekdayRowHtml = child.outerHTML;
+              }
+              if (child.classList.contains("month-label")) {
+                lastMonthLabelHtml = child.outerHTML;
+              }
+
               if (currentH + h > availH && currentBlocks.length > 0) {
                 allPages.push(currentBlocks);
                 currentBlocks = [];
                 currentH = 0;
                 availH = pageArea;
+
+                // Repeat weekday headers on new pages
+                if (_repeatHeaders && lastWeekdayRowHtml) {
+                  if (lastMonthLabelHtml) {
+                    currentBlocks.push(lastMonthLabelHtml);
+                  }
+                  currentBlocks.push(lastWeekdayRowHtml);
+                  currentH += lastMonthLabelHtml ? 40 : 24;
+                }
               }
               currentBlocks.push(child.outerHTML);
               currentH += h;
