@@ -256,7 +256,7 @@
           id="show-name"
           type="text"
           bind:value={name}
-          placeholder="Romeo & Juliet"
+          placeholder=""
           autocomplete="off"
         />
       </div>
