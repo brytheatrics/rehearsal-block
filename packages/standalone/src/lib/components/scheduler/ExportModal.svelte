@@ -200,22 +200,37 @@
     `;
 
     if (_mode === "months") {
-      // Months mode: pages already contain footers from buildPrintHtml.
-      // Extract the header (content before the first .print-page) and
-      // prepend it to the first page so the show title is visible.
+      // Months mode: each month is a .print-page div from buildPrintHtml.
+      // Extract the header (show title) and rebuild each page with the
+      // same flex layout as continuous mode so footers pin to the bottom.
       const firstPageIdx = _body.indexOf('<div class="print-page">');
-      const headerHtml = firstPageIdx > 0 ? _body.substring(0, firstPageIdx) : "";
+      const printHeaderHtml = firstPageIdx > 0 ? _body.substring(0, firstPageIdx) : "";
       const pageRegex = /<div class="print-page">([\s\S]*?)(?=<div class="print-page">|$)/g;
-      const pages: string[] = [];
+      const rawPages: string[] = [];
       let match;
       while ((match = pageRegex.exec(_body)) !== null) {
-        pages.push(match[1] ?? "");
+        // Strip any existing .page-footer from the content (we'll add our own)
+        const content = (match[1] ?? "").replace(/<div class="page-footer">[\s\S]*?<\/div>/, "");
+        rawPages.push(content);
       }
-      if (pages.length === 0) pages.push(_body);
+      if (rawPages.length === 0) rawPages.push(_body);
 
-      measuredPageChunks = pages.map((pc, idx) =>
-        `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}">${idx === 0 || _repeatTitle ? headerHtml : ""}<div class="print-page">${pc}</div></body></html>`,
-      );
+      const total = rawPages.length;
+      measuredPageChunks = rawPages.map((pc, idx) => {
+        const showHeaderOnThisPage = _repeatTitle || idx === 0;
+        const headerHtml = showHeaderOnThisPage
+          ? buildPdfHeaderHtml({
+              repeatTitle: true,
+              showName: _showName,
+              showRunDates: _showRunDates,
+            })
+          : "";
+        const footerHtml = _hasFooter
+          ? buildPdfFooterHtml(_footerOpts, idx + 1, total)
+          : "";
+        const contentPadTop = headerHtml ? 0 : _marginPx;
+        return `<!DOCTYPE html><html><head>${_head}<style>${extraCss}</style></head><body class="${_bodyClass}" style="display:flex;flex-direction:column;min-height:100vh;margin:0;padding:0">${headerHtml ? `<div style="padding:${_marginPx}px ${_marginPx}px 0">${headerHtml}</div>` : ""}<div style="flex:1;padding:${contentPadTop}px ${_marginPx}px 0">${showHeaderOnThisPage ? printHeaderHtml : ""}<div class="print-page">${pc}</div></div>${footerHtml ? `<div style="padding:0 ${_marginPx}px ${_marginPx}px">${footerHtml}</div>` : ""}</body></html>`;
+      });
       return;
     }
 
