@@ -38,22 +38,31 @@
     loading = false;
   });
 
-  async function handleSave() {
+  // Auto-save to IndexedDB on every change (same as the editor).
+  // Uses JSON serialization to detect real changes and strip proxies.
+  let lastSavedJson = "";
+  $effect(() => {
     if (!doc) return;
-    const plain: ScheduleDoc = JSON.parse(JSON.stringify(doc));
-    await localSaveShow({
-      id: showId,
-      name: plain.show.name,
-      updatedAt: new Date().toISOString(),
-      document: plain,
-    });
-    saved = true;
+    const json = JSON.stringify(doc);
+    if (lastSavedJson && json !== lastSavedJson) {
+      const plain: ScheduleDoc = JSON.parse(json);
+      localSaveShow({
+        id: showId,
+        name: plain.show.name,
+        updatedAt: new Date().toISOString(),
+        document: plain,
+      });
+    }
+    lastSavedJson = json;
+  });
+
+  function handleClose() {
     onsaved?.();
-    setTimeout(() => (saved = false), 2000);
+    onclose();
   }
 
   function handleKey(e: KeyboardEvent) {
-    if (e.key === "Escape") onclose();
+    if (e.key === "Escape") handleClose();
   }
 
   // ---- DefaultsModal callbacks ----
@@ -213,7 +222,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={onclose}></div>
+<div class="backdrop" onclick={handleClose}></div>
 
 <div class="modal" role="dialog" aria-labelledby="edit-show-title">
   <div class="modal-header">
@@ -221,7 +230,7 @@
       <div class="eyebrow">Settings</div>
       <h2 id="edit-show-title">{doc?.show.name ?? "Show Settings"}</h2>
     </div>
-    <button type="button" class="close-btn" aria-label="Close" onclick={onclose}>&times;</button>
+    <button type="button" class="close-btn" aria-label="Close" onclick={handleClose}>&times;</button>
   </div>
 
   {#if loading}
@@ -262,10 +271,7 @@
   {/if}
 
   <div class="modal-footer">
-    <button type="button" class="ghost-btn" onclick={onclose}>Cancel</button>
-    <button type="button" class="primary-btn" onclick={handleSave}>
-      {saved ? "Saved!" : "Save"}
-    </button>
+    <button type="button" class="primary-btn" onclick={handleClose}>Done</button>
   </div>
 </div>
 
