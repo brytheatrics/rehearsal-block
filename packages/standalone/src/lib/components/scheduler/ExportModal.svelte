@@ -1383,9 +1383,6 @@
     border-radius: var(--radius-md);
     background: #e5e5e5;
     overflow: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: var(--space-5);
   }
 
@@ -1396,7 +1393,9 @@
       0 0 1px rgba(0, 0, 0, 0.1);
     border-radius: 1px;
     overflow: hidden;
-    flex-shrink: 0;
+    /* Center when content fits, but stay top-left aligned when scrolling
+       is needed so the page doesn't get cut off on the top/left edges. */
+    margin: auto;
   }
 
   .preview-iframe {
