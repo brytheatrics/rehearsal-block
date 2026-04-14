@@ -31,11 +31,18 @@
     notifyLaunchOpen = true;
   }
 
-  /** Pages with their own layout - skip the marketing header/footer. */
+  /** Pages with their own layout - skip the marketing header/footer.
+   *  Also skip for signed-in users on /demo (they get the app-style
+   *  header rendered by routes/demo/+layout.svelte). */
+  const isSignedInOnLocalhost = $derived(
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"),
+  );
   const isPublicPage = $derived(
     page.url.pathname.startsWith("/view") ||
       page.url.pathname.startsWith("/conflicts") ||
-      page.url.pathname.startsWith("/app"),
+      page.url.pathname.startsWith("/app") ||
+      (page.url.pathname.startsWith("/demo") && (!!data.user || isSignedInOnLocalhost)),
   );
 
   /*
