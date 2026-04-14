@@ -2554,7 +2554,8 @@
     <p class="chooser-hint">
       Assign each column to a conflict field. Names are matched against both
       your cast list and production team; rows with unknown names will be skipped.
-      A date cell may contain multiple comma-separated dates.
+      A date cell may contain multiple comma-separated dates, and you can map
+      "Date" to more than one column (wide-format spreadsheets).
     </p>
 
     <div class="csv-mapping-table">

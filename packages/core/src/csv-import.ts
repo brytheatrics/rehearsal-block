@@ -587,8 +587,15 @@ export function autoMapConflictColumns(headers: string[]): (ConflictField | null
   const mapping: (ConflictField | null)[] = [];
   for (const h of headers) {
     const normalized = h.trim().toLowerCase().replace(/[_\-]/g, " ");
-    const field = CONFLICT_HEADER_ALIASES[normalized] ?? null;
-    if (field && !used.has(field)) {
+    let field = CONFLICT_HEADER_ALIASES[normalized] ?? null;
+    // Headers like "date 1", "date 2", "conflict date 3" all map to date.
+    // The `date` field is allowed to repeat (wide-format spreadsheets).
+    if (!field && /^(?:conflict\s+)?date\s*\d*$/.test(normalized)) {
+      field = "date";
+    }
+    if (field === "date") {
+      mapping.push(field);
+    } else if (field && !used.has(field)) {
       mapping.push(field);
       used.add(field);
     } else {
@@ -735,26 +742,37 @@ export function mapRowsToConflicts(
 
   for (const row of rows) {
     const raw: Partial<Record<ConflictField, string>> = {};
+    const dateCells: string[] = [];
     for (let c = 0; c < mapping.length; c++) {
       const field = mapping[c];
-      if (field && c < row.length) {
-        raw[field] = row[c]!.trim();
+      if (!field || c >= row.length) continue;
+      const value = row[c]!.trim();
+      // Date can be mapped to multiple columns (wide format); collect them all.
+      if (field === "date") {
+        if (value) dateCells.push(value);
+      } else {
+        raw[field] = value;
       }
     }
 
     const rawName = raw.name ?? "";
-    const dateRaw = raw.date ?? "";
     if (!rawName) {
       skipped++;
       continue;
     }
 
-    // "No Conflicts"-style markers and empty cells are silent skips, not errors.
-    if (!dateRaw || EMPTY_DATE_MARKERS.has(dateRaw.trim().toLowerCase())) {
+    // All date cells empty or filled only with "No Conflicts"-style markers
+    // is a silent skip, not an error.
+    if (dateCells.length === 0
+        || dateCells.every((s) => EMPTY_DATE_MARKERS.has(s.toLowerCase()))) {
       continue;
     }
 
-    const dates = parseDateCells(dateRaw);
+    const dateSet = new Set<string>();
+    for (const cell of dateCells) {
+      for (const iso of parseDateCells(cell)) dateSet.add(iso);
+    }
+    const dates = [...dateSet];
     if (dates.length === 0) {
       skipped++;
       continue;
@@ -861,15 +879,22 @@ export function extractConflictsFromPeopleRows(
 
   for (const row of rows) {
     const raw: Record<string, string> = {};
+    const dateCells: string[] = [];
     for (let c = 0; c < mapping.length; c++) {
       const field = mapping[c];
-      if (field && c < row.length) {
-        raw[field] = row[c]!.trim();
+      if (!field || c >= row.length) continue;
+      const value = row[c]!.trim();
+      if (field === "conflictDate") {
+        if (value) dateCells.push(value);
+      } else {
+        raw[field] = value;
       }
     }
 
-    const dateRaw = raw.conflictDate ?? "";
-    if (!dateRaw || EMPTY_DATE_MARKERS.has(dateRaw.trim().toLowerCase())) continue;
+    if (dateCells.length === 0
+        || dateCells.every((s) => EMPTY_DATE_MARKERS.has(s.toLowerCase()))) {
+      continue;
+    }
 
     const firstName = raw.firstName ?? "";
     const lastName = raw.lastName ?? "";
@@ -880,7 +905,11 @@ export function extractConflictsFromPeopleRows(
       continue;
     }
 
-    const dates = parseDateCells(dateRaw);
+    const dateSet = new Set<string>();
+    for (const cell of dateCells) {
+      for (const iso of parseDateCells(cell)) dateSet.add(iso);
+    }
+    const dates = [...dateSet];
     if (dates.length === 0) {
       skipped++;
       continue;
