@@ -14,7 +14,7 @@
   import MyDefaultsModal from "$lib/components/app/MyDefaultsModal.svelte";
   import EditShowModal from "$lib/components/app/EditShowModal.svelte";
   import { listShowsMeta, type ShowIndexRow } from "$lib/storage/index.js";
-  import { localListShows, localSaveShow, localDeleteShow } from "$lib/storage/local.js";
+  import { localListShows, localSaveShow, localDeleteShow, localLoadShow } from "$lib/storage/local.js";
   import type { StoredShow } from "$lib/storage/types.js";
 
   let { data } = $props();
@@ -45,6 +45,103 @@
   };
 
   let shows = $state<ShowEntry[]>([]);
+  /** Full docs cached in IndexedDB - used to compute "this week rehearsals". */
+  let fullDocs = $state<Map<string, StoredShow>>(new Map());
+
+  // ---- Dashboard computation ----
+
+  function daysBetween(a: string, b: string): number {
+    const d1 = new Date(a + "T00:00:00Z");
+    const d2 = new Date(b + "T00:00:00Z");
+    return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  function todayIso(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function weekEndIso(): string {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /** Shows currently in rehearsal (today within start-end). */
+  const inRehearsal = $derived(
+    shows
+      .filter((s) => !s.archived && s.startDate && s.endDate)
+      .filter((s) => {
+        const today = todayIso();
+        return today >= s.startDate! && today <= s.endDate!;
+      })
+      .sort((a, b) => (a.endDate ?? "").localeCompare(b.endDate ?? "")),
+  );
+
+  /** Shows opening in the next 30 days. */
+  const openingSoon = $derived(
+    shows
+      .filter((s) => !s.archived && s.startDate)
+      .filter((s) => {
+        const days = daysBetween(todayIso(), s.startDate!);
+        return days > 0 && days <= 30;
+      })
+      .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? "")),
+  );
+
+  /** Shows closing in the next 14 days (end date). */
+  const closingSoon = $derived(
+    shows
+      .filter((s) => !s.archived && s.endDate)
+      .filter((s) => {
+        const days = daysBetween(todayIso(), s.endDate!);
+        return days >= 0 && days <= 14;
+      })
+      .sort((a, b) => (a.endDate ?? "").localeCompare(b.endDate ?? "")),
+  );
+
+  /** Rehearsals across all active shows happening in the next 7 days. */
+  const thisWeekRehearsals = $derived.by(() => {
+    const today = todayIso();
+    const weekEnd = weekEndIso();
+    const rehearsals: Array<{ showId: string; showName: string; date: string; dayCount: number }> = [];
+
+    for (const show of shows) {
+      if (show.archived) continue;
+      const doc = fullDocs.get(show.id);
+      if (!doc) continue;
+      const schedule = doc.document.schedule ?? {};
+      for (const [date, day] of Object.entries(schedule)) {
+        if (!day) continue;
+        if (date < today || date > weekEnd) continue;
+        const hasContent = (day.calls && day.calls.length > 0) || day.description || day.notes;
+        if (!hasContent) continue;
+        rehearsals.push({
+          showId: show.id,
+          showName: show.name,
+          date,
+          dayCount: day.calls?.length ?? 0,
+        });
+      }
+    }
+
+    return rehearsals.sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  function formatShortDate(iso: string): string {
+    const d = new Date(iso + "T00:00:00Z");
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  }
+
+  function formatRelativeDate(iso: string): string {
+    const days = daysBetween(todayIso(), iso);
+    if (days === 0) return "Today";
+    if (days === 1) return "Tomorrow";
+    if (days === -1) return "Yesterday";
+    if (days > 0 && days <= 7) return `In ${days} days`;
+    if (days < 0 && days >= -7) return `${-days} days ago`;
+    const d = new Date(iso + "T00:00:00Z");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  }
 
   const isLocalhost = $derived(
     typeof window !== "undefined" &&
@@ -97,6 +194,18 @@
         shows = [];
       }
     }
+
+    // Load full docs from IndexedDB for dashboard "this week" computation.
+    // Missing docs are OK - the section just won't count those shows.
+    const docMap = new Map<string, StoredShow>();
+    for (const show of shows) {
+      try {
+        const doc = await localLoadShow(show.id);
+        if (doc) docMap.set(show.id, doc);
+      } catch { /* ignore */ }
+    }
+    fullDocs = docMap;
+
     loading = false;
   }
 
@@ -336,23 +445,12 @@
   <title>My Shows - Rehearsal Block</title>
 </svelte:head>
 
-<div class="shows-page container">
-  <div class="calendar-frame">
+<div class="shows-page container" class:is-empty={shows.length === 0 && !loading}>
   <header class="page-header">
     <div>
       <h1>{(data.user?.email?.split("@")[0] ?? "My").charAt(0).toUpperCase() + (data.user?.email?.split("@")[0] ?? "y").slice(1)}'s Shows</h1>
     </div>
     <div class="header-actions">
-      {#if archivedCount > 0}
-        <button
-          type="button"
-          class="btn-toggle"
-          class:active={showArchived}
-          onclick={() => (showArchived = !showArchived)}
-        >
-          {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-        </button>
-      {/if}
       <button
         type="button"
         class="defaults-btn"
@@ -394,92 +492,166 @@
     <div class="loading-state">
       <p>Loading shows...</p>
     </div>
+  {:else if shows.length === 0}
+    <div class="empty-hero">
+      <h2>Ready for your next production?</h2>
+      <p>
+        Create a show and start building your rehearsal schedule. Cast,
+        production team, locations, conflicts, every rehearsal day - it
+        all lives in one place.
+      </p>
+      <div class="empty-actions">
+        <button
+          type="button"
+          class="btn btn-primary btn-lg"
+          onclick={() => (newShowOpen = true)}
+        >
+          + New Show
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary"
+          title="Import a previously exported .json show file"
+          onclick={handleImport}
+        >
+          Import Show File
+        </button>
+      </div>
+    </div>
   {:else}
-  <div class="calendar-backdrop">
-    <div class="weekday-headers">
-      <div class="weekday-placeholder">
-        <span class="weekday-line"></span>
-      </div>
-      <div class="weekday-placeholder">
-        <span class="weekday-line"></span>
-      </div>
-      <div class="weekday-placeholder">
-        <span class="weekday-line"></span>
-      </div>
-    </div>
-    {#if shows.length === 0}
-      <div class="calendar-cell calendar-cell-empty-state">
-        <h2>Ready for your next production?</h2>
-        <p>
-          Create a show and start building your rehearsal schedule. Cast,
-          production team, locations, conflicts, every rehearsal day - it
-          all lives in one place.
-        </p>
-        <div class="empty-actions">
-          <button
-            type="button"
-            class="btn btn-primary btn-lg"
-            onclick={() => (newShowOpen = true)}
-          >
-            + New Show
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary"
-            title="Import a previously exported .json show file"
-            onclick={handleImport}
-          >
-            Import Show File
-          </button>
-        </div>
-      </div>
-      {#each Array(11) as _, i (i)}
-        <div class="calendar-cell calendar-cell-placeholder">
-          <span class="cell-dot"></span>
-        </div>
-      {/each}
-    {:else}
-      {#each visibleShows as show (show.id)}
-        <div class="calendar-cell calendar-cell-filled">
-          <ShowCard
-            id={show.id}
-            name={show.name}
-            startDate={show.startDate ?? ""}
-            endDate={show.endDate ?? ""}
-            castCount={show.castCount}
-            updatedAt={show.updatedAt}
-            archived={show.archived}
-            onopen={handleOpen}
-            onedit={handleEdit}
-            onarchive={handleArchive}
-            onduplicate={handleDuplicate}
-            ondelete={handleDelete}
-            onexport={handleExport}
-          />
-        </div>
-      {/each}
-      {#each Array(Math.max(0, 12 - visibleShows.length)) as _, i (i)}
-        <div class="calendar-cell calendar-cell-placeholder">
-          <span class="cell-dot"></span>
-        </div>
-      {/each}
-    {/if}
-  </div>
+    <div class="dashboard">
+      <!-- Main content: magazine-style show grid -->
+      <main class="show-grid-wrap">
+        {#if visibleShows.length === 0}
+          <div class="muted-state">
+            <p>All your shows are archived.</p>
+            <button
+              type="button"
+              class="btn-toggle active"
+              onclick={() => (showArchived = true)}
+            >
+              Show archived ({archivedCount})
+            </button>
+          </div>
+        {:else}
+          <div class="magazine-grid">
+            {#each visibleShows as show, idx (show.id)}
+              <div class="mag-cell" class:mag-featured={idx === 0 && visibleShows.length > 1}>
+                <ShowCard
+                  id={show.id}
+                  name={show.name}
+                  startDate={show.startDate ?? ""}
+                  endDate={show.endDate ?? ""}
+                  castCount={show.castCount}
+                  updatedAt={show.updatedAt}
+                  archived={show.archived}
+                  onopen={handleOpen}
+                  onedit={handleEdit}
+                  onarchive={handleArchive}
+                  onduplicate={handleDuplicate}
+                  ondelete={handleDelete}
+                  onexport={handleExport}
+                />
+              </div>
+            {/each}
+          </div>
+        {/if}
 
-  {#if visibleShows.length === 0 && shows.length > 0}
-    <div class="empty-state empty-state-muted">
-      <p>All your shows are archived.</p>
-      <button
-        type="button"
-        class="btn-toggle active"
-        onclick={() => (showArchived = true)}
-      >
-        Show archived ({archivedCount})
-      </button>
+        {#if archivedCount > 0}
+          <div class="archived-footer">
+            <button
+              type="button"
+              class="archived-link"
+              onclick={() => (showArchived = !showArchived)}
+            >
+              {showArchived ? "Hide archived" : `Show ${archivedCount} archived`}
+            </button>
+          </div>
+        {/if}
+      </main>
+
+      <!-- Right sidebar: dashboard -->
+      <aside class="dashboard-sidebar">
+        <section class="sb-section">
+          <h3>In rehearsal</h3>
+          {#if inRehearsal.length === 0}
+            <p class="sb-empty">No active productions</p>
+          {:else}
+            <ul class="sb-list">
+              {#each inRehearsal as show (show.id)}
+                <li>
+                  <a href="/app/{show.id}" class="sb-item">
+                    <span class="sb-item-title">{show.name}</span>
+                    <span class="sb-item-meta">Closes {formatRelativeDate(show.endDate!)}</span>
+                  </a>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+
+        <section class="sb-section">
+          <h3>This week</h3>
+          {#if thisWeekRehearsals.length === 0}
+            <p class="sb-empty">Nothing scheduled this week</p>
+          {:else}
+            <p class="sb-summary">{thisWeekRehearsals.length} rehearsal{thisWeekRehearsals.length === 1 ? "" : "s"} scheduled</p>
+            <ul class="sb-list sb-list-compact">
+              {#each thisWeekRehearsals.slice(0, 5) as r}
+                <li>
+                  <a href="/app/{r.showId}" class="sb-item sb-item-small">
+                    <span class="sb-item-title-row">
+                      <span class="sb-date">{formatShortDate(r.date)}</span>
+                      <span class="sb-item-title-sm">{r.showName}</span>
+                    </span>
+                  </a>
+                </li>
+              {/each}
+            </ul>
+            {#if thisWeekRehearsals.length > 5}
+              <p class="sb-more">+ {thisWeekRehearsals.length - 5} more</p>
+            {/if}
+          {/if}
+        </section>
+
+        <section class="sb-section">
+          <h3>Opening soon</h3>
+          {#if openingSoon.length === 0}
+            <p class="sb-empty">Nothing opening in the next 30 days</p>
+          {:else}
+            <ul class="sb-list">
+              {#each openingSoon as show (show.id)}
+                <li>
+                  <a href="/app/{show.id}" class="sb-item">
+                    <span class="sb-item-title">{show.name}</span>
+                    <span class="sb-item-meta">Opens {formatRelativeDate(show.startDate!)}</span>
+                  </a>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+
+        <section class="sb-section">
+          <h3>Closing soon</h3>
+          {#if closingSoon.length === 0}
+            <p class="sb-empty">Nothing closing in the next 14 days</p>
+          {:else}
+            <ul class="sb-list">
+              {#each closingSoon as show (show.id)}
+                <li>
+                  <a href="/app/{show.id}" class="sb-item">
+                    <span class="sb-item-title">{show.name}</span>
+                    <span class="sb-item-meta">Closes {formatRelativeDate(show.endDate!)}</span>
+                  </a>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+      </aside>
     </div>
   {/if}
-  {/if}
-  </div>
 </div>
 
 {#if newShowOpen}
@@ -528,105 +700,200 @@
     position: relative;
   }
 
-  .calendar-frame {
-    border: 1px solid #eff0f2;
-    border-radius: var(--radius-lg);
-    padding: var(--space-4);
-    box-shadow: var(--shadow-md);
-  }
-
-  .calendar-backdrop {
+  /* ---- Dashboard layout: grid + sidebar ---- */
+  .dashboard {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: var(--space-6);
+    align-items: start;
   }
 
-  .weekday-headers {
-    grid-column: 1 / -1;
+  @media (max-width: 1024px) {
+    .dashboard {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ---- Magazine-style show grid ---- */
+  .magazine-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-    margin-bottom: 2px;
-    background: #dfe1e5;
-    border-radius: var(--radius-sm);
-    padding: 10px 0;
-    opacity: 0.3;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
   }
 
-  .weekday-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .weekday-line {
-    display: block;
-    width: 30%;
-    height: 10px;
-    border-radius: 4px;
-    background: #ffffff;
-    opacity: 0.7;
-  }
-
-  .calendar-cell {
-    border: 1px solid #eff0f2;
-    border-radius: var(--radius-md);
-    min-height: 280px;
-    background: var(--color-surface);
-  }
-
-  .calendar-cell-placeholder {
-    position: relative;
-    background: linear-gradient(180deg, #ffffff 0%, #ffffff 50%, #f8f8f9 100%);
-    border-color: var(--color-border);
-    opacity: 0.6;
-  }
-
-  .cell-dot {
-    position: absolute;
-    top: 18px;
-    left: 18px;
-    width: 12px;
-    height: 12px;
-    border-radius: var(--radius-sm);
-    background: #dfe1e5;
-    opacity: 0.45;
-  }
-
-  .calendar-cell-filled {
-    padding: 14px;
+  .mag-cell {
     display: flex;
   }
-  .calendar-cell-filled :global(.show-card) {
-    min-height: 0;
+  .mag-cell :global(.show-card) {
     flex: 1;
     border-radius: var(--radius-md);
-    padding: var(--space-3) var(--space-3);
-    font-size: 0.9em;
   }
 
-  .calendar-cell-empty-state {
+  /* Featured (most recently edited) spans both columns */
+  .mag-featured {
     grid-column: 1 / -1;
+  }
+  .mag-featured :global(.show-card) {
+    min-height: 260px;
+    padding: var(--space-5) var(--space-5);
+  }
+  .mag-featured :global(.show-card h3.card-title) {
+    font-size: 1.75rem;
+  }
+
+  @media (max-width: 600px) {
+    .magazine-grid {
+      grid-template-columns: 1fr;
+    }
+    .mag-featured {
+      grid-column: auto;
+    }
+  }
+
+  /* ---- Right sidebar ---- */
+  .dashboard-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    position: sticky;
+    top: var(--space-5);
+  }
+
+  @media (max-width: 1024px) {
+    .dashboard-sidebar {
+      position: static;
+    }
+  }
+
+  .sb-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .sb-section h3 {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-teal);
+    margin: 0 0 var(--space-2);
+  }
+
+  .sb-empty {
+    font-size: 0.8125rem;
+    color: var(--color-text-subtle);
+    font-style: italic;
+    margin: 0;
+  }
+
+  .sb-summary {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-2);
+  }
+
+  .sb-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .sb-list-compact {
+    gap: 2px;
+  }
+
+  .sb-item {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-2) 0;
+    color: var(--color-text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .sb-list li:last-child .sb-item {
+    border-bottom: none;
+  }
+  .sb-item:hover {
+    color: var(--color-teal);
+    text-decoration: none;
+  }
+
+  .sb-item-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sb-item-meta {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+  }
+
+  .sb-item-small {
+    padding: var(--space-1) 0;
+    border-bottom: none;
+  }
+
+  .sb-item-title-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: baseline;
+    font-size: 0.8125rem;
+  }
+
+  .sb-date {
+    font-weight: 700;
+    color: var(--color-plum);
+    font-family: var(--font-display);
+    flex-shrink: 0;
+    width: 70px;
+  }
+
+  .sb-item-title-sm {
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sb-more {
+    font-size: 0.75rem;
+    color: var(--color-text-subtle);
+    margin: var(--space-1) 0 0;
+  }
+
+  /* ---- Empty state (no shows yet) ---- */
+  .empty-hero {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: var(--space-7) var(--space-5);
-    gap: var(--space-3);
-    border: 1px dashed var(--color-border-strong);
-    background: var(--color-bg-alt);
+    padding: var(--space-8) var(--space-5);
+    gap: var(--space-4);
   }
 
-  .calendar-cell-empty-state h2 {
-    font-size: 1.5rem;
+  .empty-hero h2 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--color-plum);
     margin: 0;
   }
 
-  .calendar-cell-empty-state p {
-    max-width: 420px;
+  .empty-hero p {
+    max-width: 460px;
     color: var(--color-text-muted);
     line-height: 1.6;
     margin: 0;
+    font-size: 1rem;
   }
 
   .empty-actions {
@@ -635,6 +902,38 @@
     align-items: center;
     flex-wrap: wrap;
     justify-content: center;
+    margin-top: var(--space-3);
+  }
+
+  /* ---- Archived footer link ---- */
+  .archived-footer {
+    margin-top: var(--space-5);
+    text-align: center;
+  }
+
+  .archived-link {
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: var(--space-2);
+  }
+  .archived-link:hover {
+    color: var(--color-plum);
+  }
+
+  .muted-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--space-6) var(--space-5);
+    gap: var(--space-3);
+    color: var(--color-text-muted);
   }
 
   .page-header {
@@ -652,7 +951,7 @@
     margin: 0;
     color: var(--color-plum-light);
     font-family: "Playfair Display", Georgia, serif;
-    padding-left: 14px;
+    font-size: 2.5rem;
   }
 
   .header-actions {
