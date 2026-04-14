@@ -1074,15 +1074,6 @@
               </button>
               <button
                 type="button"
-                class="zoom-btn"
-                class:selected={zoomMode === "actual"}
-                onclick={zoomActual}
-                title="Actual size (100%)"
-              >
-                100%
-              </button>
-              <button
-                type="button"
                 class="zoom-btn zoom-icon-btn"
                 onclick={zoomOut}
                 title="Zoom out"
