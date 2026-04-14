@@ -39,8 +39,11 @@
     mergeCrewImport,
     CAST_FIELD_LABELS,
     CREW_FIELD_LABELS,
+    autoMapConflictColumns,
+    mapRowsToConflicts,
+    CONFLICT_FIELD_LABELS,
   } from "@rehearsal-block/core";
-  import type { CastField, CrewField, ImportMode, ImportResult, CsvParseResult } from "@rehearsal-block/core";
+  import type { CastField, CrewField, ConflictField, ImportMode, ImportResult, CsvParseResult } from "@rehearsal-block/core";
   import ActorConflictPicker from "./ActorConflictPicker.svelte";
   import {
     EVENT_TYPE_COLOR_PALETTE,
@@ -93,6 +96,8 @@
     onimportcast?: (added: CastMember[], updates: { id: string; patch: Partial<CastMember> }[]) => void;
     /** Bulk import crew from CSV. */
     onimportcrew?: (added: CrewMember[], updates: { id: string; patch: Partial<CrewMember> }[]) => void;
+    /** Bulk add conflicts from CSV. */
+    onimportconflicts?: (conflicts: Conflict[]) => void;
     /** Open the conflict collection modal (send link to actors). */
     oncollectconflicts?: () => void;
     /** When true, render without backdrop/modal chrome - just tabs + content.
@@ -132,6 +137,7 @@
     onreordercrew,
     onimportcast,
     onimportcrew,
+    onimportconflicts,
     oncollectconflicts,
     contactsLocked = false,
     onpaywall,
@@ -604,6 +610,92 @@
 
   function dismissCrewImportResult() {
     crewCsvResult = null;
+  }
+
+  // Import choice popup: which section opened it, and which kind they picked
+  type ImportSection = "cast" | "crew";
+  let importChooser = $state<ImportSection | null>(null);
+  let conflictImportSource = $state<ImportSection | null>(null); // which pool to match names against
+
+  // Conflict CSV import state (shared between cast and crew sections)
+  let conflictCsvParsed = $state<CsvParseResult | null>(null);
+  let conflictCsvMapping = $state<(ConflictField | null)[]>([]);
+  let conflictCsvFileInput = $state<HTMLInputElement | null>(null);
+  let conflictImportSummary = $state<{ added: number; unmatchedNames: string[]; skipped: number } | null>(null);
+
+  function openImportChooser(section: ImportSection) {
+    if (contactsLocked) { gate(); return; }
+    importChooser = section;
+  }
+  function closeImportChooser() { importChooser = null; }
+
+  function chooseImportKind(kind: "people" | "conflicts") {
+    const section = importChooser;
+    if (!section) return;
+    importChooser = null;
+    if (kind === "people") {
+      if (section === "cast") csvFileInput?.click();
+      else crewCsvFileInput?.click();
+    } else {
+      conflictImportSource = section;
+      conflictCsvFileInput?.click();
+    }
+  }
+
+  function handleConflictCsvFile(e: Event) {
+    if (contactsLocked) { gate(); return; }
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      const parsed = parseCsvText(text);
+      if (parsed.headers.length === 0) return;
+      conflictCsvParsed = parsed;
+      conflictCsvMapping = autoMapConflictColumns(parsed.headers);
+      conflictImportSummary = null;
+    };
+    reader.readAsText(file);
+    (e.target as HTMLInputElement).value = "";
+  }
+
+  function cancelConflictCsvImport() {
+    conflictCsvParsed = null;
+    conflictCsvMapping = [];
+    conflictImportSource = null;
+  }
+
+  function updateConflictCsvMapping(colIndex: number, value: string) {
+    const next = [...conflictCsvMapping];
+    next[colIndex] = value === "" ? null : (value as ConflictField);
+    conflictCsvMapping = next;
+  }
+
+  const conflictCsvPreviewRows = $derived.by(() => {
+    if (!conflictCsvParsed) return [];
+    return conflictCsvParsed.rows.slice(0, 5);
+  });
+
+  function executeConflictCsvImport() {
+    if (!conflictCsvParsed) return;
+    const pool = conflictImportSource === "crew"
+      ? show.crew.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName }))
+      : show.cast.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName }));
+    const result = mapRowsToConflicts(conflictCsvParsed.rows, conflictCsvMapping, pool);
+    if (result.matched.length > 0) {
+      onimportconflicts?.(result.matched);
+    }
+    conflictImportSummary = {
+      added: result.matched.length,
+      unmatchedNames: result.unmatchedNames,
+      skipped: result.skipped,
+    };
+    conflictCsvParsed = null;
+    conflictImportSource = null;
+  }
+
+  function dismissConflictImportSummary() {
+    conflictImportSummary = null;
   }
 
   // Crew editing state
@@ -1597,7 +1689,7 @@
                 Collect conflicts
               </button>
             {/if}
-            <button type="button" class="ghost-btn ghost-btn-outline" onclick={() => { if (contactsLocked) { gate(); return; } csvFileInput?.click(); }}>
+            <button type="button" class="ghost-btn ghost-btn-outline" onclick={() => openImportChooser("cast")}>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M440-320v-326L336-542l-56-58 200-200 200 200-56 58-104-104v326h-80ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></svg>
               Import CSV
             </button>
@@ -1915,7 +2007,7 @@
             <p class="hint">Click a card to expand and edit. Shift+&lt; / Shift+&gt; to collapse/expand all.</p>
           </div>
           <div class="section-header-actions">
-            <button type="button" class="ghost-btn ghost-btn-outline" onclick={() => { if (contactsLocked) { gate(); return; } crewCsvFileInput?.click(); }}>
+            <button type="button" class="ghost-btn ghost-btn-outline" onclick={() => openImportChooser("crew")}>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M440-320v-326L336-542l-56-58 200-200 200 200-56 58-104-104v326h-80ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></svg>
               Import CSV
             </button>
@@ -2290,6 +2382,144 @@
     onassign={(iso) => onassigneventtype(calendarType.id, iso)}
     onclose={() => (calendarForTypeId = null)}
   />
+{/if}
+
+<!-- Hidden conflict CSV file input (shared between cast and crew sections) -->
+<input type="file" accept=".csv" class="sr-only" bind:this={conflictCsvFileInput} onchange={handleConflictCsvFile} />
+
+<!-- Import kind chooser popup -->
+{#if importChooser}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="chooser-backdrop" onclick={closeImportChooser}></div>
+  <div class="chooser-modal" role="dialog" aria-label="Import CSV">
+    <h3>Import CSV</h3>
+    <p class="chooser-hint">What are you importing?</p>
+    <div class="chooser-options">
+      <button type="button" class="chooser-option" onclick={() => chooseImportKind("people")}>
+        <strong>{importChooser === "cast" ? "Cast List" : "Team List"}</strong>
+        <span>Names, roles, contact info</span>
+      </button>
+      <button type="button" class="chooser-option" onclick={() => chooseImportKind("conflicts")}>
+        <strong>Conflicts</strong>
+        <span>Dates (and optional times) when people are unavailable</span>
+      </button>
+    </div>
+    <div class="chooser-footer">
+      <button type="button" class="ghost-btn" onclick={closeImportChooser}>Cancel</button>
+    </div>
+  </div>
+{/if}
+
+<!-- Conflict CSV column mapping panel -->
+{#if conflictCsvParsed}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="chooser-backdrop" onclick={cancelConflictCsvImport}></div>
+  <div class="chooser-modal conflict-mapping-modal" role="dialog" aria-label="Map conflict CSV columns">
+    <h3>Map CSV Columns - Conflicts</h3>
+    <p class="chooser-hint">
+      Assign each column to a conflict field. Names are matched against your
+      {conflictImportSource === "crew" ? "production team" : "cast list"}; rows with unknown names will be skipped.
+    </p>
+
+    <div class="csv-mapping-table">
+      <div class="csv-mapping-row csv-mapping-header-row">
+        <span class="csv-mapping-col-name">CSV Column</span>
+        <span class="csv-mapping-col-sample">Sample</span>
+        <span class="csv-mapping-col-field">Map to</span>
+      </div>
+      {#each conflictCsvParsed.headers as header, idx}
+        {@const sample = conflictCsvParsed.rows[0]?.[idx] ?? ""}
+        <div class="csv-mapping-row">
+          <span class="csv-mapping-col-name" title={header}>{header}</span>
+          <span class="csv-mapping-col-sample" title={sample}>{sample || "-"}</span>
+          <select
+            class="csv-mapping-select"
+            value={conflictCsvMapping[idx] ?? ""}
+            onchange={(e) => updateConflictCsvMapping(idx, e.currentTarget.value)}
+          >
+            <option value="">Skip</option>
+            {#each Object.entries(CONFLICT_FIELD_LABELS) as [field, label]}
+              <option value={field}>{label}</option>
+            {/each}
+          </select>
+        </div>
+      {/each}
+    </div>
+
+    {#if conflictCsvPreviewRows.length > 0}
+      <div class="csv-preview-section">
+        <h4>Preview (first {conflictCsvPreviewRows.length} row{conflictCsvPreviewRows.length !== 1 ? "s" : ""})</h4>
+        <div class="csv-preview-scroll">
+          <table class="csv-preview-table">
+            <thead>
+              <tr>
+                {#each conflictCsvMapping as field}
+                  {#if field}
+                    <th>{CONFLICT_FIELD_LABELS[field]}</th>
+                  {/if}
+                {/each}
+              </tr>
+            </thead>
+            <tbody>
+              {#each conflictCsvPreviewRows as row}
+                <tr>
+                  {#each conflictCsvMapping as field, idx}
+                    {#if field}
+                      <td>{row[idx]?.trim() || ""}</td>
+                    {/if}
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {/if}
+
+    <div class="csv-import-actions">
+      <button type="button" class="csv-cancel-btn" onclick={cancelConflictCsvImport}>Cancel</button>
+      <button type="button" class="ghost-btn" onclick={executeConflictCsvImport}>
+        Import {conflictCsvParsed.rows.length} row{conflictCsvParsed.rows.length !== 1 ? "s" : ""}
+      </button>
+    </div>
+  </div>
+{/if}
+
+<!-- Conflict import result / unmatched names warning -->
+{#if conflictImportSummary}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="chooser-backdrop" onclick={dismissConflictImportSummary}></div>
+  <div class="chooser-modal" role="dialog" aria-label="Conflict import complete">
+    <h3>Import complete</h3>
+    <ul class="csv-result-list">
+      {#if conflictImportSummary.added > 0}
+        <li>{conflictImportSummary.added} conflict{conflictImportSummary.added !== 1 ? "s" : ""} added</li>
+      {/if}
+      {#if conflictImportSummary.skipped > 0}
+        <li>{conflictImportSummary.skipped} row{conflictImportSummary.skipped !== 1 ? "s" : ""} skipped (missing name or date)</li>
+      {/if}
+      {#if conflictImportSummary.added === 0 && conflictImportSummary.unmatchedNames.length === 0 && conflictImportSummary.skipped === 0}
+        <li>No rows imported.</li>
+      {/if}
+    </ul>
+    {#if conflictImportSummary.unmatchedNames.length > 0}
+      <div class="unmatched-warning">
+        <strong>The following names didn't match anyone in your cast or production team, so their conflicts were not imported:</strong>
+        <ul>
+          {#each conflictImportSummary.unmatchedNames as name}
+            <li>{name}</li>
+          {/each}
+        </ul>
+        <p class="chooser-hint">Add these people first, then re-import to bring in their conflicts.</p>
+      </div>
+    {/if}
+    <div class="chooser-footer">
+      <button type="button" class="ghost-btn" onclick={dismissConflictImportSummary}>Close</button>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -4012,5 +4242,95 @@
   }
   .csv-result-dismiss:hover {
     background: #c8e6c9;
+  }
+
+  .chooser-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(45, 31, 61, 0.6);
+    z-index: 1100;
+  }
+  .chooser-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 480px;
+    max-width: calc(100vw - 2 * var(--space-4));
+    max-height: calc(100vh - 2 * var(--space-4));
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-5);
+    z-index: 1110;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    overflow-y: auto;
+  }
+  .chooser-modal.conflict-mapping-modal {
+    width: 640px;
+  }
+  .chooser-modal h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+  .chooser-hint {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+  .chooser-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .chooser-option {
+    font: inherit;
+    text-align: left;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--color-text);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+  }
+  .chooser-option:hover {
+    border-color: var(--color-plum);
+    background: var(--color-surface-hover, rgba(45, 31, 61, 0.04));
+  }
+  .chooser-option strong {
+    font-size: 0.9375rem;
+  }
+  .chooser-option span {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+  .chooser-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+  .unmatched-warning {
+    background: #fff4e5;
+    border: 1px solid #f5c48c;
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    font-size: 0.8125rem;
+    color: #8a4b00;
+  }
+  .unmatched-warning strong {
+    display: block;
+    margin-bottom: var(--space-2);
+  }
+  .unmatched-warning ul {
+    margin: 0 0 var(--space-2);
+    padding-left: var(--space-4);
   }
 </style>

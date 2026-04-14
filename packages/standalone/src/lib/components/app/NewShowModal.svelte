@@ -263,6 +263,10 @@
   function removeConflict(id: string) {
     tempDoc.conflicts = tempDoc.conflicts.filter((c) => c.id !== id);
   }
+  function importConflicts(conflicts: Conflict[]) {
+    if (conflicts.length === 0) return;
+    tempDoc.conflicts = [...tempDoc.conflicts, ...conflicts];
+  }
 </script>
 
 <svelte:window onkeydown={handleKey} />
@@ -365,6 +369,7 @@
             onreordercrew={reorderCrewMember}
             onimportcast={importCast}
             onimportcrew={importCrew}
+            onimportconflicts={importConflicts}
           />
         </div>
       {/if}

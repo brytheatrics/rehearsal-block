@@ -5,7 +5,7 @@
  * so users can map arbitrary CSV columns to CastMember fields.
  */
 
-import type { CastMember, CrewMember } from "./types.js";
+import type { CastMember, Conflict, CrewMember } from "./types.js";
 import { CAST_COLOR_PALETTE } from "./schedule.js";
 import { formatPhone } from "./cast.js";
 
@@ -493,4 +493,254 @@ export function mergeCrewImport(
   }
 
   return { added, updated, skipped };
+}
+
+
+// ===========================================================================
+// Conflict CSV import
+// ===========================================================================
+
+/** Fields on a Conflict that can be mapped from a CSV column. */
+export type ConflictField =
+  | "name"        // person's name (matched against cast/crew firstName + lastName)
+  | "date"        // ISO date YYYY-MM-DD (or any common format we can parse)
+  | "startTime"   // optional HH:MM for timed conflicts
+  | "endTime"     // optional HH:MM for timed conflicts
+  | "label";      // optional reason/label
+
+export const CONFLICT_FIELD_LABELS: Record<ConflictField, string> = {
+  name: "Name",
+  date: "Date",
+  startTime: "Start Time",
+  endTime: "End Time",
+  label: "Reason",
+};
+
+const CONFLICT_HEADER_ALIASES: Record<string, ConflictField> = {
+  "name": "name",
+  "actor": "name",
+  "actor name": "name",
+  "person": "name",
+  "full name": "name",
+  "first name": "name",
+  "date": "date",
+  "conflict date": "date",
+  "day": "date",
+  "start time": "startTime",
+  "start": "startTime",
+  "from": "startTime",
+  "begin": "startTime",
+  "end time": "endTime",
+  "end": "endTime",
+  "until": "endTime",
+  "to": "endTime",
+  "finish": "endTime",
+  "reason": "label",
+  "label": "label",
+  "note": "label",
+  "notes": "label",
+  "description": "label",
+  "type": "label",
+};
+
+export function autoMapConflictColumns(headers: string[]): (ConflictField | null)[] {
+  const used = new Set<ConflictField>();
+  const mapping: (ConflictField | null)[] = [];
+  for (const h of headers) {
+    const normalized = h.trim().toLowerCase().replace(/[_\-]/g, " ");
+    const field = CONFLICT_HEADER_ALIASES[normalized] ?? null;
+    if (field && !used.has(field)) {
+      mapping.push(field);
+      used.add(field);
+    } else {
+      mapping.push(null);
+    }
+  }
+  return mapping;
+}
+
+/** Try multiple common date formats. Returns YYYY-MM-DD or null. */
+function parseDateCell(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Already ISO YYYY-MM-DD
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${y}-${m!.padStart(2, "0")}-${d!.padStart(2, "0")}`;
+  }
+
+  // M/D/YYYY or MM/DD/YYYY (US)
+  const usMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (usMatch) {
+    let [, m, d, y] = usMatch;
+    if (y!.length === 2) y = "20" + y;
+    return `${y}-${m!.padStart(2, "0")}-${d!.padStart(2, "0")}`;
+  }
+
+  // YYYY/MM/DD
+  const isoSlashMatch = trimmed.match(/^(\d{4})[\/](\d{1,2})[\/](\d{1,2})$/);
+  if (isoSlashMatch) {
+    const [, y, m, d] = isoSlashMatch;
+    return `${y}-${m!.padStart(2, "0")}-${d!.padStart(2, "0")}`;
+  }
+
+  // Last resort: let JavaScript try
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${mo}-${da}`;
+  }
+
+  return null;
+}
+
+/** Parse a time cell into HH:MM (24h). Accepts "7:00 PM", "19:00", etc. */
+function parseTimeCell(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const m24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) {
+    const h = parseInt(m24[1]!, 10);
+    const m = parseInt(m24[2]!, 10);
+    if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+      return `${String(h).padStart(2, "0")}:${m24[2]}`;
+    }
+  }
+
+  const m12 = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM|a|p)\.?$/i);
+  if (m12) {
+    let h = parseInt(m12[1]!, 10);
+    const m = m12[2] ? parseInt(m12[2], 10) : 0;
+    const isPm = /p/i.test(m12[3]!);
+    if (h === 12) h = isPm ? 12 : 0;
+    else if (isPm) h += 12;
+    if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+  }
+
+  return null;
+}
+
+export interface ConflictImportResult {
+  /** Conflicts that matched a known person and are ready to add. */
+  matched: Conflict[];
+  /** Names from the CSV that didn't match anyone in cast/crew. */
+  unmatchedNames: string[];
+  /** Rows that couldn't be parsed (bad date, missing name, etc.). */
+  skipped: number;
+}
+
+/**
+ * Convert CSV rows + column mapping into Conflict objects, matching the
+ * "name" column against the provided cast/crew list.
+ *
+ * Conflicts whose name doesn't match any person are NOT imported - their
+ * names are returned in unmatchedNames so the UI can warn the user.
+ */
+export function mapRowsToConflicts(
+  rows: string[][],
+  mapping: (ConflictField | null)[],
+  people: Array<{ id: string; firstName: string; lastName: string }>,
+): ConflictImportResult {
+  const matched: Conflict[] = [];
+  const unmatchedSet = new Set<string>();
+  let skipped = 0;
+
+  const byFullName = new Map<string, string>();
+  const byFirstName = new Map<string, string[]>();
+  const byLastName = new Map<string, string[]>();
+  for (const p of people) {
+    const full = `${p.firstName} ${p.lastName}`.trim().toLowerCase();
+    byFullName.set(full, p.id);
+    const first = p.firstName.trim().toLowerCase();
+    if (first) {
+      const arr = byFirstName.get(first) ?? [];
+      arr.push(p.id);
+      byFirstName.set(first, arr);
+    }
+    const last = p.lastName.trim().toLowerCase();
+    if (last) {
+      const arr = byLastName.get(last) ?? [];
+      arr.push(p.id);
+      byLastName.set(last, arr);
+    }
+  }
+
+  for (const row of rows) {
+    const raw: Partial<Record<ConflictField, string>> = {};
+    for (let c = 0; c < mapping.length; c++) {
+      const field = mapping[c];
+      if (field && c < row.length) {
+        raw[field] = row[c]!.trim();
+      }
+    }
+
+    const rawName = raw.name ?? "";
+    const dateRaw = raw.date ?? "";
+    if (!rawName || !dateRaw) {
+      skipped++;
+      continue;
+    }
+
+    const date = parseDateCell(dateRaw);
+    if (!date) {
+      skipped++;
+      continue;
+    }
+
+    const startTime = raw.startTime ? parseTimeCell(raw.startTime) ?? undefined : undefined;
+    const endTime = raw.endTime ? parseTimeCell(raw.endTime) ?? undefined : undefined;
+    const label = raw.label ?? "";
+
+    // Try to match the name (case-insensitive)
+    const lookup = rawName.trim().toLowerCase();
+    let id: string | undefined = byFullName.get(lookup);
+    if (!id) {
+      const firstMatches = byFirstName.get(lookup);
+      if (firstMatches && firstMatches.length === 1) {
+        id = firstMatches[0];
+      } else {
+        const lastMatches = byLastName.get(lookup);
+        if (lastMatches && lastMatches.length === 1) {
+          id = lastMatches[0];
+        } else {
+          const parts = lookup.split(/\s+/);
+          if (parts.length >= 2) {
+            const firstPart = parts[0]!;
+            const lastPart = parts[parts.length - 1]!;
+            id = byFullName.get(`${firstPart} ${lastPart}`);
+            if (!id) {
+              const fm = byFirstName.get(firstPart);
+              if (fm && fm.length === 1) id = fm[0];
+            }
+          }
+        }
+      }
+    }
+
+    if (id) {
+      matched.push({
+        id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        actorId: id,
+        date,
+        label,
+        ...(startTime ? { startTime } : {}),
+        ...(endTime ? { endTime } : {}),
+      });
+    } else {
+      unmatchedSet.add(rawName);
+    }
+  }
+
+  return {
+    matched,
+    unmatchedNames: [...unmatchedSet].sort(),
+    skipped,
+  };
 }

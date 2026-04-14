@@ -232,6 +232,10 @@
     if (!doc) return;
     doc.conflicts = [...doc.conflicts, conflict];
   }
+  function importConflicts(conflicts: Conflict[]) {
+    if (!doc || conflicts.length === 0) return;
+    doc.conflicts = [...doc.conflicts, ...conflicts];
+  }
   function removeConflict(id: string) {
     if (!doc) return;
     doc.conflicts = doc.conflicts.filter((c) => c.id !== id);
@@ -288,6 +292,7 @@
         onreordercrew={reorderCrewMember}
         onimportcast={importCast}
         onimportcrew={importCrew}
+        onimportconflicts={importConflicts}
       />
     </div>
   {/if}

@@ -1110,6 +1110,12 @@
     doc.conflicts = [...doc.conflicts, c];
   }
 
+  function importConflicts(conflicts: Conflict[]) {
+    if (conflicts.length === 0) return;
+    pushUndoImmediate();
+    doc.conflicts = [...doc.conflicts, ...conflicts];
+  }
+
   /**
    * Two-step delete for conflicts: the editor calls this, we stash the
    * target conflict in state, and a confirmation modal asks the user to
@@ -3430,6 +3436,7 @@
     onremovemember={removeCastMember}
     onreordermember={reorderCastMember}
     onimportcast={importCast}
+    onimportconflicts={importConflicts}
     onaddconflict={addConflict}
     onremoveconflict={(id) => { pushUndoImmediate(); doc.conflicts = doc.conflicts.filter((c) => c.id !== id); }}
     onaddcrew={addCrewMember}
