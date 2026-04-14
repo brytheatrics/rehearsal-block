@@ -10,6 +10,7 @@
   import { browser } from "$app/environment";
   import type { ScheduleDoc } from "@rehearsal-block/core";
   import ScheduleEditor from "$lib/components/scheduler/ScheduleEditor.svelte";
+  import RevisionHistoryModal from "$lib/components/app/RevisionHistoryModal.svelte";
   import { localLoadShow, localSaveShow } from "$lib/storage/local.js";
   import { createSyncedStorage, type SyncedStorage } from "$lib/storage/sync.js";
   import { createSupabaseBrowserClient } from "$lib/supabase/client.js";
@@ -22,6 +23,7 @@
   let cloudStatus = $state<"synced" | "pending" | "syncing" | "error">("synced");
   let isOnline = $state(typeof navigator !== "undefined" ? navigator.onLine : true);
   let saveFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  let historyOpen = $state(false);
 
   // Effective sync status: combines cloud status + online state + local feedback
   const currentSyncStatus = $derived.by<"synced" | "pending" | "syncing" | "error" | "offline">(() => {
@@ -191,7 +193,16 @@
     onSave={handleSave}
     onDocChange={handleDocChange}
     syncStatus={isOnline ? currentSyncStatus : "offline"}
+    onHistory={() => (historyOpen = true)}
   />
+  {#if historyOpen}
+    <RevisionHistoryModal
+      showId={data.showId}
+      showName={doc.show.name}
+      onclose={() => (historyOpen = false)}
+      onrestored={() => { historyOpen = false; loadPromise = loadDoc(); }}
+    />
+  {/if}
 {:catch err}
   <div class="error-state">
     <h2>Could not load show</h2>

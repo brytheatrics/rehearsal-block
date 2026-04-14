@@ -43,9 +43,12 @@
      *  fires onReset. Used by signed-in demo to let users wipe their edits. */
     showResetButton?: boolean;
     onReset?: () => void;
+    /** When provided, shows a "Version history" icon in the toolbar
+     *  next to Save. Clicking it fires onHistory. */
+    onHistory?: () => void;
   }
 
-  const { initialDoc, readOnly = false, onSave, onPaywall, onDocChange, showDemoBanners = false, syncStatus = "synced", showResetButton = false, onReset }: Props = $props();
+  const { initialDoc, readOnly = false, onSave, onPaywall, onDocChange, showDemoBanners = false, syncStatus = "synced", showResetButton = false, onReset, onHistory }: Props = $props();
 
   // Deep-clone so mutations during editing don't touch the caller's object.
   // svelte-ignore state_referenced_locally
@@ -3192,6 +3195,21 @@
             </div>
           {/if}
         </div>
+          {#if onHistory}
+            <button
+              type="button"
+              class="toolbar-btn"
+              class:toolbar-btn-labeled={showToolbarLabels}
+              title="Version history"
+              aria-label="Version history"
+              onclick={() => onHistory?.()}
+            >
+              <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
+                <path d="M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z"/>
+              </svg>
+              {#if showToolbarLabels}<span class="toolbar-btn-label">History</span>{/if}
+            </button>
+          {/if}
           <button
             type="button"
             class="toolbar-btn save-btn"
@@ -3883,6 +3901,29 @@
     padding-right: var(--space-2);
     margin-right: var(--space-1);
     border-right: 1px solid var(--color-border);
+  }
+
+  /* On larger screens, give the toolbar more breathing room.
+     Mobile keeps the tight gaps so all buttons fit. */
+  @media (min-width: 1024px) {
+    .toolbar {
+      gap: var(--space-2);
+    }
+    .toolbar-group {
+      gap: var(--space-2);
+      padding-right: var(--space-4);
+      margin-right: var(--space-2);
+    }
+  }
+  @media (min-width: 1400px) {
+    .toolbar {
+      gap: var(--space-3);
+    }
+    .toolbar-group {
+      gap: var(--space-2);
+      padding-right: var(--space-5);
+      margin-right: var(--space-3);
+    }
   }
 
   .toolbar-group:last-child {

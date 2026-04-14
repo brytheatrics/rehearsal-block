@@ -15,11 +15,12 @@
     onduplicate: (id: string) => void;
     ondelete: (id: string) => void;
     onexport: (id: string) => void;
+    onhistory: (id: string) => void;
   }
 
   const {
     id, name, startDate, endDate, castCount, updatedAt, archived,
-    onopen, onedit, onarchive, onduplicate, ondelete, onexport,
+    onopen, onedit, onarchive, onduplicate, ondelete, onexport, onhistory,
   }: Props = $props();
 
   const dateRange = $derived(
@@ -51,16 +52,28 @@
   class:archived
   onclick={() => onopen(id)}
 >
-  <button
-    type="button"
-    class="archive-btn"
-    title={archived ? "Unarchive" : "Archive"}
-    onclick={(e) => { e.stopPropagation(); onarchive(id); }}
-  >
-    <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
-      <path d="M180-120q-24.75 0-42.37-17.63Q120-155.25 120-180v-529q0-9.88 3-19.06 3-9.18 9-16.94l57-75q8-11 20.94-17.5Q222.88-844 237-844h486q14.12 0 27.06 6.5T771-820l57 75q6 7.76 9 16.94 3 9.18 3 19.06v529q0 24.75-17.62 42.37Q804.75-120 780-120H180Zm17-614h566l-42.17-50H239l-42 50Zm-17 554h600v-494H180v494Zm300-98 156-156-42-42-84 84v-202h-60v202l-84-84-42 42 156 156Zm-300 98v-494 494Z"/>
-    </svg>
-  </button>
+  <div class="card-top-btns">
+    <button
+      type="button"
+      class="archive-btn"
+      title="Version history"
+      onclick={(e) => { e.stopPropagation(); onhistory(id); }}
+    >
+      <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
+        <path d="M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z"/>
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="archive-btn"
+      title={archived ? "Unarchive" : "Archive"}
+      onclick={(e) => { e.stopPropagation(); onarchive(id); }}
+    >
+      <svg width="18" height="18" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
+        <path d="M180-120q-24.75 0-42.37-17.63Q120-155.25 120-180v-529q0-9.88 3-19.06 3-9.18 9-16.94l57-75q8-11 20.94-17.5Q222.88-844 237-844h486q14.12 0 27.06 6.5T771-820l57 75q6 7.76 9 16.94 3 9.18 3 19.06v529q0 24.75-17.62 42.37Q804.75-120 780-120H180Zm17-614h566l-42.17-50H239l-42 50Zm-17 554h600v-494H180v494Zm300-98 156-156-42-42-84 84v-202h-60v202l-84-84-42 42 156 156Zm-300 98v-494 494Z"/>
+      </svg>
+    </button>
+  </div>
 
   {#if archived}
     <span class="archived-badge">Archived</span>
@@ -168,10 +181,15 @@
     opacity: 0.8;
   }
 
-  .archive-btn {
+  .card-top-btns {
     position: absolute;
     top: var(--space-3);
     right: var(--space-3);
+    display: flex;
+    gap: 4px;
+  }
+
+  .archive-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -192,7 +210,7 @@
   .archived-badge {
     position: absolute;
     top: var(--space-3);
-    right: calc(var(--space-3) + 36px);
+    right: calc(var(--space-3) + 76px);
     font-size: 0.6875rem;
     font-weight: 700;
     text-transform: uppercase;

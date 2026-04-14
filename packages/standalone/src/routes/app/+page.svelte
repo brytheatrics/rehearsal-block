@@ -13,6 +13,7 @@
   import NewShowModal from "$lib/components/app/NewShowModal.svelte";
   import MyDefaultsModal from "$lib/components/app/MyDefaultsModal.svelte";
   import EditShowModal from "$lib/components/app/EditShowModal.svelte";
+  import RevisionHistoryModal from "$lib/components/app/RevisionHistoryModal.svelte";
   import { listShowsMeta, type ShowIndexRow } from "$lib/storage/index.js";
   import { localListShows, localSaveShow, localDeleteShow, localLoadShow } from "$lib/storage/local.js";
   import type { StoredShow } from "$lib/storage/types.js";
@@ -22,6 +23,7 @@
   let newShowOpen = $state(false);
   let defaultsOpen = $state(false);
   let editShowId = $state<string | null>(null);
+  let historyShowId = $state<string | null>(null);
   let showArchived = $state(false);
   let loading = $state(true);
   let importInput: HTMLInputElement | undefined = $state();
@@ -291,6 +293,10 @@
 
   function handleEdit(id: string) {
     editShowId = id;
+  }
+
+  function handleHistory(id: string) {
+    historyShowId = id;
   }
 
   async function handleUnarchiveAndOpen(id: string) {
@@ -608,6 +614,7 @@
                   onduplicate={handleDuplicate}
                   ondelete={handleDelete}
                   onexport={handleExport}
+                  onhistory={handleHistory}
                 />
               </div>
             {/each}
@@ -732,6 +739,16 @@
     showId={editShowId}
     onclose={() => (editShowId = null)}
     onsaved={loadShows}
+  />
+{/if}
+
+{#if historyShowId}
+  {@const hShow = shows.find(s => s.id === historyShowId)}
+  <RevisionHistoryModal
+    showId={historyShowId}
+    showName={hShow?.name ?? "Show"}
+    onclose={() => (historyShowId = null)}
+    onrestored={loadShows}
   />
 {/if}
 

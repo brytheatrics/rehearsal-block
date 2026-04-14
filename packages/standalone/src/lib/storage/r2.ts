@@ -19,6 +19,7 @@ import {
   DeleteObjectCommand,
   CopyObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 
 export interface R2Client {
@@ -36,6 +37,9 @@ export interface R2Client {
 
   /** Check if an object exists. Used by healthcheck. */
   head(key: string): Promise<boolean>;
+
+  /** List object keys with a prefix. */
+  list(prefix: string): Promise<string[]>;
 }
 
 export interface R2Config {
@@ -110,6 +114,25 @@ export function createR2Client(config: R2Config): R2Client {
       } catch {
         return false;
       }
+    },
+
+    async list(prefix: string): Promise<string[]> {
+      const keys: string[] = [];
+      let continuationToken: string | undefined;
+      do {
+        const res: any = await s3.send(
+          new ListObjectsV2Command({
+            Bucket,
+            Prefix: prefix,
+            ContinuationToken: continuationToken,
+          }),
+        );
+        for (const obj of res.Contents ?? []) {
+          if (obj.Key) keys.push(obj.Key);
+        }
+        continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+      } while (continuationToken);
+      return keys;
     },
   };
 }
