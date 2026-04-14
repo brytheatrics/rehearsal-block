@@ -576,12 +576,14 @@
         ...result.added.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
       ];
       const conflictResult = extractConflictsFromPeopleRows(rows, mapping, pool);
-      if (conflictResult.matched.length > 0) {
-        onimportconflicts?.(conflictResult.matched);
+      const { unique, duplicates } = dedupeAgainstExisting(conflictResult.matched);
+      if (unique.length > 0) {
+        onimportconflicts?.(unique);
       }
-      if (conflictResult.matched.length > 0 || conflictResult.unmatchedNames.length > 0) {
+      if (unique.length > 0 || duplicates > 0 || conflictResult.unmatchedNames.length > 0) {
         conflictImportSummary = {
-          added: conflictResult.matched.length,
+          added: unique.length,
+          duplicates,
           unmatchedNames: conflictResult.unmatchedNames,
           skipped: conflictResult.skipped,
         };
@@ -655,12 +657,14 @@
         ...result.added.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
       ];
       const conflictResult = extractConflictsFromPeopleRows(rows, mapping, pool);
-      if (conflictResult.matched.length > 0) {
-        onimportconflicts?.(conflictResult.matched);
+      const { unique, duplicates } = dedupeAgainstExisting(conflictResult.matched);
+      if (unique.length > 0) {
+        onimportconflicts?.(unique);
       }
-      if (conflictResult.matched.length > 0 || conflictResult.unmatchedNames.length > 0) {
+      if (unique.length > 0 || duplicates > 0 || conflictResult.unmatchedNames.length > 0) {
         conflictImportSummary = {
-          added: conflictResult.matched.length,
+          added: unique.length,
+          duplicates,
           unmatchedNames: conflictResult.unmatchedNames,
           skipped: conflictResult.skipped,
         };
@@ -683,7 +687,7 @@
   let conflictCsvParsed = $state<CsvParseResult | null>(null);
   let conflictCsvMapping = $state<(ConflictField | null)[]>([]);
   let conflictCsvFileInput = $state<HTMLInputElement | null>(null);
-  let conflictImportSummary = $state<{ added: number; unmatchedNames: string[]; skipped: number } | null>(null);
+  let conflictImportSummary = $state<{ added: number; duplicates: number; unmatchedNames: string[]; skipped: number } | null>(null);
 
   function openImportChooser(section: ImportSection) {
     if (contactsLocked) { gate(); return; }
@@ -747,11 +751,13 @@
       ...show.crew.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
     ];
     const result = mapRowsToConflicts(conflictCsvParsed.rows, conflictCsvMapping, pool);
-    if (result.matched.length > 0) {
-      onimportconflicts?.(result.matched);
+    const { unique, duplicates } = dedupeAgainstExisting(result.matched);
+    if (unique.length > 0) {
+      onimportconflicts?.(unique);
     }
     conflictImportSummary = {
-      added: result.matched.length,
+      added: unique.length,
+      duplicates,
       unmatchedNames: result.unmatchedNames,
       skipped: result.skipped,
     };
@@ -761,6 +767,28 @@
 
   function dismissConflictImportSummary() {
     conflictImportSummary = null;
+  }
+
+  /** Filter out conflicts that duplicate ones already on the show (same
+   *  person, same date, same time window). Returns { unique, duplicates }. */
+  function dedupeAgainstExisting(incoming: Conflict[]): { unique: Conflict[]; duplicates: number } {
+    const key = (c: Conflict) => `${c.actorId}:${c.date}:${c.startTime ?? ""}:${c.endTime ?? ""}`;
+    const have = new Set(show.conflicts.map(key));
+    // Also track keys already added within this batch so a CSV with
+    // internal duplicates doesn't produce several copies either.
+    const seen = new Set<string>();
+    const unique: Conflict[] = [];
+    let duplicates = 0;
+    for (const c of incoming) {
+      const k = key(c);
+      if (have.has(k) || seen.has(k)) {
+        duplicates++;
+        continue;
+      }
+      seen.add(k);
+      unique.push(c);
+    }
+    return { unique, duplicates };
   }
 
   // Track pending-import state so parent modals can intercept their close/Done.
@@ -2633,10 +2661,13 @@
       {#if conflictImportSummary.added > 0}
         <li>{conflictImportSummary.added} conflict{conflictImportSummary.added !== 1 ? "s" : ""} added</li>
       {/if}
+      {#if conflictImportSummary.duplicates > 0}
+        <li>{conflictImportSummary.duplicates} duplicate{conflictImportSummary.duplicates !== 1 ? "s" : ""} skipped (already present)</li>
+      {/if}
       {#if conflictImportSummary.skipped > 0}
         <li>{conflictImportSummary.skipped} row{conflictImportSummary.skipped !== 1 ? "s" : ""} skipped (missing name or date)</li>
       {/if}
-      {#if conflictImportSummary.added === 0 && conflictImportSummary.unmatchedNames.length === 0 && conflictImportSummary.skipped === 0}
+      {#if conflictImportSummary.added === 0 && conflictImportSummary.duplicates === 0 && conflictImportSummary.unmatchedNames.length === 0 && conflictImportSummary.skipped === 0}
         <li>No rows imported.</li>
       {/if}
     </ul>
