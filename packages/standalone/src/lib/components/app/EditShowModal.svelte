@@ -29,6 +29,7 @@
   let doc = $state<ScheduleDoc | null>(null);
   let loading = $state(true);
   let saved = $state(false);
+  let pendingCsvImport = $state(false);
 
   onMount(async () => {
     const show = await localLoadShow(showId);
@@ -57,6 +58,10 @@
   });
 
   function handleClose() {
+    if (pendingCsvImport) {
+      const ok = confirm("You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?");
+      if (!ok) return;
+    }
     onsaved?.();
     onclose();
   }
@@ -339,6 +344,7 @@
       <DefaultsModal
         show={doc}
         embedded={true}
+        onpendingcsvchange={(p) => (pendingCsvImport = p)}
         hideShowTab={false}
         onchange={updateSettings}
         onaddlocationpreset={addLocationPreset}

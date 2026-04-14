@@ -102,8 +102,17 @@
     oncreate(tempDoc);
   }
 
+  let pendingCsvImport = $state(false);
+  function guardedClose() {
+    if (pendingCsvImport) {
+      const ok = confirm("You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?");
+      if (!ok) return;
+    }
+    onclose();
+  }
+
   function handleKey(e: KeyboardEvent) {
-    if (e.key === "Escape") onclose();
+    if (e.key === "Escape") guardedClose();
   }
 
   // ---- DefaultsModal callbacks: mutate tempDoc in place ----
@@ -313,12 +322,12 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={onclose}></div>
+<div class="backdrop" onclick={guardedClose}></div>
 
 <div class="modal" class:expanded={showSettings} role="dialog" aria-labelledby="new-show-title">
   <div class="modal-header">
     <h2 id="new-show-title">New show</h2>
-    <button type="button" class="close-btn" aria-label="Close" onclick={onclose}>&times;</button>
+    <button type="button" class="close-btn" aria-label="Close" onclick={guardedClose}>&times;</button>
   </div>
 
   <div class="modal-scroll">
@@ -412,12 +421,13 @@
             onimportconflicts={importConflicts}
             onmovecasttocrew={moveCastToCrew}
             onmovecrewtocast={moveCrewToCast}
+            onpendingcsvchange={(p) => (pendingCsvImport = p)}
           />
         </div>
       {/if}
 
       <div class="actions">
-        <button type="button" class="ghost-btn" onclick={onclose}>Cancel</button>
+        <button type="button" class="ghost-btn" onclick={guardedClose}>Cancel</button>
         <button type="submit" class="primary-btn">Create show</button>
       </div>
     </form>

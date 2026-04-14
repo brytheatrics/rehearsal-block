@@ -598,6 +598,28 @@ export function autoMapConflictColumns(headers: string[]): (ConflictField | null
   return mapping;
 }
 
+const EMPTY_DATE_MARKERS = new Set(["", "no conflicts", "none", "n/a", "na", "-"]);
+
+/** Parse a cell that may contain one OR MORE dates. Splits on comma/semicolon/newline
+ *  and returns all successfully parsed ISO dates. "No conflicts"-style markers
+ *  return an empty array rather than being treated as an error. */
+export function parseDateCells(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (EMPTY_DATE_MARKERS.has(trimmed.toLowerCase())) return [];
+  if (!trimmed) return [];
+  const parts = trimmed.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const iso = parseDateCell(p);
+    if (iso && !seen.has(iso)) {
+      out.push(iso);
+      seen.add(iso);
+    }
+  }
+  return out;
+}
+
 /** Try multiple common date formats. Returns YYYY-MM-DD or null. */
 function parseDateCell(raw: string): string | null {
   const trimmed = raw.trim();
@@ -722,13 +744,18 @@ export function mapRowsToConflicts(
 
     const rawName = raw.name ?? "";
     const dateRaw = raw.date ?? "";
-    if (!rawName || !dateRaw) {
+    if (!rawName) {
       skipped++;
       continue;
     }
 
-    const date = parseDateCell(dateRaw);
-    if (!date) {
+    // "No Conflicts"-style markers and empty cells are silent skips, not errors.
+    if (!dateRaw || EMPTY_DATE_MARKERS.has(dateRaw.trim().toLowerCase())) {
+      continue;
+    }
+
+    const dates = parseDateCells(dateRaw);
+    if (dates.length === 0) {
       skipped++;
       continue;
     }
@@ -764,14 +791,16 @@ export function mapRowsToConflicts(
     }
 
     if (id) {
-      matched.push({
-        id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        actorId: id,
-        date,
-        label,
-        ...(startTime ? { startTime } : {}),
-        ...(endTime ? { endTime } : {}),
-      });
+      for (const d of dates) {
+        matched.push({
+          id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
+          actorId: id,
+          date: d,
+          label,
+          ...(startTime ? { startTime } : {}),
+          ...(endTime ? { endTime } : {}),
+        });
+      }
     } else {
       unmatchedSet.add(rawName);
     }
@@ -840,7 +869,7 @@ export function extractConflictsFromPeopleRows(
     }
 
     const dateRaw = raw.conflictDate ?? "";
-    if (!dateRaw) continue; // no conflict on this row
+    if (!dateRaw || EMPTY_DATE_MARKERS.has(dateRaw.trim().toLowerCase())) continue;
 
     const firstName = raw.firstName ?? "";
     const lastName = raw.lastName ?? "";
@@ -851,8 +880,8 @@ export function extractConflictsFromPeopleRows(
       continue;
     }
 
-    const date = parseDateCell(dateRaw);
-    if (!date) {
+    const dates = parseDateCells(dateRaw);
+    if (dates.length === 0) {
       skipped++;
       continue;
     }
@@ -878,14 +907,16 @@ export function extractConflictsFromPeopleRows(
     }
 
     if (id) {
-      matched.push({
-        id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        actorId: id,
-        date,
-        label,
-        ...(startTime ? { startTime } : {}),
-        ...(endTime ? { endTime } : {}),
-      });
+      for (const d of dates) {
+        matched.push({
+          id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
+          actorId: id,
+          date: d,
+          label,
+          ...(startTime ? { startTime } : {}),
+          ...(endTime ? { endTime } : {}),
+        });
+      }
     } else {
       unmatchedSet.add(nameDisplay);
     }

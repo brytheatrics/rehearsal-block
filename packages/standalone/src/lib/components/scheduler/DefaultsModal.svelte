@@ -112,6 +112,9 @@
     hideShowTab?: boolean;
     /** When true, hide the "Contacts" tab (used in My Defaults where cast/crew are per-show). */
     hideContactsTab?: boolean;
+    /** Fires whenever the pending-import state flips. Parent modals use
+     *  this to guard their close/Done button against accidental discards. */
+    onpendingcsvchange?: (pending: boolean) => void;
   }
 
   const {
@@ -151,7 +154,11 @@
     embedded = false,
     hideShowTab = false,
     hideContactsTab = false,
+    onpendingcsvchange,
   }: Props = $props();
+
+  // pendingCsvImport / requestClose are defined further down, once the CSV
+  // parse state variables exist.
 
   /** Trigger the paywall modal from a locked action. Returns true so call
    *  sites can early-return with `if (gate()) return;`. */
@@ -756,6 +763,26 @@
     conflictImportSummary = null;
   }
 
+  // Track pending-import state so parent modals can intercept their close/Done.
+  const pendingCsvImport = $derived(
+    !!csvImportParsed || !!crewCsvParsed || !!conflictCsvParsed,
+  );
+  $effect(() => {
+    onpendingcsvchange?.(pendingCsvImport);
+  });
+
+  /** Wrap onclose to warn if the user has an unimported CSV open. */
+  function requestClose() {
+    if (pendingCsvImport) {
+      const ok = confirm("You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?");
+      if (!ok) return;
+      csvImportParsed = null;
+      crewCsvParsed = null;
+      conflictCsvParsed = null;
+    }
+    onclose();
+  }
+
   // Crew editing state
   let crewColorPopoverFor = $state<string | null>(null);
   let crewDeleteConfirmFor = $state<string | null>(null);
@@ -846,7 +873,7 @@
   }
 
   function onBackdropKey(e: KeyboardEvent) {
-    if (e.key === "Escape") onclose();
+    if (e.key === "Escape") requestClose();
   }
 
   // Draggable modal
@@ -882,7 +909,7 @@
 {#if !embedded}
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={onclose}></div>
+<div class="backdrop" onclick={requestClose}></div>
 {/if}
 
 <div
@@ -902,7 +929,7 @@
         <div class="eyebrow">Defaults</div>
         <h2>Show-wide settings</h2>
       </div>
-      <button type="button" class="close" onclick={onclose} aria-label="Close">
+      <button type="button" class="close" onclick={requestClose} aria-label="Close">
         ×
       </button>
     </div>
@@ -1789,6 +1816,18 @@
         <!-- CSV Column Mapping UI -->
         {#if csvImportParsed}
           <div class="csv-import-panel">
+            <div class="csv-import-pending-bar">
+              <div class="csv-import-pending-text">
+                <strong>{csvImportParsed.rows.length} row{csvImportParsed.rows.length !== 1 ? "s" : ""} ready to import</strong>
+                <span>Nothing is added until you click "Import". Scroll down, map your columns, then click the green button.</span>
+              </div>
+              <div class="csv-import-pending-actions">
+                <button type="button" class="csv-cancel-btn" onclick={cancelCsvImport}>Discard</button>
+                <button type="button" class="csv-import-primary-btn" onclick={executeCsvImport}>
+                  Import {csvImportParsed.rows.length} row{csvImportParsed.rows.length !== 1 ? "s" : ""}
+                </button>
+              </div>
+            </div>
             <div class="csv-import-header">
               <h4>Map CSV Columns</h4>
               <p class="hint">Assign each column from your CSV to a cast field, or skip it.</p>
@@ -1865,9 +1904,9 @@
               </label>
             </div>
 
-            <div class="csv-import-actions">
+            <div class="csv-import-actions csv-import-actions-sticky">
               <button type="button" class="csv-cancel-btn" onclick={cancelCsvImport}>Cancel</button>
-              <button type="button" class="ghost-btn" onclick={executeCsvImport}>
+              <button type="button" class="csv-import-primary-btn" onclick={executeCsvImport}>
                 Import {csvImportParsed.rows.length} row{csvImportParsed.rows.length !== 1 ? "s" : ""}
               </button>
             </div>
@@ -2113,6 +2152,18 @@
         <!-- Crew CSV Column Mapping UI -->
         {#if crewCsvParsed}
           <div class="csv-import-panel">
+            <div class="csv-import-pending-bar">
+              <div class="csv-import-pending-text">
+                <strong>{crewCsvParsed.rows.length} row{crewCsvParsed.rows.length !== 1 ? "s" : ""} ready to import</strong>
+                <span>Nothing is added until you click "Import". Scroll down, map your columns, then click the green button.</span>
+              </div>
+              <div class="csv-import-pending-actions">
+                <button type="button" class="csv-cancel-btn" onclick={cancelCrewCsvImport}>Discard</button>
+                <button type="button" class="csv-import-primary-btn" onclick={executeCrewCsvImport}>
+                  Import {crewCsvParsed.rows.length} row{crewCsvParsed.rows.length !== 1 ? "s" : ""}
+                </button>
+              </div>
+            </div>
             <div class="csv-import-header">
               <h4>Map CSV Columns</h4>
               <p class="hint">Assign each column from your CSV to a crew field, or skip it.</p>
@@ -2189,9 +2240,9 @@
               </label>
             </div>
 
-            <div class="csv-import-actions">
+            <div class="csv-import-actions csv-import-actions-sticky">
               <button type="button" class="csv-cancel-btn" onclick={cancelCrewCsvImport}>Cancel</button>
-              <button type="button" class="ghost-btn" onclick={executeCrewCsvImport}>
+              <button type="button" class="csv-import-primary-btn" onclick={executeCrewCsvImport}>
                 Import {crewCsvParsed.rows.length} row{crewCsvParsed.rows.length !== 1 ? "s" : ""}
               </button>
             </div>
@@ -2440,7 +2491,7 @@
 
   {#if !embedded}
   <footer class="modal-footer">
-    <button type="button" class="btn btn-primary" onclick={onclose}>Done</button>
+    <button type="button" class="btn btn-primary" onclick={requestClose}>Done</button>
   </footer>
   {/if}
 </div>
@@ -2487,10 +2538,23 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="chooser-backdrop" onclick={cancelConflictCsvImport}></div>
   <div class="chooser-modal conflict-mapping-modal" role="dialog" aria-label="Map conflict CSV columns">
+    <div class="csv-import-pending-bar">
+      <div class="csv-import-pending-text">
+        <strong>{conflictCsvParsed.rows.length} row{conflictCsvParsed.rows.length !== 1 ? "s" : ""} ready to import</strong>
+        <span>Nothing is added until you click "Import". Map your columns below, then click the green button.</span>
+      </div>
+      <div class="csv-import-pending-actions">
+        <button type="button" class="csv-cancel-btn" onclick={cancelConflictCsvImport}>Discard</button>
+        <button type="button" class="csv-import-primary-btn" onclick={executeConflictCsvImport}>
+          Import {conflictCsvParsed.rows.length} row{conflictCsvParsed.rows.length !== 1 ? "s" : ""}
+        </button>
+      </div>
+    </div>
     <h3>Map CSV Columns - Conflicts</h3>
     <p class="chooser-hint">
       Assign each column to a conflict field. Names are matched against both
       your cast list and production team; rows with unknown names will be skipped.
+      A date cell may contain multiple comma-separated dates.
     </p>
 
     <div class="csv-mapping-table">
@@ -2548,9 +2612,9 @@
       </div>
     {/if}
 
-    <div class="csv-import-actions">
+    <div class="csv-import-actions csv-import-actions-sticky">
       <button type="button" class="csv-cancel-btn" onclick={cancelConflictCsvImport}>Cancel</button>
-      <button type="button" class="ghost-btn" onclick={executeConflictCsvImport}>
+      <button type="button" class="csv-import-primary-btn" onclick={executeConflictCsvImport}>
         Import {conflictCsvParsed.rows.length} row{conflictCsvParsed.rows.length !== 1 ? "s" : ""}
       </button>
     </div>
@@ -4402,5 +4466,68 @@
   .unmatched-warning ul {
     margin: 0 0 var(--space-2);
     padding-left: var(--space-4);
+  }
+
+  .csv-import-pending-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-3);
+    background: #fff8e1;
+    border-bottom: 2px solid #ffb74d;
+    flex-wrap: wrap;
+  }
+  .conflict-mapping-modal .csv-import-pending-bar {
+    margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-3);
+  }
+  .csv-import-pending-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1 1 250px;
+  }
+  .csv-import-pending-text strong {
+    font-size: 0.875rem;
+    color: #5d4037;
+  }
+  .csv-import-pending-text span {
+    font-size: 0.75rem;
+    color: #6d4c41;
+  }
+  .csv-import-pending-actions {
+    display: flex;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+  .csv-import-primary-btn {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: #2e7d32;
+    color: #fff;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+    white-space: nowrap;
+  }
+  .csv-import-primary-btn:hover {
+    background: #1b5e20;
+  }
+  .csv-import-actions-sticky {
+    position: sticky;
+    bottom: 0;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-3);
+    margin-top: var(--space-3);
+    z-index: 4;
   }
 </style>
