@@ -140,6 +140,30 @@ export function locationColor(
 export const LOCATION_SHAPES = ["\u25A0", "\u25CF", "\u25B2", "\u25C6", "\u2605", "\u25AE", "\u2B22", "\u271A"] as const;
 
 /**
+ * Pick the next unused colour + shape pair for a brand-new location preset.
+ * Rotates through the palettes, prefers entries not yet taken by existing
+ * presets, and falls back to a modulo cycle if everything is already used.
+ */
+export function nextLocationColor(
+  existing: readonly LocationPreset[] = [],
+): { color: string; shape: string } {
+  const usedColors = new Set(existing.map((p) => p.color).filter(Boolean) as string[]);
+  const usedShapes = new Set(existing.map((p) => p.shape).filter(Boolean) as string[]);
+  const startIdx = existing.length;
+  let color = LOCATION_COLOR_PALETTE[startIdx % LOCATION_COLOR_PALETTE.length]!;
+  for (let i = 0; i < LOCATION_COLOR_PALETTE.length; i++) {
+    const c = LOCATION_COLOR_PALETTE[(startIdx + i) % LOCATION_COLOR_PALETTE.length]!;
+    if (!usedColors.has(c)) { color = c; break; }
+  }
+  let shape = LOCATION_SHAPES[startIdx % LOCATION_SHAPES.length]!;
+  for (let i = 0; i < LOCATION_SHAPES.length; i++) {
+    const s = LOCATION_SHAPES[(startIdx + i) % LOCATION_SHAPES.length]!;
+    if (!usedShapes.has(s)) { shape = s; break; }
+  }
+  return { color, shape };
+}
+
+/**
  * Consistent shape for a location name. Same name always gets the same
  * shape so locations are distinguishable even in B&W print.
  */

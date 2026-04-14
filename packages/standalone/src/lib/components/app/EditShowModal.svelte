@@ -14,6 +14,7 @@
     Settings,
     Show,
   } from "@rehearsal-block/core";
+  import { nextLocationColor } from "@rehearsal-block/core";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
   import { localLoadShow, localSaveShow } from "$lib/storage/local.js";
 
@@ -131,8 +132,9 @@
   function addLocationPreset(name: string) {
     if (!doc) return;
     doc.locationPresets = [...doc.locationPresets, name];
-    if (!doc.locationPresetsV2) doc.locationPresetsV2 = [];
-    doc.locationPresetsV2 = [...doc.locationPresetsV2, { name }];
+    const existingV2 = doc.locationPresetsV2 ?? [];
+    const { color, shape } = nextLocationColor(existingV2);
+    doc.locationPresetsV2 = [...existingV2, { name, color, shape }];
   }
   function removeLocationPreset(name: string) {
     if (!doc) return;

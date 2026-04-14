@@ -9,6 +9,7 @@
    */
   import {
     newEmptyScheduleDoc,
+    nextLocationColor,
     type CastMember,
     type Conflict,
     type CrewMember,
@@ -165,8 +166,9 @@
 
   function addLocationPreset(locName: string) {
     tempDoc.locationPresets = [...tempDoc.locationPresets, locName];
-    if (!tempDoc.locationPresetsV2) tempDoc.locationPresetsV2 = [];
-    tempDoc.locationPresetsV2 = [...tempDoc.locationPresetsV2, { name: locName }];
+    const existingV2 = tempDoc.locationPresetsV2 ?? [];
+    const { color, shape } = nextLocationColor(existingV2);
+    tempDoc.locationPresetsV2 = [...existingV2, { name: locName, color, shape }];
   }
   function removeLocationPreset(locName: string) {
     tempDoc.locationPresets = tempDoc.locationPresets.filter((p) => p !== locName);

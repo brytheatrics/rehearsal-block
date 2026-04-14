@@ -9,6 +9,7 @@
   import { onMount } from "svelte";
   import {
     newEmptyScheduleDoc,
+    nextLocationColor,
     type EventType,
     type ScheduleDoc,
     type Settings,
@@ -119,8 +120,9 @@
 
   function addLocationPreset(name: string) {
     tempDoc.locationPresets = [...tempDoc.locationPresets, name];
-    if (!tempDoc.locationPresetsV2) tempDoc.locationPresetsV2 = [];
-    tempDoc.locationPresetsV2 = [...tempDoc.locationPresetsV2, { name }];
+    const existingV2 = tempDoc.locationPresetsV2 ?? [];
+    const { color, shape } = nextLocationColor(existingV2);
+    tempDoc.locationPresetsV2 = [...existingV2, { name, color, shape }];
   }
   function removeLocationPreset(name: string) {
     tempDoc.locationPresets = tempDoc.locationPresets.filter((p) => p !== name);

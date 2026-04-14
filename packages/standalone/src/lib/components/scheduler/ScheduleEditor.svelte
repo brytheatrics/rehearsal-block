@@ -27,7 +27,7 @@
     Settings,
     Show,
   } from "@rehearsal-block/core";
-  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays, formatUsDateRange, blockingConflictsFor } from "@rehearsal-block/core";
+  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays, formatUsDateRange, blockingConflictsFor, nextLocationColor } from "@rehearsal-block/core";
   import { publishSchedule, buildShareUrlFromId } from "$lib/share";
 
   interface Props {
@@ -1103,6 +1103,11 @@
     if (doc.locationPresets.some((p) => p.toLowerCase() === trimmed.toLowerCase())) return;
     pushUndoImmediate();
     doc.locationPresets = [...doc.locationPresets, trimmed];
+    // Pre-assign the next unused palette colour + shape so locations rotate
+    // predictably instead of relying on a name-hash that can collide.
+    const existingV2 = doc.locationPresetsV2 ?? [];
+    const { color, shape } = nextLocationColor(existingV2);
+    doc.locationPresetsV2 = [...existingV2, { name: trimmed, color, shape }];
   }
 
   function addConflict(c: Conflict) {
