@@ -39,9 +39,13 @@
     showDemoBanners?: boolean;
     /** Cloud sync status. Drives the Save button indicator. */
     syncStatus?: "synced" | "pending" | "syncing" | "error" | "offline";
+    /** When true, show a teal "reset" icon in the toolbar. Clicking it
+     *  fires onReset. Used by signed-in demo to let users wipe their edits. */
+    showResetButton?: boolean;
+    onReset?: () => void;
   }
 
-  const { initialDoc, readOnly = false, onSave, onPaywall, onDocChange, showDemoBanners = false, syncStatus = "synced" }: Props = $props();
+  const { initialDoc, readOnly = false, onSave, onPaywall, onDocChange, showDemoBanners = false, syncStatus = "synced", showResetButton = false, onReset }: Props = $props();
 
   // Deep-clone so mutations during editing don't touch the caller's object.
   // svelte-ignore state_referenced_locally
@@ -2591,6 +2595,21 @@
       </div>
 
       <div class="toolbar">
+        {#if showResetButton}
+          <div class="toolbar-group">
+            <button
+              type="button"
+              class="toolbar-btn reset-demo-btn"
+              title="Reset demo to original"
+              aria-label="Reset demo to original"
+              onclick={() => onReset?.()}
+            >
+              <svg width="20" height="20" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true">
+                <path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/>
+              </svg>
+            </button>
+          </div>
+        {/if}
         <!-- View toggle: single button that flips between calendar and list.
              The icon shows the CURRENT view; clicking switches to the other. -->
         <div class="toolbar-group">
@@ -3916,6 +3935,14 @@
   .save-btn {
     position: relative;
   }
+  .reset-demo-btn {
+    color: var(--color-teal) !important;
+    border-color: var(--color-teal) !important;
+  }
+  .reset-demo-btn:hover {
+    background: var(--color-info-bg) !important;
+  }
+
   .save-pending {
     color: var(--color-teal) !important;
   }

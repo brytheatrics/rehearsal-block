@@ -82,14 +82,6 @@
     </div>
   {/if}
 
-  {#if isSignedIn && hasEdits}
-    <div class="reset-bar">
-      <button type="button" class="reset-btn" onclick={resetDemo}>
-        Reset demo to original
-      </button>
-    </div>
-  {/if}
-
   {#key editorKey}
     <ScheduleEditor
       initialDoc={data.show}
@@ -98,6 +90,8 @@
       onPaywall={() => (paywallOpen = true)}
       onDocChange={handleDocChange}
       showDemoBanners={!isSignedIn}
+      showResetButton={isSignedIn && hasEdits}
+      onReset={resetDemo}
     />
   {/key}
 
@@ -224,29 +218,6 @@
   .demo-banner-bottom {
     margin-top: var(--space-5);
     margin-bottom: 0;
-  }
-
-  .reset-bar {
-    display: flex;
-    justify-content: flex-end;
-    padding: var(--space-2) var(--space-5);
-    max-width: 2000px;
-    margin: 0 auto var(--space-3);
-  }
-
-  .reset-btn {
-    font: inherit;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-teal);
-    background: none;
-    border: 1px solid var(--color-teal);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-3);
-    cursor: pointer;
-  }
-  .reset-btn:hover {
-    background: var(--color-info-bg);
   }
 
   .modal-backdrop {
