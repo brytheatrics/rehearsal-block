@@ -541,7 +541,7 @@
 
   .partial-submit:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+
   }
 
   .mini-num {

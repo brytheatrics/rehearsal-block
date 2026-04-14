@@ -4082,7 +4082,7 @@
 
   .toolbar-btn:disabled {
     opacity: 0.3;
-    cursor: not-allowed;
+
   }
 
   /* Save button sync status indicators */
@@ -4410,7 +4410,7 @@
   }
   .export-option:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+
   }
   .export-option strong {
     font-size: 0.875rem;

@@ -1367,7 +1367,7 @@
   }
   .page-nav-btn:disabled {
     opacity: 0.3;
-    cursor: not-allowed;
+
   }
 
   .page-indicator {

@@ -140,7 +140,7 @@ input[type="checkbox"]:focus-visible {
 
 input[type="checkbox"]:disabled {
   opacity: 0.45;
-  cursor: not-allowed;
+
 }
 
 /* --- Utility classes used across the app --- */

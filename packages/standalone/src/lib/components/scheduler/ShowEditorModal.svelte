@@ -163,7 +163,7 @@
   }
   .name-input:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
+
     background: var(--color-bg-alt);
   }
 

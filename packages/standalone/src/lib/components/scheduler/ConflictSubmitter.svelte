@@ -1161,7 +1161,7 @@
   }
   .btn-submit:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+
   }
 
   .submit-hint {
@@ -1351,7 +1351,7 @@
   }
   .btn-primary:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+
   }
 
   @media (max-width: 520px) {

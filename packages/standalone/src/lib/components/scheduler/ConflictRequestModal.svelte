@@ -762,7 +762,7 @@
   }
   .copy-all-btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+
   }
 
   .per-actor-list {

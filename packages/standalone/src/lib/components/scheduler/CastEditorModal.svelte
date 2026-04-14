@@ -617,7 +617,7 @@
   }
   .arrow-btn:disabled {
     opacity: 0.3;
-    cursor: not-allowed;
+
   }
 
   .delete-btn {

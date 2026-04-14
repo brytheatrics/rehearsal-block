@@ -1966,7 +1966,7 @@
   .actor-row.blocked {
     background: var(--color-danger-bg);
     opacity: 0.7;
-    cursor: not-allowed;
+
   }
   .actor-row.blocked .actor-name,
   .actor-row.blocked .actor-character {
@@ -2191,7 +2191,7 @@
 
   .add-call-btn:disabled {
     opacity: 0.4;
-    cursor: not-allowed;
+
   }
 
   @media (max-width: 900px) {
