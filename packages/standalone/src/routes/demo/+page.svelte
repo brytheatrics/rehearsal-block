@@ -27,8 +27,10 @@
   const isDeployedDemo =
     typeof window !== "undefined" && window.location.hostname !== "localhost";
 
-  /** True when the user is signed in (checked client-side after hydration). */
-  const isSignedIn = $derived(!!(data as any).user);
+  /** True when the user is signed in (or on localhost for dev testing).
+   *  Localhost has no real auth, but we treat it as signed-in so the
+   *  signed-in demo experience can be previewed during development. */
+  const isSignedIn = $derived(!!(data as any).user || !isDeployedDemo);
 
   async function handleSave(doc: import("@rehearsal-block/core").ScheduleDoc) {
     try {
