@@ -995,6 +995,27 @@
               Black & white
             </button>
           </div>
+          {#if onconvertgroups && show.cast.length > 0}
+            <div class="section-label" style="margin-top:var(--space-3)">Groups</div>
+            <div class="btn-group-row">
+              <button
+                type="button"
+                class="btn-chip"
+                title="Replace called actors with group or All Called chip when everyone is called"
+                onclick={() => onconvertgroups?.("collapse")}
+              >
+                Collapse
+              </button>
+              <button
+                type="button"
+                class="btn-chip"
+                title="Replace group and All Called chips with their individual members"
+                onclick={() => onconvertgroups?.("expand")}
+              >
+                Expand
+              </button>
+            </div>
+          {/if}
         </section>
 
         <section class="section">
@@ -1110,26 +1131,6 @@
               </button>
             </div>
           </div>
-          {#if onconvertgroups && show.cast.length > 0}
-            <div class="convert-row">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                title="Replace called actors with group or All Called chip when everyone in the group is called"
-                onclick={() => onconvertgroups?.("collapse")}
-              >
-                Collapse actors into groups
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                title="Replace group and All Called chips with their individual members"
-                onclick={() => onconvertgroups?.("expand")}
-              >
-                Expand groups into actors
-              </button>
-            </div>
-          {/if}
         </div>
         <div class="preview-container" bind:this={previewContainerEl}>
           <div
