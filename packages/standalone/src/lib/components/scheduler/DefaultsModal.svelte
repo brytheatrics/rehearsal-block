@@ -244,11 +244,20 @@
   }
 
   function addEventType() {
-    // Auto-cycle through the palette so each new type gets a distinct color.
-    // Skip colors already in use by existing event types.
+    // Rotate through the palette based on how many types already exist,
+    // then walk forward until we hit an unused slot. This gives reliable
+    // variety even if the user has manually changed earlier colors or
+    // deleted and re-added types.
     const usedBgs = new Set(show.eventTypes.map((t) => t.bgColor));
-    const available = EVENT_TYPE_COLOR_PALETTE.filter((c) => !usedBgs.has(c.bgColor));
-    const pick = available.length > 0 ? available[0]! : EVENT_TYPE_COLOR_PALETTE[show.eventTypes.length % EVENT_TYPE_COLOR_PALETTE.length]!;
+    const startIdx = show.eventTypes.length % EVENT_TYPE_COLOR_PALETTE.length;
+    let pick = EVENT_TYPE_COLOR_PALETTE[startIdx]!;
+    for (let i = 0; i < EVENT_TYPE_COLOR_PALETTE.length; i++) {
+      const candidate = EVENT_TYPE_COLOR_PALETTE[(startIdx + i) % EVENT_TYPE_COLOR_PALETTE.length]!;
+      if (!usedBgs.has(candidate.bgColor)) {
+        pick = candidate;
+        break;
+      }
+    }
     onaddeventtype({
       id: `et_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: "New type",
@@ -901,7 +910,19 @@
   }
 
   function onBackdropKey(e: KeyboardEvent) {
-    if (e.key === "Escape") requestClose();
+    if (e.key !== "Escape") return;
+    // If a color popover is open, Escape just closes it instead of
+    // dismissing the whole modal. Also swallow the event so parent
+    // modals don't close on the same keystroke.
+    if (etColorPopoverFor || castColorPopoverFor || crewColorPopoverFor) {
+      etColorPopoverFor = null;
+      castColorPopoverFor = null;
+      crewColorPopoverFor = null;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      return;
+    }
+    if (!embedded) requestClose();
   }
 
   // Draggable modal
@@ -929,7 +950,7 @@
 </script>
 
 <svelte:window
-  onkeydown={embedded ? undefined : onBackdropKey}
+  onkeydown={onBackdropKey}
   onmousemove={embedded ? undefined : onDragMove}
   onmouseup={embedded ? undefined : onDragEnd}
 />
@@ -992,6 +1013,7 @@
   <div class="modal-body" onclick={() => {
     if (castColorPopoverFor) castColorPopoverFor = null;
     if (crewColorPopoverFor) crewColorPopoverFor = null;
+    if (etColorPopoverFor) etColorPopoverFor = null;
   }}>
     <!-- ==================== APPEARANCE TAB ==================== -->
     {#if activeTab === "appearance"}
