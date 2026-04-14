@@ -909,6 +909,30 @@
     editConflictId = null;
   }
 
+  /** Close any open color/shape popover when the user clicks outside it.
+   *  Runs at window level so clicks on modal chrome (tab nav, header) also
+   *  count as "outside". Buttons that toggle their own popover stop
+   *  propagation and never reach this handler. */
+  function onWindowClick(e: MouseEvent) {
+    const t = e.target as Element | null;
+    if (!t) return;
+    // Swatch / color-button clicks stop propagation, so they never reach
+    // this handler. A click that DOES reach here is either inside the open
+    // popover (keep open) or truly outside (close).
+    if (locCustomizeFor && !t.closest(".loc-customizer")) {
+      locCustomizeFor = null;
+    }
+    if (etColorPopoverFor && !t.closest(".et-color-popover")) {
+      etColorPopoverFor = null;
+    }
+    if (castColorPopoverFor && !t.closest(".cast-color-popover")) {
+      castColorPopoverFor = null;
+    }
+    if (crewColorPopoverFor && !t.closest(".cast-color-popover")) {
+      crewColorPopoverFor = null;
+    }
+  }
+
   function onBackdropKey(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
     // If a color popover is open, Escape just closes it instead of
@@ -952,6 +976,7 @@
 
 <svelte:window
   onkeydown={onBackdropKey}
+  onclick={onWindowClick}
   onmousemove={embedded ? undefined : onDragMove}
   onmouseup={embedded ? undefined : onDragEnd}
 />
@@ -1011,12 +1036,7 @@
 
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="modal-body" onclick={() => {
-    if (castColorPopoverFor) castColorPopoverFor = null;
-    if (crewColorPopoverFor) crewColorPopoverFor = null;
-    if (etColorPopoverFor) etColorPopoverFor = null;
-    if (locCustomizeFor) locCustomizeFor = null;
-  }}>
+  <div class="modal-body">
     <!-- ==================== APPEARANCE TAB ==================== -->
     {#if activeTab === "appearance"}
 
