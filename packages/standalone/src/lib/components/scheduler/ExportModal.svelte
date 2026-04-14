@@ -1111,13 +1111,11 @@
             </div>
           </div>
           {#if onconvertgroups && show.cast.length > 0}
-            {@const noGroups = show.groups.length === 0}
             <div class="convert-row">
               <button
                 type="button"
                 class="btn btn-secondary btn-sm"
-                disabled={noGroups}
-                title={noGroups ? "Create at least one group first (Cast & Groups tab in settings)" : "Replace called actors with their group chip when a whole group is called"}
+                title="Replace called actors with group or All Called chip when everyone in the group is called"
                 onclick={() => onconvertgroups?.("collapse")}
               >
                 Collapse actors into groups
@@ -1125,8 +1123,7 @@
               <button
                 type="button"
                 class="btn btn-secondary btn-sm"
-                disabled={noGroups}
-                title={noGroups ? "No groups in this show yet" : "Replace group chips with their individual members"}
+                title="Replace group and All Called chips with their individual members"
                 onclick={() => onconvertgroups?.("expand")}
               >
                 Expand groups into actors
