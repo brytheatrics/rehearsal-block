@@ -41,6 +41,7 @@
     CREW_FIELD_LABELS,
     autoMapConflictColumns,
     mapRowsToConflicts,
+    extractConflictsFromPeopleRows,
     CONFLICT_FIELD_LABELS,
   } from "@rehearsal-block/core";
   import type { CastField, CrewField, ConflictField, ImportMode, ImportResult, CsvParseResult } from "@rehearsal-block/core";
@@ -98,6 +99,10 @@
     onimportcrew?: (added: CrewMember[], updates: { id: string; patch: Partial<CrewMember> }[]) => void;
     /** Bulk add conflicts from CSV. */
     onimportconflicts?: (conflicts: Conflict[]) => void;
+    /** Move a cast member to the production team. */
+    onmovecasttocrew?: (id: string) => void;
+    /** Move a crew member to the cast list. */
+    onmovecrewtocast?: (id: string) => void;
     /** Open the conflict collection modal (send link to actors). */
     oncollectconflicts?: () => void;
     /** When true, render without backdrop/modal chrome - just tabs + content.
@@ -138,6 +143,8 @@
     onimportcast,
     onimportcrew,
     onimportconflicts,
+    onmovecasttocrew,
+    onmovecrewtocast,
     oncollectconflicts,
     contactsLocked = false,
     onpaywall,
@@ -546,10 +553,34 @@
 
   function executeCsvImport() {
     if (!csvImportParsed) return;
-    const incoming = mapRowsToCast(csvImportParsed.rows, csvImportMapping, show.cast.length);
+    const rows = csvImportParsed.rows;
+    const mapping = csvImportMapping;
+    const incoming = mapRowsToCast(rows, mapping, show.cast.length);
     const result = mergeCastImport(show.cast, incoming, csvImportMode);
     csvImportResult = result;
     onimportcast?.(result.added, result.updated);
+
+    // If the user also mapped a conflict date column, extract conflicts
+    // from the same rows against the full (cast + crew + newly added) pool.
+    if (mapping.includes("conflictDate")) {
+      const pool = [
+        ...show.cast.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+        ...show.crew.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+        ...result.added.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+      ];
+      const conflictResult = extractConflictsFromPeopleRows(rows, mapping, pool);
+      if (conflictResult.matched.length > 0) {
+        onimportconflicts?.(conflictResult.matched);
+      }
+      if (conflictResult.matched.length > 0 || conflictResult.unmatchedNames.length > 0) {
+        conflictImportSummary = {
+          added: conflictResult.matched.length,
+          unmatchedNames: conflictResult.unmatchedNames,
+          skipped: conflictResult.skipped,
+        };
+      }
+    }
+
     csvImportParsed = null;
   }
 
@@ -601,10 +632,34 @@
 
   function executeCrewCsvImport() {
     if (!crewCsvParsed) return;
-    const incoming = mapRowsToCrew(crewCsvParsed.rows, crewCsvMapping, show.crew.length);
+    const rows = crewCsvParsed.rows;
+    const mapping = crewCsvMapping;
+    const incoming = mapRowsToCrew(rows, mapping, show.crew.length);
     const result = mergeCrewImport(show.crew, incoming, crewCsvMode);
     crewCsvResult = result;
     onimportcrew?.(result.added, result.updated);
+
+    // If the user also mapped a conflict date column, extract conflicts
+    // against the full (cast + crew + newly added) pool.
+    if (mapping.includes("conflictDate")) {
+      const pool = [
+        ...show.cast.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+        ...show.crew.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+        ...result.added.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+      ];
+      const conflictResult = extractConflictsFromPeopleRows(rows, mapping, pool);
+      if (conflictResult.matched.length > 0) {
+        onimportconflicts?.(conflictResult.matched);
+      }
+      if (conflictResult.matched.length > 0 || conflictResult.unmatchedNames.length > 0) {
+        conflictImportSummary = {
+          added: conflictResult.matched.length,
+          unmatchedNames: conflictResult.unmatchedNames,
+          skipped: conflictResult.skipped,
+        };
+      }
+    }
+
     crewCsvParsed = null;
   }
 
@@ -678,9 +733,12 @@
 
   function executeConflictCsvImport() {
     if (!conflictCsvParsed) return;
-    const pool = conflictImportSource === "crew"
-      ? show.crew.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName }))
-      : show.cast.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName }));
+    // Always match against the full pool (cast + crew) - a single conflicts
+    // CSV can cover both. Unmatched names are surfaced in the summary.
+    const pool = [
+      ...show.cast.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+      ...show.crew.map((m) => ({ id: m.id, firstName: m.firstName, lastName: m.lastName })),
+    ];
     const result = mapRowsToConflicts(conflictCsvParsed.rows, conflictCsvMapping, pool);
     if (result.matched.length > 0) {
       onimportconflicts?.(result.matched);
@@ -1951,6 +2009,12 @@
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Z"/></svg>
                       Add conflicts
                     </button>
+                    {#if onmovecasttocrew}
+                      <button type="button" class="mockup-action-btn" title="Move this person to the production team" onclick={(e) => { e.stopPropagation(); if (contactsLocked) { gate(); return; } onmovecasttocrew(member.id); }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M400-240 160-480l240-240 56 58-142 142h486v80H314l142 142-56 58Z"/></svg>
+                        Move to Team
+                      </button>
+                    {/if}
                     <button type="button" class="mockup-action-btn mockup-action-danger" onclick={(e) => { e.stopPropagation(); requestCastDelete(member.id); }}>
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
                       Remove actor
@@ -2269,6 +2333,12 @@
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Z"/></svg>
                       Add conflicts
                     </button>
+                    {#if onmovecrewtocast}
+                      <button type="button" class="mockup-action-btn" title="Move this person to the cast list" onclick={(e) => { e.stopPropagation(); if (contactsLocked) { gate(); return; } onmovecrewtocast(member.id); }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M400-240 160-480l240-240 56 58-142 142h486v80H314l142 142-56 58Z"/></svg>
+                        Move to Cast
+                      </button>
+                    {/if}
                     <button type="button" class="mockup-action-btn mockup-action-danger" onclick={(e) => { e.stopPropagation(); crewDeleteConfirmFor = member.id; }}>
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
                       Remove member
@@ -2419,8 +2489,8 @@
   <div class="chooser-modal conflict-mapping-modal" role="dialog" aria-label="Map conflict CSV columns">
     <h3>Map CSV Columns - Conflicts</h3>
     <p class="chooser-hint">
-      Assign each column to a conflict field. Names are matched against your
-      {conflictImportSource === "crew" ? "production team" : "cast list"}; rows with unknown names will be skipped.
+      Assign each column to a conflict field. Names are matched against both
+      your cast list and production team; rows with unknown names will be skipped.
     </p>
 
     <div class="csv-mapping-table">

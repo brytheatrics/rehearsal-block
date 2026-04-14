@@ -13,7 +13,9 @@ import { formatPhone } from "./cast.js";
 // Types
 // ---------------------------------------------------------------------------
 
-/** Fields on CastMember that can be mapped from a CSV column. */
+/** Fields on CastMember that can be mapped from a CSV column.
+ *  conflict* fields are not stored on CastMember - they're consumed
+ *  afterward to produce Conflict objects for rows that include a date. */
 export type CastField =
   | "firstName"
   | "lastName"
@@ -22,7 +24,11 @@ export type CastField =
   | "character"
   | "pronouns"
   | "email"
-  | "phone";
+  | "phone"
+  | "conflictDate"
+  | "conflictStartTime"
+  | "conflictEndTime"
+  | "conflictLabel";
 
 export const CAST_FIELD_LABELS: Record<CastField, string> = {
   firstName: "First Name",
@@ -33,6 +39,10 @@ export const CAST_FIELD_LABELS: Record<CastField, string> = {
   pronouns: "Pronouns",
   email: "Email",
   phone: "Phone",
+  conflictDate: "Conflict Date",
+  conflictStartTime: "Conflict Start Time",
+  conflictEndTime: "Conflict End Time",
+  conflictLabel: "Conflict Reason",
 };
 
 /** Fields on CrewMember that can be mapped from a CSV column. */
@@ -44,7 +54,11 @@ export type CrewField =
   | "role"
   | "pronouns"
   | "email"
-  | "phone";
+  | "phone"
+  | "conflictDate"
+  | "conflictStartTime"
+  | "conflictEndTime"
+  | "conflictLabel";
 
 export const CREW_FIELD_LABELS: Record<CrewField, string> = {
   firstName: "First Name",
@@ -55,6 +69,10 @@ export const CREW_FIELD_LABELS: Record<CrewField, string> = {
   pronouns: "Pronouns",
   email: "Email",
   phone: "Phone",
+  conflictDate: "Conflict Date",
+  conflictStartTime: "Conflict Start Time",
+  conflictEndTime: "Conflict End Time",
+  conflictLabel: "Conflict Reason",
 };
 
 export type ImportMode = "add" | "fill" | "overwrite";
@@ -115,6 +133,17 @@ const HEADER_ALIASES: Record<string, CastField> = {
   "full name": "firstName",
   "actor": "firstName",
   "actor name": "firstName",
+  // Conflict columns (joint import: cast + conflicts on one sheet)
+  "conflict date": "conflictDate",
+  "conflict start": "conflictStartTime",
+  "conflict start time": "conflictStartTime",
+  "conflict end": "conflictEndTime",
+  "conflict end time": "conflictEndTime",
+  "conflict reason": "conflictLabel",
+  "conflict label": "conflictLabel",
+  "conflict note": "conflictLabel",
+  "conflict notes": "conflictLabel",
+  "conflict type": "conflictLabel",
 };
 
 // ---------------------------------------------------------------------------
@@ -302,7 +331,7 @@ export function mergeCastImport(
     existingByName.set(nameKey(m.firstName, m.lastName), m);
   }
 
-  const MERGE_FIELDS: CastField[] = [
+  const MERGE_FIELDS: (keyof CastMember)[] = [
     "middleName", "suffix", "character", "pronouns", "email", "phone",
   ];
 
@@ -383,6 +412,16 @@ const CREW_HEADER_ALIASES: Record<string, CrewField> = {
   "mobile": "phone",
   "name": "firstName",
   "full name": "firstName",
+  "conflict date": "conflictDate",
+  "conflict start": "conflictStartTime",
+  "conflict start time": "conflictStartTime",
+  "conflict end": "conflictEndTime",
+  "conflict end time": "conflictEndTime",
+  "conflict reason": "conflictLabel",
+  "conflict label": "conflictLabel",
+  "conflict note": "conflictLabel",
+  "conflict notes": "conflictLabel",
+  "conflict type": "conflictLabel",
 };
 
 export function autoMapCrewColumns(headers: string[]): (CrewField | null)[] {
@@ -453,7 +492,7 @@ export function mergeCrewImport(
     existingByName.set(nameKey(m.firstName, m.lastName), m);
   }
 
-  const MERGE_FIELDS: CrewField[] = [
+  const MERGE_FIELDS: (keyof CrewMember)[] = [
     "middleName", "suffix", "role", "pronouns", "email", "phone",
   ];
 
@@ -735,6 +774,120 @@ export function mapRowsToConflicts(
       });
     } else {
       unmatchedSet.add(rawName);
+    }
+  }
+
+  return {
+    matched,
+    unmatchedNames: [...unmatchedSet].sort(),
+    skipped,
+  };
+}
+
+/**
+ * Extract conflicts from a cast/crew CSV that also has conflict columns
+ * (conflictDate + optional conflictStartTime, conflictEndTime, conflictLabel).
+ *
+ * Use case: user has one spreadsheet with name, role/character, and conflict
+ * columns all together. After importing as cast or crew, call this with the
+ * combined cast+crew pool so the conflict rows resolve to the freshly-added
+ * or existing people.
+ *
+ * Rows without a conflictDate produce no conflict (cast-only rows).
+ * Rows whose name can't be found end up in `unmatchedNames`.
+ */
+export function extractConflictsFromPeopleRows(
+  rows: string[][],
+  mapping: (CastField | CrewField | null)[],
+  people: Array<{ id: string; firstName: string; lastName: string }>,
+): ConflictImportResult {
+  // Only meaningful if mapping contains conflictDate
+  if (!mapping.includes("conflictDate" as CastField)) {
+    return { matched: [], unmatchedNames: [], skipped: 0 };
+  }
+
+  const matched: Conflict[] = [];
+  const unmatchedSet = new Set<string>();
+  let skipped = 0;
+
+  const byFullName = new Map<string, string>();
+  const byFirstName = new Map<string, string[]>();
+  const byLastName = new Map<string, string[]>();
+  for (const p of people) {
+    const full = `${p.firstName} ${p.lastName}`.trim().toLowerCase();
+    byFullName.set(full, p.id);
+    const first = p.firstName.trim().toLowerCase();
+    if (first) {
+      const arr = byFirstName.get(first) ?? [];
+      arr.push(p.id);
+      byFirstName.set(first, arr);
+    }
+    const last = p.lastName.trim().toLowerCase();
+    if (last) {
+      const arr = byLastName.get(last) ?? [];
+      arr.push(p.id);
+      byLastName.set(last, arr);
+    }
+  }
+
+  for (const row of rows) {
+    const raw: Record<string, string> = {};
+    for (let c = 0; c < mapping.length; c++) {
+      const field = mapping[c];
+      if (field && c < row.length) {
+        raw[field] = row[c]!.trim();
+      }
+    }
+
+    const dateRaw = raw.conflictDate ?? "";
+    if (!dateRaw) continue; // no conflict on this row
+
+    const firstName = raw.firstName ?? "";
+    const lastName = raw.lastName ?? "";
+    const fullNameFromParts = `${firstName} ${lastName}`.trim();
+    const nameDisplay = fullNameFromParts || firstName || lastName;
+    if (!nameDisplay) {
+      skipped++;
+      continue;
+    }
+
+    const date = parseDateCell(dateRaw);
+    if (!date) {
+      skipped++;
+      continue;
+    }
+
+    const startTime = raw.conflictStartTime ? parseTimeCell(raw.conflictStartTime) ?? undefined : undefined;
+    const endTime = raw.conflictEndTime ? parseTimeCell(raw.conflictEndTime) ?? undefined : undefined;
+    const label = raw.conflictLabel ?? "";
+
+    const lookup = nameDisplay.toLowerCase();
+    let id: string | undefined;
+    // Try full "first last" first
+    if (firstName && lastName) {
+      id = byFullName.get(`${firstName.toLowerCase()} ${lastName.toLowerCase()}`);
+    }
+    if (!id) id = byFullName.get(lookup);
+    if (!id && firstName) {
+      const fm = byFirstName.get(firstName.toLowerCase());
+      if (fm && fm.length === 1) id = fm[0];
+    }
+    if (!id && lastName) {
+      const lm = byLastName.get(lastName.toLowerCase());
+      if (lm && lm.length === 1) id = lm[0];
+    }
+
+    if (id) {
+      matched.push({
+        id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        actorId: id,
+        date,
+        label,
+        ...(startTime ? { startTime } : {}),
+        ...(endTime ? { endTime } : {}),
+      });
+    } else {
+      unmatchedSet.add(nameDisplay);
     }
   }
 

@@ -236,6 +236,79 @@
     if (!doc || conflicts.length === 0) return;
     doc.conflicts = [...doc.conflicts, ...conflicts];
   }
+
+  function moveCastToCrew(id: string) {
+    if (!doc) return;
+    const member = doc.cast.find((m) => m.id === id);
+    if (!member) return;
+    const newCrew: CrewMember = {
+      id: `crew_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      role: member.character ?? "",
+      color: member.color,
+      middleName: member.middleName,
+      suffix: member.suffix,
+      pronouns: member.pronouns,
+      email: member.email,
+      phone: member.phone,
+    };
+    doc.crew = [...doc.crew, newCrew];
+    doc.cast = doc.cast.filter((m) => m.id !== id);
+    doc.conflicts = doc.conflicts.map((c) => c.actorId === id ? { ...c, actorId: newCrew.id } : c);
+    const newSchedule: typeof doc.schedule = {};
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      newSchedule[iso] = {
+        ...day,
+        calls: day.calls.map((call) => {
+          if (!call.calledActorIds.includes(id)) return call;
+          const crewIds = call.calledCrewIds ? [...call.calledCrewIds, newCrew.id] : [newCrew.id];
+          return {
+            ...call,
+            calledActorIds: call.calledActorIds.filter((aid) => aid !== id),
+            calledCrewIds: crewIds,
+          };
+        }),
+      };
+    }
+    doc.schedule = newSchedule;
+  }
+
+  function moveCrewToCast(id: string) {
+    if (!doc) return;
+    const member = doc.crew.find((m) => m.id === id);
+    if (!member) return;
+    const newCast: CastMember = {
+      id: `actor_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      character: member.role ?? "",
+      color: member.color,
+      middleName: member.middleName,
+      suffix: member.suffix,
+      pronouns: member.pronouns,
+      email: member.email,
+      phone: member.phone,
+    };
+    doc.cast = [...doc.cast, newCast];
+    doc.crew = doc.crew.filter((m) => m.id !== id);
+    doc.conflicts = doc.conflicts.map((c) => c.actorId === id ? { ...c, actorId: newCast.id } : c);
+    const newSchedule: typeof doc.schedule = {};
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      newSchedule[iso] = {
+        ...day,
+        calls: day.calls.map((call) => {
+          if (!call.calledCrewIds || !call.calledCrewIds.includes(id)) return call;
+          return {
+            ...call,
+            calledCrewIds: call.calledCrewIds.filter((cid) => cid !== id),
+            calledActorIds: [...call.calledActorIds, newCast.id],
+          };
+        }),
+      };
+    }
+    doc.schedule = newSchedule;
+  }
   function removeConflict(id: string) {
     if (!doc) return;
     doc.conflicts = doc.conflicts.filter((c) => c.id !== id);
@@ -293,6 +366,8 @@
         onimportcast={importCast}
         onimportcrew={importCrew}
         onimportconflicts={importConflicts}
+        onmovecasttocrew={moveCastToCrew}
+        onmovecrewtocast={moveCrewToCast}
       />
     </div>
   {/if}

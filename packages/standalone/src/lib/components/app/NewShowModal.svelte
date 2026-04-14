@@ -267,6 +267,46 @@
     if (conflicts.length === 0) return;
     tempDoc.conflicts = [...tempDoc.conflicts, ...conflicts];
   }
+
+  function moveCastToCrew(id: string) {
+    const member = tempDoc.cast.find((m) => m.id === id);
+    if (!member) return;
+    const newCrew: CrewMember = {
+      id: `crew_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      role: member.character ?? "",
+      color: member.color,
+      middleName: member.middleName,
+      suffix: member.suffix,
+      pronouns: member.pronouns,
+      email: member.email,
+      phone: member.phone,
+    };
+    tempDoc.crew = [...tempDoc.crew, newCrew];
+    tempDoc.cast = tempDoc.cast.filter((m) => m.id !== id);
+    tempDoc.conflicts = tempDoc.conflicts.map((c) => c.actorId === id ? { ...c, actorId: newCrew.id } : c);
+  }
+
+  function moveCrewToCast(id: string) {
+    const member = tempDoc.crew.find((m) => m.id === id);
+    if (!member) return;
+    const newCast: CastMember = {
+      id: `actor_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      character: member.role ?? "",
+      color: member.color,
+      middleName: member.middleName,
+      suffix: member.suffix,
+      pronouns: member.pronouns,
+      email: member.email,
+      phone: member.phone,
+    };
+    tempDoc.cast = [...tempDoc.cast, newCast];
+    tempDoc.crew = tempDoc.crew.filter((m) => m.id !== id);
+    tempDoc.conflicts = tempDoc.conflicts.map((c) => c.actorId === id ? { ...c, actorId: newCast.id } : c);
+  }
 </script>
 
 <svelte:window onkeydown={handleKey} />
@@ -370,6 +410,8 @@
             onimportcast={importCast}
             onimportcrew={importCrew}
             onimportconflicts={importConflicts}
+            onmovecasttocrew={moveCastToCrew}
+            onmovecrewtocast={moveCrewToCast}
           />
         </div>
       {/if}
