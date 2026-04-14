@@ -1233,6 +1233,14 @@
   function removeLocationPreset(name: string) {
     pushUndoImmediate();
     doc.locationPresets = doc.locationPresets.filter((p) => p !== name);
+    // Also drop the V2 entry - the Day Tools sidebar prefers V2 when it
+    // has any entries, so leaving a stale V2 record shows a deleted
+    // location as a ghost chip in the picker.
+    if (doc.locationPresetsV2) {
+      doc.locationPresetsV2 = doc.locationPresetsV2.filter(
+        (p) => p.name.toLowerCase() !== name.toLowerCase(),
+      );
+    }
     // If the removed location was the show default, clear it.
     if (doc.settings.defaultLocation === name) {
       doc.settings = { ...doc.settings, defaultLocation: "" };
@@ -1320,7 +1328,6 @@
   }
 
   function removeEventType(id: string) {
-    if (doc.eventTypes.length <= 1) return;
     pushUndoImmediate();
     const remaining = doc.eventTypes.filter((t) => t.id !== id);
     doc.eventTypes = remaining;
@@ -1328,10 +1335,10 @@
     if (doc.settings.defaultEventType === id) {
       doc.settings = { ...doc.settings, defaultEventType: "" };
     }
-    // Reassign any days that pointed at the removed type so the grid
-    // doesn't render empty badges. Fall back to the first remaining type.
-    const fallbackId = remaining[0]?.id;
-    if (!fallbackId) return;
+    // Reassign any days that pointed at the removed type. If another type
+    // remains, fall back to it; if this was the last type, clear the day's
+    // eventTypeId so the grid renders without a badge.
+    const fallbackId = remaining[0]?.id ?? "";
     for (const [date, day] of Object.entries(doc.schedule)) {
       if (day.eventTypeId === id) {
         doc.schedule[date] = { ...day, eventTypeId: fallbackId };

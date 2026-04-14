@@ -38,11 +38,15 @@
     onaddlocation,
   }: Props = $props();
 
-  const locations = $derived<LocationPreset[]>(
-    show.locationPresetsV2 && show.locationPresetsV2.length > 0
-      ? show.locationPresetsV2
-      : show.locationPresets.map((name) => ({ name })),
-  );
+  // Only surface V2 entries whose name is still in the canonical
+  // locationPresets list - stale V2 records from older removals would
+  // otherwise appear as ghost chips in the picker.
+  const locations = $derived.by<LocationPreset[]>(() => {
+    const names = new Set(show.locationPresets.map((n) => n.toLowerCase()));
+    const v2 = show.locationPresetsV2?.filter((p) => names.has(p.name.toLowerCase())) ?? [];
+    if (v2.length > 0) return v2;
+    return show.locationPresets.map((name) => ({ name }));
+  });
 
   // Inline add state: when the user clicks the + button on a section
   // header, swap in a small input for entering the new item's name.
