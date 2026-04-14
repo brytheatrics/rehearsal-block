@@ -143,33 +143,45 @@ function buildFirstNameLabels(
   const crewOut = new Map<string, string>();
 
   for (const bucket of byFirstName.values()) {
-    if (bucket.length === 1) {
-      const m = bucket[0]!;
-      (m.pool === "cast" ? castOut : crewOut).set(m.id, m.firstName);
+    // Treat identical firstName+lastName entries (the same person in both
+    // cast and crew) as a single effective person for disambiguation. If
+    // every member of the bucket is the same firstName+lastName, there's
+    // nothing to disambiguate and everyone gets the bare first name.
+    const fullKey = (m: Entry) =>
+      `${m.firstName.trim().toLowerCase()}|${m.lastName.trim().toLowerCase()}`;
+    const uniqueFullNames = new Set(bucket.map(fullKey));
+
+    if (bucket.length === 1 || uniqueFullNames.size === 1) {
+      for (const m of bucket) {
+        (m.pool === "cast" ? castOut : crewOut).set(m.id, m.firstName);
+      }
       continue;
     }
 
-    // Multiple people share this first name across cast + crew. Try
-    // last-initial first.
-    const initials = bucket.map((m) =>
-      (m.lastName.trim()[0] ?? "").toUpperCase(),
-    );
-    const initialCounts = new Map<string, number>();
-    for (const ini of initials) {
-      initialCounts.set(ini, (initialCounts.get(ini) ?? 0) + 1);
+    // Multiple distinct people share this first name. Try last-initial
+    // first - but dups from the same person should share one "initial
+    // slot" so they don't force each other into full-name fallback.
+    const slotByFullName = new Map<string, string>(); // full-name → initial
+    const slotCounts = new Map<string, number>();     // initial → # of distinct people using it
+    for (const m of bucket) {
+      const fk = fullKey(m);
+      if (slotByFullName.has(fk)) continue;
+      const ini = (m.lastName.trim()[0] ?? "").toUpperCase();
+      slotByFullName.set(fk, ini);
+      slotCounts.set(ini, (slotCounts.get(ini) ?? 0) + 1);
     }
 
-    bucket.forEach((m, i) => {
+    for (const m of bucket) {
       const target = m.pool === "cast" ? castOut : crewOut;
-      const ini = initials[i]!;
-      if (ini && (initialCounts.get(ini) ?? 0) === 1) {
+      const ini = slotByFullName.get(fullKey(m)) ?? "";
+      if (ini && (slotCounts.get(ini) ?? 0) === 1) {
         target.set(m.id, `${m.firstName} ${ini}.`);
       } else {
         // Last initial still collides (or missing) - fall back to the
         // full last name so there's no ambiguity at all.
         target.set(m.id, `${m.firstName} ${m.lastName}`.trim());
       }
-    });
+    }
   }
 
   return { cast: castOut, crew: crewOut };
