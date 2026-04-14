@@ -3412,6 +3412,7 @@
     onclose={() => (exportOpen = false)}
     readOnly={readOnly}
     onpaywall={() => onPaywall?.()}
+    onconvertgroups={convertGroups}
   />
 {/if}
 
@@ -3420,6 +3421,7 @@
     show={doc}
     onclose={() => (printOpen = false)}
     outputMode="print"
+    onconvertgroups={convertGroups}
   />
 {/if}
 

@@ -22,6 +22,8 @@
 
   let previewContainerEl = $state<HTMLDivElement | null>(null);
   let previewScale = $state(0.5);
+  /** Zoom mode: "fit" = auto-scale to container, "actual" = 100%, custom = manual scale. */
+  let zoomMode = $state<"fit" | "actual" | "custom">("fit");
   let pageWidthPx = $state(1056);
   let pageHeightPx = $state(816);
   let pageCount = $state(1);
@@ -36,9 +38,11 @@
     onpaywall?: () => void;
     /** "pdf" opens with Download PDF button, "print" opens with Print button. */
     outputMode?: "pdf" | "print";
+    /** Called when user clicks Collapse/Expand groups. Hides the buttons if not provided. */
+    onconvertgroups?: (mode: "collapse" | "expand") => void;
   }
 
-  const { show, onclose, readOnly = false, onpaywall, outputMode = "pdf" }: Props = $props();
+  const { show, onclose, readOnly = false, onpaywall, outputMode = "pdf", onconvertgroups }: Props = $props();
 
   // ---- Defaults ----
   const DEFAULTS = {
@@ -557,14 +561,45 @@
 
     requestAnimationFrame(() => {
       if (!previewContainerEl) return;
-      const containerRect = previewContainerEl.getBoundingClientRect();
-      const availW = containerRect.width - 48;
-      const availH = containerRect.height - 80; // room for page nav
-      if (availW > 0 && availH > 0) {
-        previewScale = Math.min(availW / wPx, availH / hPx, 1);
+      if (zoomMode === "fit") {
+        const containerRect = previewContainerEl.getBoundingClientRect();
+        const availW = containerRect.width - 48;
+        const availH = containerRect.height - 80;
+        if (availW > 0 && availH > 0) {
+          previewScale = Math.min(availW / wPx, availH / hPx, 1);
+        }
+      } else if (zoomMode === "actual") {
+        previewScale = 1;
       }
+      // zoomMode === "custom" -> previewScale already set by +/- handlers
     });
   });
+
+  function zoomFit() {
+    zoomMode = "fit";
+    if (!previewContainerEl) return;
+    const containerRect = previewContainerEl.getBoundingClientRect();
+    const availW = containerRect.width - 48;
+    const availH = containerRect.height - 80;
+    if (availW > 0 && availH > 0) {
+      previewScale = Math.min(availW / pageWidthPx, availH / pageHeightPx, 1);
+    }
+  }
+
+  function zoomActual() {
+    zoomMode = "actual";
+    previewScale = 1;
+  }
+
+  function zoomIn() {
+    zoomMode = "custom";
+    previewScale = Math.min(previewScale + 0.1, 3);
+  }
+
+  function zoomOut() {
+    zoomMode = "custom";
+    previewScale = Math.max(previewScale - 0.1, 0.1);
+  }
 
   // Push the current page's HTML into its iframe.
   $effect(() => {
@@ -1026,28 +1061,74 @@
       <!-- Right: live preview -->
       <div class="preview-panel">
         <div class="preview-top">
-          <span class="preview-label">Preview</span>
-          <div class="page-nav">
-            <button
-              type="button"
-              class="page-nav-btn"
-              disabled={currentPage === 0}
-              onclick={() => (currentPage = Math.max(0, currentPage - 1))}
-            >
-              &#9664;
-            </button>
-            <span class="page-indicator">
-              Page {currentPage + 1} of {pageCount}
-            </span>
-            <button
-              type="button"
-              class="page-nav-btn"
-              disabled={currentPage >= pageCount - 1}
-              onclick={() => (currentPage = Math.min(pageCount - 1, currentPage + 1))}
-            >
-              &#9654;
-            </button>
+          <div class="preview-top-row">
+            <div class="zoom-controls">
+              <button
+                type="button"
+                class="zoom-btn"
+                class:selected={zoomMode === "fit"}
+                onclick={zoomFit}
+                title="Fit to window"
+              >
+                Fit
+              </button>
+              <button
+                type="button"
+                class="zoom-btn"
+                class:selected={zoomMode === "actual"}
+                onclick={zoomActual}
+                title="Actual size (100%)"
+              >
+                100%
+              </button>
+              <button
+                type="button"
+                class="zoom-btn zoom-icon-btn"
+                onclick={zoomOut}
+                title="Zoom out"
+                aria-label="Zoom out"
+              >&minus;</button>
+              <span class="zoom-value">{Math.round(previewScale * 100)}%</span>
+              <button
+                type="button"
+                class="zoom-btn zoom-icon-btn"
+                onclick={zoomIn}
+                title="Zoom in"
+                aria-label="Zoom in"
+              >+</button>
+            </div>
+            <div class="page-nav">
+              <button
+                type="button"
+                class="page-nav-btn"
+                disabled={currentPage === 0}
+                onclick={() => (currentPage = Math.max(0, currentPage - 1))}
+              >
+                &#9664;
+              </button>
+              <span class="page-indicator">
+                Page {currentPage + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                class="page-nav-btn"
+                disabled={currentPage >= pageCount - 1}
+                onclick={() => (currentPage = Math.min(pageCount - 1, currentPage + 1))}
+              >
+                &#9654;
+              </button>
+            </div>
           </div>
+          {#if onconvertgroups && show.groups.length > 0 && show.cast.length > 0}
+            <div class="convert-row">
+              <button type="button" class="btn btn-secondary btn-sm" onclick={() => onconvertgroups?.("collapse")}>
+                Collapse actors into groups
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick={() => onconvertgroups?.("expand")}>
+                Expand groups into actors
+              </button>
+            </div>
+          {/if}
         </div>
         <div class="preview-container" bind:this={previewContainerEl}>
           <div
@@ -1191,8 +1272,62 @@
 
   .preview-top {
     display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .preview-top-row {
+    display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .zoom-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 3px var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    min-width: 28px;
+  }
+  .zoom-btn:hover {
+    border-color: var(--color-text-muted);
+    color: var(--color-text);
+  }
+  .zoom-btn.selected {
+    background: var(--color-plum);
+    border-color: var(--color-plum);
+    color: var(--color-text-inverse);
+  }
+  .zoom-icon-btn {
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 3px 8px;
+  }
+  .zoom-value {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    min-width: 38px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .convert-row {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
 
   .preview-label {
