@@ -2519,7 +2519,8 @@
       (c) => !existingKeys.has(`${c.actorId}:${c.date}:${c.startTime ?? ""}:${c.endTime ?? ""}`),
     );
     doc.conflicts = [...doc.conflicts, ...toAdd];
-    const actor = doc.cast.find((m) => m.id === incoming[0].actorId);
+    const actor = doc.cast.find((m) => m.id === incoming[0].actorId)
+      ?? doc.crew.find((m) => m.id === incoming[0].actorId);
     const name = actor ? actor.firstName : "the actor";
     showToast(
       toAdd.length === 0
@@ -2533,8 +2534,10 @@
 
   function conflictDisplayLabel(c: Conflict): string {
     const actor = doc.cast.find((m) => m.id === c.actorId);
-    const name = actor
-      ? `${actor.firstName} ${actor.lastName}`
+    const crew = actor ? null : doc.crew.find((m) => m.id === c.actorId);
+    const person = actor ?? crew;
+    const name = person
+      ? `${person.firstName} ${person.lastName}`
       : "Unknown actor";
     const when =
       c.startTime && c.endTime

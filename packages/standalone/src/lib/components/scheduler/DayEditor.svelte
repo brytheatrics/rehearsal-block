@@ -270,7 +270,11 @@
 
   function actorNameById(id: string): string {
     const m = show.cast.find((x) => x.id === id);
-    return m ? `${m.firstName} ${m.lastName}` : "Unknown";
+    if (m) return `${m.firstName} ${m.lastName}`;
+    // Conflicts can reference crew too (conflict import matches both pools).
+    const c = show.crew.find((x) => x.id === id);
+    if (c) return `${c.firstName} ${c.lastName}`;
+    return "Unknown";
   }
 
   function conflictRangeLabel(c: Conflict): string {
