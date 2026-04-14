@@ -1,0 +1,79 @@
+# Nightly R2 document backup.
+# Mirrors the private rehearsal-block-shows bucket (show docs, archives,
+# conflict-submission inboxes) to a second R2 bucket so a
+# catastrophic-loss or ransomware scenario in the primary still leaves a
+# recoverable offsite copy of every document. Complements
+# supabase-backup.yml which handles the metadata side.
+#
+# Runs at 4:07 AM UTC daily (one hour after the Supabase dump so they
+# don't compete for CI runners or R2 quota).
+#
+# Keeps 7 days of daily snapshot folders. Older snapshots are pruned.
+#
+# Required secrets:
+#   R2_ACCESS_KEY_ID       - Cloudflare R2 credentials
+#   R2_SECRET_ACCESS_KEY
+#   R2_ACCOUNT_ID
+#   R2_BUCKET_NAME         - source bucket (e.g. rehearsal-block-shows)
+#   R2_BACKUP_BUCKET_NAME  - destination bucket (e.g. rehearsal-block-shows-backup)
+
+name: R2 Document Backup
+
+on:
+  schedule:
+    - cron: "7 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install AWS CLI
+        run: |
+          curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
+      - name: Sync primary to snapshot folder
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_BACKUP_BUCKET_NAME: ${{ secrets.R2_BACKUP_BUCKET_NAME }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Daily full snapshot under a dated prefix. aws s3 sync is
+          # incremental (only uploads changed objects) but we keep each
+          # day under its own prefix so point-in-time restore is trivial.
+          aws s3 sync \
+            "s3://${R2_BUCKET_NAME}/" \
+            "s3://${R2_BACKUP_BUCKET_NAME}/snapshots/${DATE}/" \
+            --endpoint-url "$ENDPOINT" \
+            --size-only
+
+      - name: Prune old snapshots (keep 7 days)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BACKUP_BUCKET_NAME: ${{ secrets.R2_BACKUP_BUCKET_NAME }}
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          CUTOFF=$(date -u -d "7 days ago" +%Y-%m-%d)
+
+          # List top-level snapshot folders, delete any dated before the cutoff.
+          aws s3 ls "s3://${R2_BACKUP_BUCKET_NAME}/snapshots/" \
+            --endpoint-url "$ENDPOINT" \
+            | awk '{print $2}' \
+            | tr -d '/' \
+            | while read folder; do
+                if [ -n "$folder" ] && [ "$folder" \< "$CUTOFF" ]; then
+                  echo "Pruning snapshot ${folder}"
+                  aws s3 rm "s3://${R2_BACKUP_BUCKET_NAME}/snapshots/${folder}/" \
+                    --endpoint-url "$ENDPOINT" \
+                    --recursive
+                fi
+              done

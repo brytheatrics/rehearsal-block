@@ -1,5 +1,27 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { createSupabaseBrowserClient } from "$lib/supabase/client";
+
   let { data } = $props();
+
+  // The Stripe webhook (and /buy/success server load as backup) has
+  // flipped profiles.has_paid = true, but the user's current JWT still
+  // carries the stale has_paid = false claim. Without a forced refresh
+  // the new claim doesn't appear in the token until natural rotation
+  // (~1 hour), so clicking "Go to My Shows" would bounce them back to
+  // /buy. One call to refreshSession mints a new token with the
+  // updated claim, and the route guard lets them through immediately.
+  onMount(async () => {
+    if (data.paid && data.alreadySignedIn) {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        await supabase.auth.refreshSession();
+      } catch (err) {
+        // Non-fatal - the token will refresh naturally on next request.
+        console.warn("Post-purchase session refresh failed:", err);
+      }
+    }
+  });
 </script>
 
 <svelte:head>

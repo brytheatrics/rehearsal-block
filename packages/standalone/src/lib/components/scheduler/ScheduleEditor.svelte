@@ -46,9 +46,15 @@
     /** When provided, shows a "Version history" icon in the toolbar
      *  next to Save. Clicking it fires onHistory. */
     onHistory?: () => void;
+    /** When provided, a BroadcastChannel watches for other tabs editing
+     *  the same show and shows a non-blocking warning banner if one is
+     *  detected. Omit for the demo (no persistent show id). */
+    showId?: string;
   }
 
-  const { initialDoc, readOnly = false, onSave, onPaywall, onDocChange, showDemoBanners = false, syncStatus = "synced", showResetButton = false, onReset, onHistory }: Props = $props();
+  const { initialDoc, readOnly = false, onSave, onPaywall, onDocChange, showDemoBanners = false, syncStatus = "synced", showResetButton = false, onReset, onHistory, showId }: Props = $props();
+
+  let multiTabWarning = $state(false);
 
   // Deep-clone so mutations during editing don't touch the caller's object.
   // svelte-ignore state_referenced_locally
@@ -2441,6 +2447,37 @@
     };
     window.addEventListener("storage", handler);
 
+    // Multi-tab detection. A single user with the same show open in two
+    // tabs (or two devices) can silently race-write: both tabs save to
+    // IndexedDB + R2 and last-write-wins erases the other's changes.
+    // BroadcastChannel lets open tabs announce themselves; if a second
+    // tab joins, both see a non-blocking warning banner so the user
+    // knows to close one.
+    let channel: BroadcastChannel | null = null;
+    let myTabId: string | null = null;
+    if (showId && typeof BroadcastChannel !== "undefined") {
+      myTabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      channel = new BroadcastChannel(`rb-show-${showId}`);
+      channel.onmessage = (ev) => {
+        const msg = ev.data as { type: string; tabId: string };
+        if (!msg || !msg.tabId || msg.tabId === myTabId) return;
+        if (msg.type === "hello") {
+          // Another tab just opened this show. Flag the warning and
+          // reply so they know we're here too.
+          multiTabWarning = true;
+          channel?.postMessage({ type: "already-open", tabId: myTabId });
+        } else if (msg.type === "already-open") {
+          // A tab that was already open is confirming our hello.
+          multiTabWarning = true;
+        } else if (msg.type === "bye" && !msg.tabId) {
+          // Some tab closed - don't clear the warning here because
+          // others may still be open. A fresh hello round on reload
+          // will re-establish truth.
+        }
+      };
+      channel.postMessage({ type: "hello", tabId: myTabId });
+    }
+
     /* Mobile defaults + sticky prefs. On first mobile visit (no stored
        prefs), default to list view with both sidebars collapsed so users
        see something usable instead of a broken calendar grid. Subsequent
@@ -2486,7 +2523,13 @@
     }
     mobilePrefsHydrated = true;
 
-    return () => window.removeEventListener("storage", handler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      if (channel) {
+        try { channel.postMessage({ type: "bye", tabId: myTabId }); } catch {}
+        channel.close();
+      }
+    };
   });
 
   /* Persist mobile prefs whenever any of the tracked values change.
@@ -2714,6 +2757,21 @@
         <h1>{doc.show.name}</h1>
         <span class="show-dates">{formatUsDateRange(doc.show.startDate, doc.show.endDate)}</span>
       </div>
+
+      {#if multiTabWarning}
+        <div class="multi-tab-warning" role="status">
+          <span class="multi-tab-icon" aria-hidden="true">⚠</span>
+          <span class="multi-tab-text">
+            This show is open in another tab or device. Edits may overwrite each other - close the other copy to be safe.
+          </span>
+          <button
+            type="button"
+            class="multi-tab-dismiss"
+            aria-label="Dismiss warning"
+            onclick={() => (multiTabWarning = false)}
+          >&times;</button>
+        </div>
+      {/if}
 
       <div class="toolbar">
         {#if showResetButton}
@@ -3928,6 +3986,38 @@
     max-width: 2000px;
     padding-left: var(--space-5);
     padding-right: var(--space-5);
+  }
+
+  .multi-tab-warning {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    margin: 0 0 var(--space-3);
+    background: #fff4e5;
+    border: 1px solid #f5c48c;
+    border-radius: var(--radius-sm);
+    color: #8a4b00;
+    font-size: 0.8125rem;
+  }
+  .multi-tab-icon {
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .multi-tab-text {
+    flex: 1;
+  }
+  .multi-tab-dismiss {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 var(--space-1);
+  }
+  .multi-tab-dismiss:hover {
+    color: #5d3200;
   }
 
   .demo-banner {

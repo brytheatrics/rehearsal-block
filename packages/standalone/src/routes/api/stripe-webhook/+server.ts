@@ -90,6 +90,57 @@ export const POST: RequestHandler = async ({ request }) => {
         return json({ received: true, userId });
       }
 
+      case "charge.refunded": {
+        // Triggered whether the refund was issued via the app's refund
+        // endpoint or directly in the Stripe dashboard. In both cases we
+        // want has_paid flipped back to false so the route guard stops
+        // letting them into /app on their next request.
+        //
+        // Note: we intentionally do NOT delete the user's shows or
+        // auth.users row here. Account deletion is handled by the refund
+        // endpoint where we have explicit consent; a dashboard-initiated
+        // refund might be a mistake and we'd rather leave the data
+        // intact for Blake to investigate. Blake can hard-delete later
+        // via the account delete flow if needed.
+        const charge = event.data.object as Stripe.Charge;
+        const customerId =
+          typeof charge.customer === "string" ? charge.customer : null;
+        if (!customerId) {
+          console.warn("Webhook: charge.refunded without customer id", charge.id);
+          return json({ received: true, ignored: "no customer id" });
+        }
+
+        const { data: rows, error: selectError } = await supabaseAdmin
+          .from("profiles")
+          .select("id")
+          .eq("stripe_customer_id", customerId);
+
+        if (selectError) {
+          console.error("Webhook: failed to look up refunded user", selectError);
+          error(500, "Database lookup failed");
+        }
+
+        if (!rows || rows.length === 0) {
+          console.warn("Webhook: no profile found for refunded customer", customerId);
+          return json({ received: true, ignored: "no matching profile" });
+        }
+
+        const { error: updateError } = await supabaseAdmin
+          .from("profiles")
+          .update({ has_paid: false })
+          .eq("stripe_customer_id", customerId);
+
+        if (updateError) {
+          console.error("Webhook: failed to revoke has_paid on refund", updateError);
+          error(500, "Database update failed");
+        }
+
+        console.log(
+          `Webhook: revoked has_paid for ${rows.length} profile(s) after refund (charge ${charge.id})`,
+        );
+        return json({ received: true, revoked: rows.length });
+      }
+
       default:
         // Unhandled event types - return 200 so Stripe doesn't retry
         return json({ received: true, ignored: event.type });
