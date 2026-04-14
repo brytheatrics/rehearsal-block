@@ -914,10 +914,11 @@
     // If a color popover is open, Escape just closes it instead of
     // dismissing the whole modal. Also swallow the event so parent
     // modals don't close on the same keystroke.
-    if (etColorPopoverFor || castColorPopoverFor || crewColorPopoverFor) {
+    if (etColorPopoverFor || castColorPopoverFor || crewColorPopoverFor || locCustomizeFor) {
       etColorPopoverFor = null;
       castColorPopoverFor = null;
       crewColorPopoverFor = null;
+      locCustomizeFor = null;
       e.stopImmediatePropagation();
       e.preventDefault();
       return;
@@ -1014,6 +1015,7 @@
     if (castColorPopoverFor) castColorPopoverFor = null;
     if (crewColorPopoverFor) crewColorPopoverFor = null;
     if (etColorPopoverFor) etColorPopoverFor = null;
+    if (locCustomizeFor) locCustomizeFor = null;
   }}>
     <!-- ==================== APPEARANCE TAB ==================== -->
     {#if activeTab === "appearance"}
@@ -1711,7 +1713,7 @@
                 type="button"
                 class="swatch"
                 style:background={color}
-                onclick={() => (locCustomizeFor = isExpanded ? null : preset)}
+                onclick={(e) => { e.stopPropagation(); locCustomizeFor = isExpanded ? null : preset; }}
                 title="Customize color and shape"
               >
                 {show.settings.showLocationShapes ? shape : ""}
@@ -1728,7 +1730,9 @@
               </button>
             </div>
             {#if isExpanded}
-              <div class="loc-customizer">
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="loc-customizer" onclick={(e) => e.stopPropagation()}>
                 <div class="loc-custom-section">
                   <span class="loc-custom-label">Shape</span>
                   <div class="shape-picker">
