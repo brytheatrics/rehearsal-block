@@ -551,7 +551,7 @@
 
   const csvPreviewRows = $derived.by(() => {
     if (!csvImportParsed) return [];
-    return csvImportParsed.rows.slice(0, 5);
+    return csvImportParsed.rows;
   });
 
   const csvMappedFieldLabels = $derived.by(() => {
@@ -634,7 +634,7 @@
 
   const crewCsvPreviewRows = $derived.by(() => {
     if (!crewCsvParsed) return [];
-    return crewCsvParsed.rows.slice(0, 5);
+    return crewCsvParsed.rows;
   });
 
   function executeCrewCsvImport() {
@@ -735,7 +735,7 @@
 
   const conflictCsvPreviewRows = $derived.by(() => {
     if (!conflictCsvParsed) return [];
-    return conflictCsvParsed.rows.slice(0, 5);
+    return conflictCsvParsed.rows;
   });
 
   function executeConflictCsvImport() {
@@ -1860,7 +1860,7 @@
 
             {#if csvPreviewRows.length > 0}
               <div class="csv-preview-section">
-                <h4>Preview (first {csvPreviewRows.length} row{csvPreviewRows.length !== 1 ? "s" : ""})</h4>
+                <h4>Preview ({csvPreviewRows.length} row{csvPreviewRows.length !== 1 ? "s" : ""})</h4>
                 <div class="csv-preview-scroll">
                   <table class="csv-preview-table">
                     <thead>
@@ -2196,7 +2196,7 @@
 
             {#if crewCsvPreviewRows.length > 0}
               <div class="csv-preview-section">
-                <h4>Preview (first {crewCsvPreviewRows.length} row{crewCsvPreviewRows.length !== 1 ? "s" : ""})</h4>
+                <h4>Preview ({crewCsvPreviewRows.length} row{crewCsvPreviewRows.length !== 1 ? "s" : ""})</h4>
                 <div class="csv-preview-scroll">
                   <table class="csv-preview-table">
                     <thead>
@@ -2585,7 +2585,7 @@
 
     {#if conflictCsvPreviewRows.length > 0}
       <div class="csv-preview-section">
-        <h4>Preview (first {conflictCsvPreviewRows.length} row{conflictCsvPreviewRows.length !== 1 ? "s" : ""})</h4>
+        <h4>Preview ({conflictCsvPreviewRows.length} row{conflictCsvPreviewRows.length !== 1 ? "s" : ""})</h4>
         <div class="csv-preview-scroll">
           <table class="csv-preview-table">
             <thead>
@@ -4277,7 +4277,10 @@
     color: var(--color-text-muted);
   }
   .csv-preview-scroll {
-    overflow-x: auto;
+    overflow: auto;
+    max-height: 320px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
   }
   .csv-preview-table {
     width: 100%;
@@ -4477,14 +4480,14 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-5);
     background: #fff8e1;
     border-bottom: 2px solid #ffb74d;
     flex-wrap: wrap;
   }
   .conflict-mapping-modal .csv-import-pending-bar {
-    margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-3);
+    margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-5);
   }
   .csv-import-pending-text {
     display: flex;
