@@ -1532,7 +1532,6 @@
       <ul class="event-type-list">
         {#each show.eventTypes as type, etIdx (type.id)}
           {@const uses = usageCount(type.id)}
-          {@const canRemove = show.eventTypes.length > 1}
           {@const isDefaultET = (show.settings.defaultEventType ?? "") === type.id}
           <li class="event-type-card">
             <div class="et-row">
@@ -1616,13 +1615,10 @@
               <button
                 type="button"
                 class="remove-btn"
-                disabled={!canRemove}
                 aria-label={`Remove ${type.name}`}
-                title={canRemove
-                  ? uses > 0
-                    ? `Remove - ${uses} day${uses === 1 ? "" : "s"} will be reassigned`
-                    : "Remove"
-                  : "Keep at least one event type"}
+                title={uses > 0
+                  ? `Remove - ${uses} day${uses === 1 ? "" : "s"} will be reassigned`
+                  : "Remove"}
                 onclick={() => onremoveeventtype(type.id)}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="18" height="18"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
