@@ -1170,6 +1170,28 @@
     doc.eventTypes = [...doc.eventTypes, type];
   }
 
+  function reorderEventType(id: string, dir: "up" | "down") {
+    const idx = doc.eventTypes.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= doc.eventTypes.length) return;
+    pushUndoImmediate();
+    const next = [...doc.eventTypes];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    doc.eventTypes = next;
+  }
+
+  function reorderLocationPreset(name: string, dir: "up" | "down") {
+    const idx = doc.locationPresets.indexOf(name);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= doc.locationPresets.length) return;
+    pushUndoImmediate();
+    const next = [...doc.locationPresets];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    doc.locationPresets = next;
+  }
+
   /** Small palette the sidebar + button cycles through when the user
    *  creates a new event type without going into Default Settings. The
    *  user can always tweak colors later in the modal. */
@@ -3393,10 +3415,12 @@
     onaddeventtype={addEventType}
     onupdateeventtype={updateEventType}
     onremoveeventtype={removeEventType}
+    onreordereventtype={reorderEventType}
     onassigneventtype={assignEventTypeToDate}
     onclose={() => (defaultsOpen = false)}
     onconvertgroups={convertGroups}
     onupdatelocationpreset={updateLocationPreset}
+    onreorderlocationpreset={reorderLocationPreset}
     showReadOnly={readOnly}
     contactsLocked={readOnly}
     onpaywall={() => onPaywall?.()}

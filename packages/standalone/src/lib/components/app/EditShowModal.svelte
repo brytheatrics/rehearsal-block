@@ -92,6 +92,16 @@
       doc.settings = { ...doc.settings, defaultEventType: "" };
     }
   }
+  function reorderEventType(id: string, dir: "up" | "down") {
+    if (!doc) return;
+    const idx = doc.eventTypes.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= doc.eventTypes.length) return;
+    const next = [...doc.eventTypes];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    doc.eventTypes = next;
+  }
   function assignEventType(typeId: string, iso: string) {
     if (!doc) return;
     const existing = doc.schedule[iso];
@@ -140,6 +150,16 @@
     } else {
       doc.locationPresetsV2 = [...doc.locationPresetsV2, { name, ...patch }];
     }
+  }
+  function reorderLocationPreset(name: string, dir: "up" | "down") {
+    if (!doc) return;
+    const idx = doc.locationPresets.indexOf(name);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= doc.locationPresets.length) return;
+    const next = [...doc.locationPresets];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    doc.locationPresets = next;
   }
 
   function convertGroups(mode: "collapse" | "expand") {
@@ -247,9 +267,11 @@
         onaddlocationpreset={addLocationPreset}
         onremovelocationpreset={removeLocationPreset}
         onupdatelocationpreset={updateLocationPreset}
+        onreorderlocationpreset={reorderLocationPreset}
         onaddeventtype={addEventType}
         onupdateeventtype={updateEventType}
         onremoveeventtype={removeEventType}
+        onreordereventtype={reorderEventType}
         onassigneventtype={assignEventType}
         onclose={() => {}}
         onconvertgroups={convertGroups}

@@ -179,6 +179,24 @@
       tempDoc.locationPresetsV2 = [...tempDoc.locationPresetsV2, { name: locName, ...patch }];
     }
   }
+  function reorderEventType(id: string, dir: "up" | "down") {
+    const idx = tempDoc.eventTypes.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= tempDoc.eventTypes.length) return;
+    const next = [...tempDoc.eventTypes];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    tempDoc.eventTypes = next;
+  }
+  function reorderLocationPreset(name: string, dir: "up" | "down") {
+    const idx = tempDoc.locationPresets.indexOf(name);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= tempDoc.locationPresets.length) return;
+    const next = [...tempDoc.locationPresets];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    tempDoc.locationPresets = next;
+  }
 
   function convertGroups(mode: "collapse" | "expand") {
     // No-op for new shows (no groups yet)
@@ -326,9 +344,11 @@
             onaddlocationpreset={addLocationPreset}
             onremovelocationpreset={removeLocationPreset}
             onupdatelocationpreset={updateLocationPreset}
+            onreorderlocationpreset={reorderLocationPreset}
             onaddeventtype={addEventType}
             onupdateeventtype={updateEventType}
             onremoveeventtype={removeEventType}
+            onreordereventtype={reorderEventType}
             onassigneventtype={assignEventType}
             onclose={() => {}}
             onconvertgroups={convertGroups}

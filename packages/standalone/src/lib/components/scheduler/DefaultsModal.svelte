@@ -63,10 +63,12 @@
     onaddeventtype: (type: EventType) => void;
     onupdateeventtype: (id: string, patch: Partial<EventType>) => void;
     onremoveeventtype: (id: string) => void;
+    onreordereventtype?: (id: string, dir: "up" | "down") => void;
     onassigneventtype: (typeId: string, iso: string) => void;
     onclose: () => void;
     onconvertgroups?: (mode: "collapse" | "expand") => void;
     onupdatelocationpreset?: (name: string, patch: { color?: string; shape?: string }) => void;
+    onreorderlocationpreset?: (name: string, dir: "up" | "down") => void;
     onupdateshow?: (patch: Partial<Show>) => void;
     /** When true, show name and dates are read-only (demo mode). */
     showReadOnly?: boolean;
@@ -110,10 +112,12 @@
     onaddeventtype,
     onupdateeventtype,
     onremoveeventtype,
+    onreordereventtype,
     onassigneventtype,
     onclose,
     onconvertgroups,
     onupdatelocationpreset,
+    onreorderlocationpreset,
     onupdateshow,
     showReadOnly = false,
     onaddmember,
@@ -1277,12 +1281,22 @@
         </button>
       </div>
       <ul class="event-type-list">
-        {#each show.eventTypes as type (type.id)}
+        {#each show.eventTypes as type, etIdx (type.id)}
           {@const uses = usageCount(type.id)}
           {@const canRemove = show.eventTypes.length > 1}
           {@const isDefaultET = (show.settings.defaultEventType ?? "") === type.id}
           <li class="event-type-card">
             <div class="et-row">
+              {#if onreordereventtype}
+                <div class="et-reorder">
+                  <button type="button" class="reorder-btn" disabled={etIdx === 0} title="Move up" aria-label="Move up" onclick={() => onreordereventtype?.(type.id, "up")}>
+                    <svg viewBox="0 -960 960 960" fill="currentColor" width="12" height="12"><path d="M480-528 296-344l-56-56 240-240 240 240-56 56-184-184Z"/></svg>
+                  </button>
+                  <button type="button" class="reorder-btn" disabled={etIdx === show.eventTypes.length - 1} title="Move down" aria-label="Move down" onclick={() => onreordereventtype?.(type.id, "down")}>
+                    <svg viewBox="0 -960 960 960" fill="currentColor" width="12" height="12"><path d="M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z"/></svg>
+                  </button>
+                </div>
+              {/if}
               <button
                 type="button"
                 class="star-btn"
@@ -1434,7 +1448,7 @@
         <span>Show location shapes next to call times</span>
       </label>
       <ul class="location-list">
-        {#each show.locationPresets as preset (preset)}
+        {#each show.locationPresets as preset, locIdx (preset)}
           {@const presetV2 = findLocationPreset(preset, show.locationPresetsV2)}
           {@const color = effectiveLocationColor(preset, show.locationPresetsV2) ?? "var(--color-text-muted)"}
           {@const shape = effectiveLocationShape(preset, show.locationPresetsV2)}
@@ -1442,6 +1456,16 @@
           {@const isExpanded = locCustomizeFor === preset}
           <li class="location-row-wrap">
             <div class="location-row">
+              {#if onreorderlocationpreset}
+                <div class="et-reorder">
+                  <button type="button" class="reorder-btn" disabled={locIdx === 0} title="Move up" aria-label="Move up" onclick={() => onreorderlocationpreset?.(preset, "up")}>
+                    <svg viewBox="0 -960 960 960" fill="currentColor" width="12" height="12"><path d="M480-528 296-344l-56-56 240-240 240 240-56 56-184-184Z"/></svg>
+                  </button>
+                  <button type="button" class="reorder-btn" disabled={locIdx === show.locationPresets.length - 1} title="Move down" aria-label="Move down" onclick={() => onreorderlocationpreset?.(preset, "down")}>
+                    <svg viewBox="0 -960 960 960" fill="currentColor" width="12" height="12"><path d="M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z"/></svg>
+                  </button>
+                </div>
+              {/if}
               <button
                 type="button"
                 class="star-btn"
@@ -3541,6 +3565,36 @@
     background: var(--color-bg-alt);
   }
   .mockup-reorder-btn:disabled {
+    opacity: 0.2;
+    cursor: default;
+  }
+
+  /* Reorder controls for event types and locations - same style as mockup-reorder */
+  .et-reorder {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+  .reorder-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 0.75rem;
+    padding: 0;
+    border: none;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--color-text-subtle);
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+  }
+  .reorder-btn:hover:not(:disabled) {
+    color: var(--color-plum);
+    background: var(--color-bg-alt);
+  }
+  .reorder-btn:disabled {
     opacity: 0.2;
     cursor: default;
   }
