@@ -806,17 +806,18 @@ export function mapRowsToConflicts(
     }
 
     if (ids.length > 0) {
-      for (const id of ids) {
-        for (const d of dates) {
-          matched.push({
-            id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
-            actorId: id,
-            date: d,
-            label,
-            ...(startTime ? { startTime } : {}),
-            ...(endTime ? { endTime } : {}),
-          });
-        }
+      // If a person is in both cast and crew, prefer the cast match.
+      // The caller passes cast first, so taking the first id does that.
+      const id = ids[0]!;
+      for (const d of dates) {
+        matched.push({
+          id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
+          actorId: id,
+          date: d,
+          label,
+          ...(startTime ? { startTime } : {}),
+          ...(endTime ? { endTime } : {}),
+        });
       }
     } else {
       unmatchedSet.add(rawName);
@@ -932,17 +933,17 @@ export function extractConflictsFromPeopleRows(
     }
 
     if (ids.length > 0) {
-      for (const id of ids) {
-        for (const d of dates) {
-          matched.push({
-            id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
-            actorId: id,
-            date: d,
-            label,
-            ...(startTime ? { startTime } : {}),
-            ...(endTime ? { endTime } : {}),
-          });
-        }
+      // Prefer the cast match when someone is in both pools.
+      const id = ids[0]!;
+      for (const d of dates) {
+        matched.push({
+          id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
+          actorId: id,
+          date: d,
+          label,
+          ...(startTime ? { startTime } : {}),
+          ...(endTime ? { endTime } : {}),
+        });
       }
     } else {
       unmatchedSet.add(nameDisplay);
