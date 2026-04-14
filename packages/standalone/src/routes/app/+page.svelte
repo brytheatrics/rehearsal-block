@@ -66,16 +66,73 @@
     return d.toISOString().slice(0, 10);
   }
 
-  /** Shows currently in rehearsal (today within start-end). */
-  const inRehearsal = $derived(
-    shows
-      .filter((s) => !s.archived && s.startDate && s.endDate)
-      .filter((s) => {
-        const today = todayIso();
-        return today >= s.startDate! && today <= s.endDate!;
-      })
-      .sort((a, b) => (a.endDate ?? "").localeCompare(b.endDate ?? "")),
-  );
+  /** Next upcoming event across all shows. Earliest scheduled day with
+   *  content (calls, description, or notes) from any active show. When
+   *  multiple shows have events on the same date, they all show. */
+  const nextEvents = $derived.by(() => {
+    const today = todayIso();
+    type Event = {
+      showId: string;
+      showName: string;
+      date: string;
+      eventType: string;
+      callTime: string;
+      description: string;
+    };
+
+    const events: Event[] = [];
+
+    for (const show of shows) {
+      if (show.archived) continue;
+      const doc = fullDocs.get(show.id);
+      if (!doc) continue;
+
+      const schedule = doc.document.schedule ?? {};
+      const eventTypes = doc.document.eventTypes ?? [];
+
+      for (const [date, day] of Object.entries(schedule)) {
+        if (!day) continue;
+        if (date < today) continue;
+
+        const hasContent = (day.calls && day.calls.length > 0) || day.description || day.notes;
+        if (!hasContent) continue;
+
+        const eventTypeName = eventTypes.find((t) => t.id === day.eventTypeId)?.name ?? "";
+        const firstCall = day.calls?.[0];
+        const callTime = firstCall?.time ?? "";
+
+        events.push({
+          showId: show.id,
+          showName: show.name,
+          date,
+          eventType: eventTypeName,
+          callTime,
+          description: day.description ?? "",
+        });
+      }
+    }
+
+    events.sort((a, b) => {
+      const dateCmp = a.date.localeCompare(b.date);
+      if (dateCmp !== 0) return dateCmp;
+      return a.callTime.localeCompare(b.callTime);
+    });
+
+    if (events.length === 0) return [];
+
+    // Return ALL events on the earliest date (handles co-occurring events)
+    const firstDate = events[0]!.date;
+    return events.filter((e) => e.date === firstDate);
+  });
+
+  function formatTime12(time: string): string {
+    if (!time) return "";
+    const [h, m] = time.split(":").map(Number);
+    if (h === undefined || m === undefined) return time;
+    const hour = h % 12 || 12;
+    const ampm = h < 12 ? "AM" : "PM";
+    return `${hour}:${String(m).padStart(2, "0")} ${ampm}`;
+  }
 
   /** Shows opening in the next 30 days. */
   const openingSoon = $derived(
@@ -573,16 +630,21 @@
       <!-- Right sidebar: dashboard -->
       <aside class="dashboard-sidebar">
         <section class="sb-section">
-          <h3>In rehearsal</h3>
-          {#if inRehearsal.length === 0}
-            <p class="sb-empty">No active productions</p>
+          <h3>Next event</h3>
+          {#if nextEvents.length === 0}
+            <p class="sb-empty">Nothing scheduled yet</p>
           {:else}
+            <p class="sb-summary">{formatRelativeDate(nextEvents[0].date)} · {formatShortDate(nextEvents[0].date)}</p>
             <ul class="sb-list">
-              {#each inRehearsal as show (show.id)}
+              {#each nextEvents as evt (evt.showId + evt.date + evt.callTime)}
                 <li>
-                  <a href="/app/{show.id}" class="sb-item">
-                    <span class="sb-item-title">{show.name}</span>
-                    <span class="sb-item-meta">Closes {formatRelativeDate(show.endDate!)}</span>
+                  <a href="/app/{evt.showId}" class="sb-item">
+                    <span class="sb-item-title">{evt.showName}</span>
+                    <span class="sb-item-meta">
+                      {#if evt.callTime}{formatTime12(evt.callTime)}{/if}
+                      {#if evt.callTime && evt.eventType} · {/if}
+                      {#if evt.eventType}{evt.eventType}{/if}
+                    </span>
                   </a>
                 </li>
               {/each}
