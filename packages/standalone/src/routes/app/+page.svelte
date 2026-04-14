@@ -593,7 +593,7 @@
         {:else}
           <div class="magazine-grid">
             {#each visibleShows as show, idx (show.id)}
-              <div class="mag-cell" class:mag-featured={idx === 0 && visibleShows.length > 1}>
+              <div class="mag-cell">
                 <ShowCard
                   id={show.id}
                   name={show.name}
@@ -791,24 +791,9 @@
     border-radius: var(--radius-md);
   }
 
-  /* Featured (most recently edited) spans both columns */
-  .mag-featured {
-    grid-column: 1 / -1;
-  }
-  .mag-featured :global(.show-card) {
-    min-height: 260px;
-    padding: var(--space-5) var(--space-5);
-  }
-  .mag-featured :global(.show-card h3.card-title) {
-    font-size: 1.75rem;
-  }
-
   @media (max-width: 600px) {
     .magazine-grid {
       grid-template-columns: 1fr;
-    }
-    .mag-featured {
-      grid-column: auto;
     }
   }
 
