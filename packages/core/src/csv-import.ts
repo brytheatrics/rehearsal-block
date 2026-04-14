@@ -720,24 +720,24 @@ export function mapRowsToConflicts(
   const unmatchedSet = new Set<string>();
   let skipped = 0;
 
-  const byFullName = new Map<string, string>();
+  // One name can resolve to multiple ids - e.g. the same person listed in
+  // both cast and crew. We create a conflict for each match so a real
+  // scheduling conflict blocks both of their roles.
+  const byFullName = new Map<string, string[]>();
   const byFirstName = new Map<string, string[]>();
   const byLastName = new Map<string, string[]>();
+  const addTo = (map: Map<string, string[]>, key: string, id: string) => {
+    const arr = map.get(key) ?? [];
+    arr.push(id);
+    map.set(key, arr);
+  };
   for (const p of people) {
     const full = `${p.firstName} ${p.lastName}`.trim().toLowerCase();
-    byFullName.set(full, p.id);
+    if (full) addTo(byFullName, full, p.id);
     const first = p.firstName.trim().toLowerCase();
-    if (first) {
-      const arr = byFirstName.get(first) ?? [];
-      arr.push(p.id);
-      byFirstName.set(first, arr);
-    }
+    if (first) addTo(byFirstName, first, p.id);
     const last = p.lastName.trim().toLowerCase();
-    if (last) {
-      const arr = byLastName.get(last) ?? [];
-      arr.push(p.id);
-      byLastName.set(last, arr);
-    }
+    if (last) addTo(byLastName, last, p.id);
   }
 
   for (const row of rows) {
@@ -782,42 +782,41 @@ export function mapRowsToConflicts(
     const endTime = raw.endTime ? parseTimeCell(raw.endTime) ?? undefined : undefined;
     const label = raw.label ?? "";
 
-    // Try to match the name (case-insensitive)
+    // Try to match the name (case-insensitive). Returns all matching ids -
+    // a person in both cast and crew gets two ids and both get the conflict.
     const lookup = rawName.trim().toLowerCase();
-    let id: string | undefined = byFullName.get(lookup);
-    if (!id) {
-      const firstMatches = byFirstName.get(lookup);
-      if (firstMatches && firstMatches.length === 1) {
-        id = firstMatches[0];
-      } else {
-        const lastMatches = byLastName.get(lookup);
-        if (lastMatches && lastMatches.length === 1) {
-          id = lastMatches[0];
-        } else {
-          const parts = lookup.split(/\s+/);
-          if (parts.length >= 2) {
-            const firstPart = parts[0]!;
-            const lastPart = parts[parts.length - 1]!;
-            id = byFullName.get(`${firstPart} ${lastPart}`);
-            if (!id) {
-              const fm = byFirstName.get(firstPart);
-              if (fm && fm.length === 1) id = fm[0];
-            }
-          }
-        }
+    let ids: string[] = byFullName.get(lookup) ?? [];
+    if (ids.length === 0) {
+      const parts = lookup.split(/\s+/);
+      if (parts.length >= 2) {
+        // "Don Anderson II" → try "Don Anderson" (strip suffix)
+        const firstPart = parts[0]!;
+        const lastPart = parts[parts.length - 1]!;
+        ids = byFullName.get(`${firstPart} ${lastPart}`) ?? [];
       }
     }
+    if (ids.length === 0) {
+      // First-name-only match when it resolves to a single person in each pool
+      const firstMatches = byFirstName.get(lookup);
+      if (firstMatches && firstMatches.length <= 2) ids = firstMatches;
+    }
+    if (ids.length === 0) {
+      const lastMatches = byLastName.get(lookup);
+      if (lastMatches && lastMatches.length <= 2) ids = lastMatches;
+    }
 
-    if (id) {
-      for (const d of dates) {
-        matched.push({
-          id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
-          actorId: id,
-          date: d,
-          label,
-          ...(startTime ? { startTime } : {}),
-          ...(endTime ? { endTime } : {}),
-        });
+    if (ids.length > 0) {
+      for (const id of ids) {
+        for (const d of dates) {
+          matched.push({
+            id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
+            actorId: id,
+            date: d,
+            label,
+            ...(startTime ? { startTime } : {}),
+            ...(endTime ? { endTime } : {}),
+          });
+        }
       }
     } else {
       unmatchedSet.add(rawName);
@@ -857,24 +856,22 @@ export function extractConflictsFromPeopleRows(
   const unmatchedSet = new Set<string>();
   let skipped = 0;
 
-  const byFullName = new Map<string, string>();
+  // Store all ids per key - one name can resolve to cast + crew at once.
+  const byFullName = new Map<string, string[]>();
   const byFirstName = new Map<string, string[]>();
   const byLastName = new Map<string, string[]>();
+  const addTo = (map: Map<string, string[]>, key: string, id: string) => {
+    const arr = map.get(key) ?? [];
+    arr.push(id);
+    map.set(key, arr);
+  };
   for (const p of people) {
     const full = `${p.firstName} ${p.lastName}`.trim().toLowerCase();
-    byFullName.set(full, p.id);
+    if (full) addTo(byFullName, full, p.id);
     const first = p.firstName.trim().toLowerCase();
-    if (first) {
-      const arr = byFirstName.get(first) ?? [];
-      arr.push(p.id);
-      byFirstName.set(first, arr);
-    }
+    if (first) addTo(byFirstName, first, p.id);
     const last = p.lastName.trim().toLowerCase();
-    if (last) {
-      const arr = byLastName.get(last) ?? [];
-      arr.push(p.id);
-      byLastName.set(last, arr);
-    }
+    if (last) addTo(byLastName, last, p.id);
   }
 
   for (const row of rows) {
@@ -920,31 +917,32 @@ export function extractConflictsFromPeopleRows(
     const label = raw.conflictLabel ?? "";
 
     const lookup = nameDisplay.toLowerCase();
-    let id: string | undefined;
-    // Try full "first last" first
+    let ids: string[] = [];
     if (firstName && lastName) {
-      id = byFullName.get(`${firstName.toLowerCase()} ${lastName.toLowerCase()}`);
+      ids = byFullName.get(`${firstName.toLowerCase()} ${lastName.toLowerCase()}`) ?? [];
     }
-    if (!id) id = byFullName.get(lookup);
-    if (!id && firstName) {
+    if (ids.length === 0) ids = byFullName.get(lookup) ?? [];
+    if (ids.length === 0 && firstName) {
       const fm = byFirstName.get(firstName.toLowerCase());
-      if (fm && fm.length === 1) id = fm[0];
+      if (fm && fm.length <= 2) ids = fm;
     }
-    if (!id && lastName) {
+    if (ids.length === 0 && lastName) {
       const lm = byLastName.get(lastName.toLowerCase());
-      if (lm && lm.length === 1) id = lm[0];
+      if (lm && lm.length <= 2) ids = lm;
     }
 
-    if (id) {
-      for (const d of dates) {
-        matched.push({
-          id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
-          actorId: id,
-          date: d,
-          label,
-          ...(startTime ? { startTime } : {}),
-          ...(endTime ? { endTime } : {}),
-        });
+    if (ids.length > 0) {
+      for (const id of ids) {
+        for (const d of dates) {
+          matched.push({
+            id: `conf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${matched.length}`,
+            actorId: id,
+            date: d,
+            label,
+            ...(startTime ? { startTime } : {}),
+            ...(endTime ? { endTime } : {}),
+          });
+        }
       }
     } else {
       unmatchedSet.add(nameDisplay);
