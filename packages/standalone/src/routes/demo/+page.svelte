@@ -13,7 +13,6 @@
   import { demoStorage } from "$lib/storage/demo";
   import { sampleShow } from "@rehearsal-block/core";
   import ScheduleEditor from "$lib/components/scheduler/ScheduleEditor.svelte";
-  import RevisionHistoryModal from "$lib/components/app/RevisionHistoryModal.svelte";
   import ComingSoonModal from "$lib/components/ComingSoonModal.svelte";
   import NotifyLaunchModal from "$lib/components/NotifyLaunchModal.svelte";
 
@@ -24,14 +23,8 @@
   let comingSoonOpen = $state(false);
   let hasEdits = $state(false);
   let editorKey = $state(0); // increment to force re-mount of ScheduleEditor
-  let historyOpen = $state(false);
-
   function handleHistory() {
-    if (isDeployedDemo && !isSignedIn) {
-      paywallOpen = true;
-    } else {
-      historyOpen = true;
-    }
+    paywallOpen = true;
   }
 
   const isDeployedDemo =
@@ -102,17 +95,9 @@
       showDemoBanners={!isSignedIn}
       showResetButton={isSignedIn && hasEdits}
       onReset={resetDemo}
-      onHistory={handleHistory}
+      onHistory={isSignedIn ? undefined : handleHistory}
     />
   {/key}
-
-  {#if historyOpen}
-    <RevisionHistoryModal
-      showId="demo"
-      showName={data.show.show.name}
-      onclose={() => (historyOpen = false)}
-    />
-  {/if}
 
   {#if !isSignedIn}
     <div class="demo-banner demo-banner-bottom">
