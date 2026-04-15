@@ -1,7 +1,15 @@
 <script lang="ts">
   import { page } from "$app/state";
+  import BetaBanner from "$lib/components/app/BetaBanner.svelte";
 
   let { data, children } = $props();
+
+  /* Beta banner visibility: users whose access is via beta (not paid).
+     has_beta_access alone isn't enough - someone might have both flags
+     if they activated during beta then paid. Paid trumps beta. */
+  const showBetaBanner = $derived(
+    !!data.profile?.has_beta_access && !data.profile?.has_paid && !!data.betaActive,
+  );
 
   /** Current show title, shown in the header when editing /app/[showId]. */
   const showTitle = $derived(
@@ -37,6 +45,9 @@
 <svelte:window onclick={handleWindowClick} onkeydown={handleWindowKey} />
 
 <div class="app-shell">
+  {#if showBetaBanner}
+    <BetaBanner displayExpiration={data.betaDisplayExpiration ?? null} />
+  {/if}
   <header class="app-header">
     <div class="header-inner">
       <div class="header-left">

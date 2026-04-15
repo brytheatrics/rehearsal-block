@@ -251,6 +251,9 @@
               <a href="/contact" class="menu-item" onclick={closeMenu}>Contact</a>
               <a href="/privacy" class="menu-item" onclick={closeMenu}>Privacy</a>
               <a href="/terms" class="menu-item" onclick={closeMenu}>Terms</a>
+              <!-- Beta invite link. Remove this line at launch, along with
+                   the /beta route, when the beta period ends. -->
+              <a href="/beta" class="menu-item" onclick={closeMenu}>Beta</a>
             </div>
 
                 {#if data.user}
