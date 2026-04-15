@@ -39,6 +39,11 @@ export const actions: Actions = {
         // so the webhook can match them back.
         customer_email: locals.user?.email ?? undefined,
         client_reference_id: locals.user?.id ?? undefined,
+        // Force a Stripe Customer object on every checkout (not just guest
+        // sessions). Without this, Stripe omits the Customer for one-time
+        // payments and the charge.refunded webhook has no customer id to
+        // match back to a profile, so refunds silently don't revoke access.
+        customer_creation: "always",
         metadata: {
           supabase_user_id: locals.user?.id ?? "",
         },
