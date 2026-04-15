@@ -22,6 +22,7 @@ interface ContactSheetPdfRequest {
   includeCrew: boolean;
   filename?: string;
   disposition?: "download" | "inline";
+  beta?: boolean;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -43,6 +44,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const pdfBytes = await renderContactSheetPdf(body.doc, {
       includeCast: body.includeCast !== false,
       includeCrew: body.includeCrew !== false,
+      beta: !!body.beta,
     });
 
     const filename = (body.filename ?? "Contact_Sheet.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");

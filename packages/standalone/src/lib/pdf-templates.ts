@@ -42,6 +42,8 @@ export interface PdfFooterOptions {
   showFooterLogo?: boolean;
   showPageNumbers?: boolean;
   showDownloadDate?: boolean;
+  /** Show "BETA - Rehearsal Block" watermark in the footer. */
+  beta?: boolean;
 }
 
 /** Builds the PDF header template HTML. Returns "<span></span>" when
@@ -91,15 +93,20 @@ export function buildPdfFooterHtml(
     parts.push(`<span style="flex:1"></span>`);
   }
 
-  if (opts.showDownloadDate) {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
+  if (opts.showDownloadDate || opts.beta) {
+    const segments: string[] = [];
+    if (opts.showDownloadDate) {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      segments.push(`Downloaded ${dateStr}`);
+    }
+    if (opts.beta) segments.push("BETA - Rehearsal Block");
     parts.push(
-      `<span style="flex:1;text-align:right;font-size:7px;color:#c0c0c0">Downloaded ${dateStr}</span>`,
+      `<span style="flex:1;text-align:right;font-size:7px;color:#c0c0c0">${segments.join(" · ")}</span>`,
     );
   } else {
     parts.push(`<span style="flex:1"></span>`);
@@ -110,5 +117,5 @@ export function buildPdfFooterHtml(
 
 /** True when any footer element is enabled. */
 export function hasPdfFooter(opts: PdfFooterOptions): boolean {
-  return Boolean(opts.showFooterLogo || opts.showPageNumbers || opts.showDownloadDate);
+  return Boolean(opts.showFooterLogo || opts.showPageNumbers || opts.showDownloadDate || opts.beta);
 }

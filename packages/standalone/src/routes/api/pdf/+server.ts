@@ -27,6 +27,7 @@ interface PdfRequest {
   showFooterLogo?: boolean;
   showPageNumbers?: boolean;
   showDownloadDate?: boolean;
+  beta?: boolean;
   repeatTitle?: boolean;
   showName?: string;
   showRunDates?: string;

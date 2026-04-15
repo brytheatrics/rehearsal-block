@@ -69,6 +69,8 @@ export interface PrintOptions extends ExportOptions {
   repeatHeaders?: boolean;
   /** Repeat the show title + dates header on every page, not just the first. */
   repeatTitle?: boolean;
+  /** Render "BETA - Rehearsal Block" footer watermark (beta users only). */
+  beta?: boolean;
 }
 
 // -------------------------------------------------------------------
@@ -323,10 +325,17 @@ export function buildPlainCsvContent(
  * Download a CSV file. Creates a Blob, generates an object URL,
  * clicks a temporary <a> tag, and cleans up.
  */
-export function downloadCsv(doc: ScheduleDoc, options: ExportOptions & { csvFormat?: "gcal" | "plain" }): void {
-  const csv = (options.csvFormat === "plain")
+export function downloadCsv(
+  doc: ScheduleDoc,
+  options: ExportOptions & { csvFormat?: "gcal" | "plain"; beta?: boolean },
+): void {
+  const raw = (options.csvFormat === "plain")
     ? buildPlainCsvContent(doc, options)
     : buildCsvContent(doc, options);
+  /* Beta watermark: prepend a comment row. Spreadsheet apps and Google
+     Calendar import both skip/ignore leading # lines, so this is a
+     harmless breadcrumb for the file's origin. */
+  const csv = options.beta ? `# Generated during Rehearsal Block beta\n${raw}` : raw;
   const suffix = options.csvFormat === "plain" ? "_Schedule" : "_Google_Calendar";
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -349,9 +358,15 @@ export interface ContactSheetOptions {
   includeCrew: boolean;
 }
 
-export function buildContactSheetCsv(doc: ScheduleDoc, opts: ContactSheetOptions): string {
+export function buildContactSheetCsv(
+  doc: ScheduleDoc,
+  opts: ContactSheetOptions & { beta?: boolean },
+): string {
   const lines: string[] = [];
 
+  if (opts.beta) {
+    lines.push("# Generated during Rehearsal Block beta");
+  }
   lines.push("First Name,Middle Name,Last Name,Suffix,Pronouns,Character/Role,Phone,Email");
 
   if (opts.includeCast) {
@@ -387,7 +402,10 @@ export function buildContactSheetCsv(doc: ScheduleDoc, opts: ContactSheetOptions
   return lines.join("\n");
 }
 
-export function downloadContactSheetCsv(doc: ScheduleDoc, opts: ContactSheetOptions): void {
+export function downloadContactSheetCsv(
+  doc: ScheduleDoc,
+  opts: ContactSheetOptions & { beta?: boolean },
+): void {
   const csv = buildContactSheetCsv(doc, opts);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -867,7 +885,7 @@ export function buildPrintHtml(
   const exportShow = { ...doc.show, startDate: options.startDate, endDate: options.endDate };
   const exportDoc = { ...doc, show: exportShow };
 
-  const footerOpts = { showFooterLogo, showPageNumbers, showDownloadDate };
+  const footerOpts = { showFooterLogo, showPageNumbers, showDownloadDate, beta: !!options.beta };
   if (isCalendar) {
     body += buildCalendarBody(exportDoc, options, names, timeFmt, footerOpts);
   } else {
@@ -889,6 +907,7 @@ export interface FooterOpts {
   showFooterLogo: boolean;
   showPageNumbers: boolean;
   showDownloadDate: boolean;
+  beta?: boolean;
 }
 
 export function buildPageFooter(
@@ -896,7 +915,7 @@ export function buildPageFooter(
   pageNum: number,
   totalPages: number,
 ): string {
-  const hasAny = opts.showFooterLogo || opts.showPageNumbers || opts.showDownloadDate;
+  const hasAny = opts.showFooterLogo || opts.showPageNumbers || opts.showDownloadDate || opts.beta;
   if (!hasAny) return "";
 
   let html = `<div class="page-footer">`;
@@ -915,7 +934,7 @@ export function buildPageFooter(
     html += `<span></span>`;
   }
 
-  // Right: download date
+  // Right: download date (or BETA watermark if no date requested)
   if (opts.showDownloadDate) {
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-US", {
@@ -923,7 +942,10 @@ export function buildPageFooter(
       day: "numeric",
       year: "numeric",
     });
-    html += `<span class="footer-date">Downloaded ${dateStr}</span>`;
+    const betaSuffix = opts.beta ? ` · BETA - Rehearsal Block` : "";
+    html += `<span class="footer-date">Downloaded ${dateStr}${betaSuffix}</span>`;
+  } else if (opts.beta) {
+    html += `<span class="footer-date">BETA - Rehearsal Block</span>`;
   } else {
     html += `<span></span>`;
   }

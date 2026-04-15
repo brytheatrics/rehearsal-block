@@ -2,6 +2,12 @@
   import type { ScheduleDoc } from "@rehearsal-block/core";
   import { downloadContactSheetCsv } from "@rehearsal-block/core";
   import { downloadContactSheetDocx } from "$lib/export-docx.js";
+  import { page } from "$app/state";
+
+  const isBeta = $derived.by(() => {
+    const p = (page.data as { profile?: { has_paid?: boolean; has_beta_access?: boolean } }).profile;
+    return !!p?.has_beta_access && !p?.has_paid && !!(page.data as { betaActive?: boolean }).betaActive;
+  });
 
   interface Props {
     show: ScheduleDoc;
@@ -28,11 +34,12 @@
     }
 
     const opts = { includeCast, includeCrew };
+    const betaFlag = isBeta;
     exporting = true;
 
     try {
       if (format === "csv") {
-        downloadContactSheetCsv(show, opts);
+        downloadContactSheetCsv(show, { ...opts, beta: betaFlag });
       } else if (format === "docx") {
         await downloadContactSheetDocx(show, opts);
       } else if (format === "pdf") {
@@ -45,6 +52,7 @@
             includeCast: opts.includeCast,
             includeCrew: opts.includeCrew,
             filename,
+            beta: betaFlag,
           }),
         });
         if (!res.ok) throw new Error("PDF generation failed");

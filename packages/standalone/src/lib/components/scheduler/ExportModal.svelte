@@ -19,6 +19,7 @@
     weekStartOf,
   } from "@rehearsal-block/core";
   import { buildPdfHeaderHtml, buildPdfFooterHtml } from "$lib/pdf-templates";
+  import { page } from "$app/state";
 
   let previewContainerEl = $state<HTMLDivElement | null>(null);
   let previewScale = $state(0.5);
@@ -170,6 +171,13 @@
     tabloid: { w: 279.4, h: 431.8, label: "Tabloid (11 x 17)" },
   } as const;
 
+  /* Beta watermark on PDF exports: active when the signed-in user is
+     accessing /app via beta (not paid). Pulled off page.data. */
+  const isBeta = $derived.by(() => {
+    const p = (page.data as { profile?: { has_paid?: boolean; has_beta_access?: boolean } }).profile;
+    return !!p?.has_beta_access && !p?.has_paid && !!(page.data as { betaActive?: boolean }).betaActive;
+  });
+
   /** Shared export options derived from current settings. */
   const exportOpts = $derived({
     mode,
@@ -184,6 +192,7 @@
     showFooterLogo,
     repeatHeaders,
     repeatTitle,
+    beta: isBeta,
   });
 
   /** Live preview HTML, rebuilt whenever settings change. */
@@ -217,8 +226,9 @@
     showFooterLogo,
     showPageNumbers,
     showDownloadDate,
+    beta: isBeta,
   });
-  const hasFooter = $derived(showFooterLogo || showPageNumbers || showDownloadDate);
+  const hasFooter = $derived(showFooterLogo || showPageNumbers || showDownloadDate || isBeta);
 
   /**
    * For "months" mode, split at .print-page divs (simple regex).
@@ -651,6 +661,7 @@
         showFooterLogo,
         showPageNumbers,
         showDownloadDate,
+        beta: isBeta,
         repeatTitle,
         showName: show.show.name || "Schedule",
         fontHeading: show.settings.fontHeading ?? "Playfair Display",

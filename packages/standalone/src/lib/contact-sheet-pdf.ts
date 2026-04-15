@@ -29,6 +29,8 @@ import { formatUsDateRange } from "@rehearsal-block/core";
 export interface ContactSheetPdfOptions {
   includeCast: boolean;
   includeCrew: boolean;
+  /** Render "BETA - Rehearsal Block" footer on every page. */
+  beta?: boolean;
 }
 
 // -------------------------------------------------------------------
@@ -173,13 +175,39 @@ export function renderContactSheetPdf(
     pdf.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
     pdf.on("error", reject);
 
+    /* Beta watermark on every page. PDFKit fires pageAdded for every
+       page created AFTER the listener is attached (autoFirstPage's
+       initial page fires before this line), so we draw on the first
+       page manually below and then let the listener handle subsequent
+       pages. */
+    if (opts.beta) {
+      pdf.on("pageAdded", () => drawBetaFooter(pdf));
+    }
+
     try {
+      if (opts.beta) drawBetaFooter(pdf);
       drawDocument(pdf, doc, opts);
       pdf.end();
     } catch (err) {
       reject(err as Error);
     }
   });
+}
+
+function drawBetaFooter(pdf: PDFKit.PDFDocument): void {
+  // Light grey text centered at the bottom margin. Saved + restored to
+  // avoid leaking the font/color change into the caller's drawing state.
+  pdf.save();
+  pdf
+    .font("Helvetica")
+    .fontSize(7)
+    .fillColor("#a0a0a0")
+    .text("BETA - Rehearsal Block", MARGIN_LEFT, PAGE_HEIGHT - 24, {
+      width: CONTENT_WIDTH,
+      align: "center",
+      lineBreak: false,
+    });
+  pdf.restore();
 }
 
 function drawDocument(
