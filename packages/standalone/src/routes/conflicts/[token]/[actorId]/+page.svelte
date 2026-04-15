@@ -5,10 +5,9 @@
    * Same as the single-link route, but the id in the URL is matched
    * against both cast and crew so the person is pre-selected (no dropdown).
    *
-   * The id slice in the URL is the first 6 characters of the member id,
-   * matching what ConflictRequestModal generates for per-role links. We
-   * match by slice prefix since random UUIDs make collisions effectively
-   * impossible at that length.
+   * The id in the URL is the full member id. We still match via startsWith
+   * so older 6-char-slice links from previously-generated URLs keep working
+   * during the transition period.
    */
   import type { ScheduleDoc, CastMember, CrewMember } from "@rehearsal-block/core";
   import { page } from "$app/state";

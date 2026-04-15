@@ -362,6 +362,25 @@
   }
 </script>
 
+<!--
+  Sticky top submit bar: visible whenever the actor has at least one staged
+  conflict (not yet submitted, not locked). Same pattern as the CSV-import
+  "you have unsaved work" nudge - otherwise actors enter conflicts and forget
+  to scroll down to click Submit.
+-->
+{#if !submitted && !isLocked && canSubmit}
+  <div class="sticky-submit-bar" role="region" aria-label="Submit conflicts">
+    <div class="sticky-submit-inner">
+      <span class="sticky-submit-text">
+        <strong>{stagedConflicts.length}</strong> conflict{stagedConflicts.length === 1 ? "" : "s"} ready to send
+      </span>
+      <button type="button" class="sticky-submit-btn" onclick={handleSubmit}>
+        Submit {stagedConflicts.length} conflict{stagedConflicts.length === 1 ? "" : "s"}
+      </button>
+    </div>
+  </div>
+{/if}
+
 <div class="page">
   <div class="container">
     <header class="page-header">
@@ -746,6 +765,51 @@
 {/if}
 
 <style>
+  .sticky-submit-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--color-teal);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  .sticky-submit-inner {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: var(--space-2) var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .sticky-submit-text {
+    font-size: 0.875rem;
+  }
+  .sticky-submit-btn {
+    background: #fff;
+    color: var(--color-teal);
+    border: none;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 120ms ease;
+  }
+  .sticky-submit-btn:hover {
+    background: var(--color-surface-alt, #f5f5f5);
+  }
+  @media (max-width: 480px) {
+    .sticky-submit-text {
+      font-size: 0.8125rem;
+    }
+    .sticky-submit-btn {
+      padding: var(--space-2) var(--space-3);
+      font-size: 0.8125rem;
+    }
+  }
+
   .page {
     min-height: 100vh;
     background: var(--color-bg-alt);

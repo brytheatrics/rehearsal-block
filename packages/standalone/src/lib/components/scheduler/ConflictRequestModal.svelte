@@ -112,7 +112,7 @@
       id: m.id,
       name: `${m.firstName} ${m.lastName}`.trim(),
       subtitle: m.character || "",
-      url: `${baseUrl}/conflicts/${showToken}/${m.id.slice(0, 6)}`,
+      url: `${baseUrl}/conflicts/${showToken}/${m.id}`,
     })),
   );
   const perActorCrewLinks = $derived(
@@ -120,7 +120,7 @@
       id: m.id,
       name: `${m.firstName} ${m.lastName}`.trim(),
       subtitle: m.role || "",
-      url: `${baseUrl}/conflicts/${showToken}/${m.id.slice(0, 6)}`,
+      url: `${baseUrl}/conflicts/${showToken}/${m.id}`,
     })),
   );
   const totalRoleLinks = $derived(
