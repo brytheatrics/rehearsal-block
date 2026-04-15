@@ -29,6 +29,15 @@
   } from "@rehearsal-block/core";
   import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays, formatUsDateRange, blockingConflictsFor, nextLocationColor } from "@rehearsal-block/core";
   import { publishSchedule, buildShareUrlFromId } from "$lib/share";
+  import { page } from "$app/state";
+
+  /* True when the signed-in user is using Rehearsal Block via beta access
+     (not a paid account). Drives the "BETA - Rehearsal Block" watermark
+     on PDF/CSV exports. Always false on /demo (no profile data). */
+  const isBeta = $derived.by(() => {
+    const p = (page.data as { profile?: { has_paid?: boolean; has_beta_access?: boolean }; betaActive?: boolean }).profile;
+    return !!p?.has_beta_access && !p?.has_paid && !!(page.data as { betaActive?: boolean }).betaActive;
+  });
 
   interface Props {
     initialDoc: ScheduleDoc;
@@ -2450,11 +2459,28 @@
     // Multi-tab detection. A single user with the same show open in two
     // tabs (or two devices) can silently race-write: both tabs save to
     // IndexedDB + R2 and last-write-wins erases the other's changes.
-    // BroadcastChannel lets open tabs announce themselves; if a second
-    // tab joins, both see a non-blocking warning banner so the user
-    // knows to close one.
+    // BroadcastChannel is same-origin only and never hits the network,
+    // so the heartbeat costs zero bandwidth.
+    //
+    // Peers are tracked with a last-seen timestamp. On each heartbeat
+    // we prune peers that haven't checked in for PEER_TIMEOUT_MS and
+    // clear the warning if none remain. Closing a tab also broadcasts
+    // a "bye" so survivors clear immediately.
     let channel: BroadcastChannel | null = null;
     let myTabId: string | null = null;
+    const peers = new Map<string, number>();
+    const HEARTBEAT_MS = 4000;
+    const PEER_TIMEOUT_MS = 10_000;
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+    function recomputeMultiTabWarning() {
+      const now = Date.now();
+      for (const [id, lastSeen] of peers) {
+        if (now - lastSeen > PEER_TIMEOUT_MS) peers.delete(id);
+      }
+      multiTabWarning = peers.size > 0;
+    }
+
     if (showId && typeof BroadcastChannel !== "undefined") {
       myTabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
       channel = new BroadcastChannel(`rb-show-${showId}`);
@@ -2462,20 +2488,23 @@
         const msg = ev.data as { type: string; tabId: string };
         if (!msg || !msg.tabId || msg.tabId === myTabId) return;
         if (msg.type === "hello") {
-          // Another tab just opened this show. Flag the warning and
-          // reply so they know we're here too.
-          multiTabWarning = true;
+          // Another tab opened this show. Reply so they mark us alive.
+          peers.set(msg.tabId, Date.now());
           channel?.postMessage({ type: "already-open", tabId: myTabId });
-        } else if (msg.type === "already-open") {
-          // A tab that was already open is confirming our hello.
-          multiTabWarning = true;
-        } else if (msg.type === "bye" && !msg.tabId) {
-          // Some tab closed - don't clear the warning here because
-          // others may still be open. A fresh hello round on reload
-          // will re-establish truth.
+          recomputeMultiTabWarning();
+        } else if (msg.type === "already-open" || msg.type === "ping") {
+          peers.set(msg.tabId, Date.now());
+          recomputeMultiTabWarning();
+        } else if (msg.type === "bye") {
+          peers.delete(msg.tabId);
+          recomputeMultiTabWarning();
         }
       };
       channel.postMessage({ type: "hello", tabId: myTabId });
+      heartbeatInterval = setInterval(() => {
+        channel?.postMessage({ type: "ping", tabId: myTabId });
+        recomputeMultiTabWarning();
+      }, HEARTBEAT_MS);
     }
 
     /* Mobile defaults + sticky prefs. On first mobile visit (no stored
@@ -2523,8 +2552,17 @@
     }
     mobilePrefsHydrated = true;
 
+    const onPageHide = () => {
+      if (channel && myTabId) {
+        try { channel.postMessage({ type: "bye", tabId: myTabId }); } catch {}
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
       window.removeEventListener("storage", handler);
+      window.removeEventListener("pagehide", onPageHide);
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
       if (channel) {
         try { channel.postMessage({ type: "bye", tabId: myTabId }); } catch {}
         channel.close();
@@ -2692,6 +2730,7 @@
       startDate: doc.show.startDate,
       endDate: doc.show.endDate,
       csvFormat: "gcal",
+      beta: isBeta,
     });
   }
 
@@ -3306,7 +3345,7 @@
         </div>
           <button
             type="button"
-            class="toolbar-btn"
+            class="toolbar-btn conflict-collect-btn"
             class:toolbar-btn-labeled={showToolbarLabels}
             class:needs-attention={pendingConflictCount > 0}
             title={pendingConflictCount > 0
@@ -3319,6 +3358,11 @@
               <path d="M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v244q-19-9-39-15.5t-41-9.5v-59H200v400h252q7 22 16.5 42T491-80H200Zm0-560h560v-80H200v80Zm0 0v-80 80Zm460 520L528-252l56-56 76 76 152-152 56 56-208 208Z" fill="currentColor"/>
             </svg>
             {#if showToolbarLabels}<span class="toolbar-btn-label">Collect</span>{/if}
+            {#if pendingConflictCount > 0}
+              <span class="conflict-count-badge" aria-hidden="true">
+                {pendingConflictCount > 99 ? "99+" : pendingConflictCount}
+              </span>
+            {/if}
           </button>
         <div class="export-dropdown-wrap">
           <button
@@ -3390,14 +3434,21 @@
             type="button"
             class="toolbar-btn save-btn"
             class:toolbar-btn-labeled={showToolbarLabels}
-            class:save-pending={syncStatus === "pending" || syncStatus === "syncing"}
+            class:save-pending={syncStatus === "pending"}
+            class:save-syncing={syncStatus === "syncing"}
             class:save-error={syncStatus === "error"}
             class:save-offline={syncStatus === "offline"}
-            title={syncStatus === "synced" ? "Saved to cloud" : syncStatus === "pending" || syncStatus === "syncing" ? "Syncing to cloud..." : syncStatus === "error" ? "Cloud sync failed - click to retry" : syncStatus === "offline" ? "Offline - saved locally, will sync when reconnected" : "Save"}
+            title={syncStatus === "synced" ? "Saved to cloud" : syncStatus === "pending" ? "Saved locally - cloud sync scheduled (click to sync now)" : syncStatus === "syncing" ? "Syncing to cloud..." : syncStatus === "error" ? "Cloud sync failed - click to retry" : syncStatus === "offline" ? "Offline - saved locally, will sync when reconnected" : "Save"}
             aria-label="Save"
             onclick={tryToSave}
           >
-            {#if syncStatus === "pending" || syncStatus === "syncing" || syncStatus === "offline"}
+            {#if syncStatus === "pending"}
+              <!-- Saved locally; debouncing cloud push. Static cloud + teal dot. -->
+              <svg width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
+                <path d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H520q-33 0-56.5-23.5T440-240v-206l-64 62-56-56 160-160 160 160-56 56-64-62v206h220q42 0 71-29t29-71q0-42-29-71t-71-29h-60v-80q0-83-58.5-141.5T480-720q-83 0-141.5 58.5T280-520h-20q-58 0-99 41t-41 99q0 58 41 99t99 41h100v80H260Z" fill="currentColor"/>
+              </svg>
+              <span class="save-pending-dot" aria-hidden="true"></span>
+            {:else if syncStatus === "syncing" || syncStatus === "offline"}
               <svg class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="50 20" />
               </svg>
@@ -3715,6 +3766,7 @@
               startDate: doc.show.startDate,
               endDate: doc.show.endDate,
               csvFormat: "plain",
+              beta: isBeta,
             });
           }}
         >
@@ -3773,6 +3825,7 @@
               startDate: doc.show.startDate,
               endDate: doc.show.endDate,
               csvFormat: "gcal",
+              beta: isBeta,
             });
           }}
         >
@@ -4202,6 +4255,24 @@
   .save-pending {
     color: var(--color-teal) !important;
   }
+  .save-pending-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-teal);
+    box-shadow: 0 0 0 2px var(--color-surface);
+    animation: save-pending-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes save-pending-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(0.82); }
+  }
+  .save-syncing {
+    color: var(--color-teal) !important;
+  }
   .save-error {
     color: var(--color-danger) !important;
   }
@@ -4231,6 +4302,36 @@
     background: var(--color-teal-dark, #2e6b68);
     border-color: var(--color-teal-dark, #2e6b68);
     color: #fff;
+  }
+
+  .conflict-collect-btn {
+    position: relative;
+  }
+  .conflict-count-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--color-teal);
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--color-surface);
+    animation: conflict-badge-pulse 2.2s ease-in-out infinite;
+  }
+  .toolbar-btn.needs-attention .conflict-count-badge {
+    background: #fff;
+    color: var(--color-teal);
+    box-shadow: 0 0 0 2px var(--color-teal);
+  }
+  @keyframes conflict-badge-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
   }
 
   .scope-dropdown-wrap {
