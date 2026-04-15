@@ -22,11 +22,21 @@ export const load: PageServerLoad = async ({ url, locals }) => {
       const supabaseUserId = session.metadata?.supabase_user_id || session.client_reference_id;
 
       if (supabaseUserId) {
+        // session.customer can be a string id or an expanded object;
+        // pull the id either way so the refund webhook has something
+        // to look up by later.
+        const stripeCustomerId: string | null =
+          typeof session.customer === "string"
+            ? session.customer
+            : session.customer && typeof session.customer === "object"
+              ? session.customer.id ?? null
+              : null;
+
         await supabaseAdmin
           .from("profiles")
           .update({
             has_paid: true,
-            stripe_customer_id: typeof session.customer === "string" ? session.customer : null,
+            stripe_customer_id: stripeCustomerId,
           })
           .eq("id", supabaseUserId);
       }

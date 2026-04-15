@@ -70,8 +70,19 @@ export const POST: RequestHandler = async ({ request }) => {
           return json({ received: true, error: "no matching user" });
         }
 
+        // session.customer is one of:
+        //   - string (customer id like "cus_xxx") - the common case
+        //   - expanded Customer object - when the session was created with expansion
+        //   - null - when the checkout was guest-only
+        // Handle all three so we always store the id when it exists. Without
+        // this, a stored null breaks the charge.refunded handler later
+        // because it looks up the profile by stripe_customer_id.
         const stripeCustomerId: string | null =
-          typeof session.customer === "string" ? session.customer : null;
+          typeof session.customer === "string"
+            ? session.customer
+            : session.customer && typeof session.customer === "object"
+              ? session.customer.id ?? null
+              : null;
 
         const { error: updateError } = await supabaseAdmin
           .from("profiles")
