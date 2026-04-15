@@ -28,6 +28,7 @@
     "stripe": "^17.5.0"
   },
   "devDependencies": {
+    "@babel/preset-typescript": "^7.28.5",
     "@sveltejs/adapter-netlify": "^4.4.0",
     "@sveltejs/kit": "^2.16.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
