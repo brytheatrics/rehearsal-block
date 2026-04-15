@@ -11,9 +11,11 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type Handle, redirect } from "@sveltejs/kit";
 import { PUBLIC_SENTRY_DSN } from "$env/static/public";
 
-// Skip Sentry in local dev (no NETLIFY env var) so dev iterations
-// don't pollute production's issue list.
-const isProdServer = !!process.env.NETLIFY;
+// Skip Sentry in local dev so iterations don't pollute production's
+// issue list. NODE_ENV is "production" in Netlify Functions runtime
+// and "development" in `vite dev`. process.env.NETLIFY is set at
+// build time but not always at runtime, so don't rely on it here.
+const isProdServer = process.env.NODE_ENV === "production";
 
 if (PUBLIC_SENTRY_DSN && isProdServer) {
   Sentry.init({
