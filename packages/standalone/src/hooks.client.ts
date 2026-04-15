@@ -7,7 +7,16 @@
 import * as Sentry from "@sentry/sveltekit";
 import { PUBLIC_SENTRY_DSN } from "$env/static/public";
 
-if (PUBLIC_SENTRY_DSN) {
+// Skip Sentry on localhost / local previews so Blake's dev iterations
+// don't flood the issues list and generate notification spam. Production
+// (anything not localhost) still reports.
+const isDev =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname.endsWith(".local"));
+
+if (PUBLIC_SENTRY_DSN && !isDev) {
   Sentry.init({
     dsn: PUBLIC_SENTRY_DSN,
     // No performance monitoring - saves event quota

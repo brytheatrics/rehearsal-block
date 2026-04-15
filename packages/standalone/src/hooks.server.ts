@@ -11,7 +11,11 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type Handle, redirect } from "@sveltejs/kit";
 import { PUBLIC_SENTRY_DSN } from "$env/static/public";
 
-if (PUBLIC_SENTRY_DSN) {
+// Skip Sentry in local dev (no NETLIFY env var) so dev iterations
+// don't pollute production's issue list.
+const isProdServer = !!process.env.NETLIFY;
+
+if (PUBLIC_SENTRY_DSN && isProdServer) {
   Sentry.init({
     dsn: PUBLIC_SENTRY_DSN,
     tracesSampleRate: 0,
