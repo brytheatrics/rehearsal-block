@@ -89,12 +89,12 @@ const authGuard: Handle = async ({ event, resolve }) => {
   event.locals.session = session;
   event.locals.user = user;
 
-  // Load profile (has_paid flag) for signed-in users
+  // Load profile (has_paid flag + has_beta_access) for signed-in users
   if (user) {
     try {
       const { data: profile } = await event.locals.supabase
         .from("profiles")
-        .select("id, email, has_paid, stripe_customer_id, created_at")
+        .select("id, email, has_paid, has_beta_access, stripe_customer_id, created_at")
         .eq("id", user.id)
         .single();
       event.locals.profile = profile ?? null;
@@ -105,7 +105,31 @@ const authGuard: Handle = async ({ event, resolve }) => {
     event.locals.profile = null;
   }
 
-  // Route guards: /app requires signed in + paid.
+  // Beta gate. During the beta period, users with has_beta_access get the
+  // same /app access as paid users - BUT only while beta_config.beta_active
+  // is true. The active flag is read from the beta_status view (public),
+  // so flipping it in the dashboard takes effect on the next request.
+  //
+  // Cached on event.locals so /app pages + BetaBanner don't re-query per
+  // request. Cheap (single-row view) but still pointless to repeat.
+  let betaActive = false;
+  try {
+    if (event.locals.supabase) {
+      const { data: betaStatus } = await event.locals.supabase
+        .from("beta_status")
+        .select("is_active")
+        .maybeSingle();
+      betaActive = !!betaStatus?.is_active;
+    }
+  } catch {
+    betaActive = false;
+  }
+  event.locals.betaActive = betaActive;
+  event.locals.hasAppAccess =
+    !!event.locals.profile?.has_paid ||
+    (!!event.locals.profile?.has_beta_access && betaActive);
+
+  // Route guards: /app requires signed in + (paid OR active beta).
   // Bypass on localhost so the show list UI can be previewed during
   // development without a real Supabase session. Remove this bypass
   // before launch (or when Phase 1 storage wires real auth).
@@ -114,13 +138,19 @@ const authGuard: Handle = async ({ event, resolve }) => {
     if (!user) {
       redirect(303, "/login");
     }
-    if (!event.locals.profile?.has_paid) {
+    if (!event.locals.hasAppAccess) {
+      // Beta access expired (beta_active flipped off) - send them to
+      // /buy with a hint. Users who never had beta access also land
+      // here naturally.
+      if (event.locals.profile?.has_beta_access && !betaActive) {
+        redirect(303, "/buy?beta_ended=1");
+      }
       redirect(303, "/buy");
     }
   }
 
-  // Redirect already-signed-in paid users away from /login and /buy
-  if (event.url.pathname === "/login" && user && event.locals.profile?.has_paid) {
+  // Redirect already-signed-in paid OR active-beta users away from /login
+  if (event.url.pathname === "/login" && user && event.locals.hasAppAccess) {
     redirect(303, "/app");
   }
 

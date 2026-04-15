@@ -10,6 +10,8 @@ declare global {
       session: Session | null;
       user: User | null;
       profile: UserProfile | null;
+      betaActive: boolean;
+      hasAppAccess: boolean;
     }
     interface PageData {
       session: Session | null;
@@ -24,6 +26,7 @@ declare global {
     id: string;
     email: string | null;
     has_paid: boolean;
+    has_beta_access: boolean;
     stripe_customer_id: string | null;
     created_at: string;
   }
