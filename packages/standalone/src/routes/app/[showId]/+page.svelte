@@ -194,6 +194,7 @@
     onDocChange={handleDocChange}
     syncStatus={isOnline ? currentSyncStatus : "offline"}
     onHistory={() => (historyOpen = true)}
+    showId={data.showId}
   />
   {#if historyOpen}
     <RevisionHistoryModal
