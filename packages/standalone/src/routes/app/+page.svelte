@@ -20,6 +20,19 @@
 
   let { data } = $props();
 
+  /* Display name preference: user_metadata.full_name (OAuth) > user_metadata.name
+     > first segment of full_name > capitalized email local-part. "'s Shows" is
+     appended in the header markup. */
+  const displayName = $derived.by(() => {
+    const meta = (data.user as { user_metadata?: Record<string, unknown> } | undefined)?.user_metadata;
+    const full = typeof meta?.full_name === "string" ? meta.full_name.trim() : "";
+    const name = typeof meta?.name === "string" ? meta.name.trim() : "";
+    const firstName = (full || name).split(/\s+/)[0] ?? "";
+    if (firstName) return firstName;
+    const local = data.user?.email?.split("@")[0] ?? "My";
+    return local.charAt(0).toUpperCase() + local.slice(1);
+  });
+
   let newShowOpen = $state(false);
   let defaultsOpen = $state(false);
   let editShowId = $state<string | null>(null);
@@ -511,7 +524,7 @@
 <div class="shows-page container" class:is-empty={shows.length === 0 && !loading}>
   <header class="page-header">
     <div>
-      <h1>{(data.user?.email?.split("@")[0] ?? "My").charAt(0).toUpperCase() + (data.user?.email?.split("@")[0] ?? "y").slice(1)}'s Shows</h1>
+      <h1>{displayName}'s Shows</h1>
     </div>
     <div class="header-actions">
       <button
