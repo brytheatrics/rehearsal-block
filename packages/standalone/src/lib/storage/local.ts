@@ -18,6 +18,7 @@ const DB_NAME = "rehearsal-block";
 const SHOWS_STORE = "shows";
 const META_STORE = "meta";
 const DEFAULTS_STORE = "defaults";
+const ONBOARDING_STORE = "onboarding";
 
 // Lazily initialized - idb-keyval's createStore calls indexedDB.open()
 // which doesn't exist during SSR. Deferring to first use ensures we
@@ -25,6 +26,7 @@ const DEFAULTS_STORE = "defaults";
 let _showsStore: UseStore | undefined;
 let _metaStore: UseStore | undefined;
 let _defaultsStore: UseStore | undefined;
+let _onboardingStore: UseStore | undefined;
 
 function showsStore(): UseStore {
   if (!_showsStore) _showsStore = createStore(DB_NAME, SHOWS_STORE);
@@ -39,6 +41,11 @@ function metaStore(): UseStore {
 function defaultsStore(): UseStore {
   if (!_defaultsStore) _defaultsStore = createStore(`${DB_NAME}-defaults`, DEFAULTS_STORE);
   return _defaultsStore;
+}
+
+function onboardingStore(): UseStore {
+  if (!_onboardingStore) _onboardingStore = createStore(`${DB_NAME}-onboarding`, ONBOARDING_STORE);
+  return _onboardingStore;
 }
 
 export interface SyncMeta {
@@ -105,4 +112,54 @@ export async function saveUserDefaults(defaults: UserDefaults): Promise<void> {
 
 export async function clearUserDefaults(): Promise<void> {
   await del(DEFAULTS_KEY, defaultsStore());
+}
+
+// ---- Onboarding state (first-time tour tracking) ----
+
+export interface OnboardingState {
+  /** Global toggle - false suppresses all tours until user re-enables. */
+  enabled: boolean;
+  /** Per-tour completion flags. Keyed by tour id (e.g. "show-list"). */
+  completed: Record<string, boolean>;
+  /** ISO timestamp of the last tour interaction. Analytics hook only. */
+  lastSeenAt: string | null;
+}
+
+const ONBOARDING_KEY = "onboarding-state";
+
+const DEFAULT_ONBOARDING_STATE: OnboardingState = {
+  enabled: true,
+  completed: {},
+  lastSeenAt: null,
+};
+
+export async function getOnboardingState(): Promise<OnboardingState> {
+  try {
+    const state = await get<OnboardingState>(ONBOARDING_KEY, onboardingStore());
+    if (!state) return { ...DEFAULT_ONBOARDING_STATE };
+    // Merge with defaults to tolerate schema additions in older records.
+    return { ...DEFAULT_ONBOARDING_STATE, ...state };
+  } catch {
+    return { ...DEFAULT_ONBOARDING_STATE };
+  }
+}
+
+export async function setOnboardingState(state: OnboardingState): Promise<void> {
+  await set(ONBOARDING_KEY, state, onboardingStore());
+}
+
+export async function markTourCompleted(tourId: string): Promise<void> {
+  const state = await getOnboardingState();
+  state.completed[tourId] = true;
+  state.lastSeenAt = new Date().toISOString();
+  await setOnboardingState(state);
+}
+
+/** Clears all tour completion flags - useful for dev resets and a future
+ *  "Reset onboarding tours" button in My Defaults. */
+export async function resetOnboardingTours(): Promise<void> {
+  const state = await getOnboardingState();
+  state.completed = {};
+  state.lastSeenAt = null;
+  await setOnboardingState(state);
 }

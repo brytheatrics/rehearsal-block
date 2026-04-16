@@ -15,8 +15,17 @@
   import EditShowModal from "$lib/components/app/EditShowModal.svelte";
   import RevisionHistoryModal from "$lib/components/app/RevisionHistoryModal.svelte";
   import { listShowsMeta, type ShowIndexRow } from "$lib/storage/index.js";
-  import { localListShows, localSaveShow, localDeleteShow, localLoadShow } from "$lib/storage/local.js";
+  import {
+    localListShows,
+    localSaveShow,
+    localDeleteShow,
+    localLoadShow,
+    getOnboardingState,
+    markTourCompleted,
+  } from "$lib/storage/local.js";
   import type { StoredShow } from "$lib/storage/types.js";
+  import OnboardingTour from "$lib/components/OnboardingTour.svelte";
+  import { SHOW_LIST_TOUR } from "$lib/onboarding/tours.js";
 
   let { data } = $props();
 
@@ -62,6 +71,45 @@
   let shows = $state<ShowEntry[]>([]);
   /** Full docs cached in IndexedDB - used to compute "this week rehearsals". */
   let fullDocs = $state<Map<string, StoredShow>>(new Map());
+
+  /* Onboarding tour state. The show-list tour fires once per device on
+     first /app visit when the show list is empty and the user hasn't
+     dismissed it. Details: ~/.claude/plans/onboarding-tour.md */
+  let showListTourActive = $state(false);
+
+  async function maybeStartShowListTour() {
+    if (loading) return;
+    /* ?tour=show-list force-trigger for dev / demoing. Bypasses all
+       state checks. Remove the query param after close. */
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("tour") === "show-list") {
+        showListTourActive = true;
+        return;
+      }
+    }
+    /* Only for empty-state users - seeing a tour while staring at your
+       existing shows is noisy. */
+    if (shows.length > 0) return;
+    const state = await getOnboardingState();
+    if (!state.enabled) return;
+    if (state.completed["show-list"]) return;
+    showListTourActive = true;
+  }
+
+  async function finishShowListTourClean() {
+    showListTourActive = false;
+    await markTourCompleted("show-list");
+    /* Strip ?tour= so a refresh doesn't retrigger. */
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("tour")) {
+        url.searchParams.delete("tour");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+  }
+
 
   // ---- Dashboard computation ----
 
@@ -279,6 +327,11 @@
     fullDocs = docMap;
 
     loading = false;
+
+    /* After the first real render of the show list, decide whether to
+       start the onboarding tour. Keeps the initial page-load quiet
+       until we've confirmed this is a first-time user with no shows. */
+    maybeStartShowListTour();
   }
 
   onMount(() => {
@@ -531,6 +584,7 @@
         type="button"
         class="defaults-btn"
         title="My Defaults"
+        data-tour="my-defaults"
         onclick={() => (defaultsOpen = true)}
       >
         <svg width="18" height="18" viewBox="0 -960 960 960" aria-hidden="true">
@@ -548,6 +602,7 @@
       <button
         type="button"
         class="btn btn-primary"
+        data-tour="new-show"
         onclick={() => (newShowOpen = true)}
       >
         + New Show
@@ -784,6 +839,14 @@
   <div class="toast" role="status" aria-live="polite">
     {toastMessage}
   </div>
+{/if}
+
+{#if showListTourActive}
+  <OnboardingTour
+    tourId="show-list"
+    steps={SHOW_LIST_TOUR}
+    oncomplete={finishShowListTourClean}
+  />
 {/if}
 
 <style>
