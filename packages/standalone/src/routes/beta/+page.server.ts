@@ -14,6 +14,16 @@
 import { fail, redirect } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types";
 
+/* Short-lived cookie that tells /auth/callback where to send the user
+   after a successful sign-in / magic-link exchange. We use a cookie
+   rather than the `?next=` query param because Supabase's allowed
+   redirect URL list sometimes strips query strings (or rejects URLs
+   that don't exactly match), causing users to land on the Site URL
+   (e.g. /) after OAuth and never reach /beta. The cookie survives
+   that normalization. Ten-minute TTL is plenty for an auth round-trip. */
+const AUTH_NEXT_COOKIE = "rb_auth_next";
+const AUTH_NEXT_MAX_AGE = 60 * 10;
+
 export const load: PageServerLoad = async ({ locals }) => {
   let betaActive = false;
   let displayExpiration: string | null = null;
@@ -51,10 +61,19 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   /* Mirror /login's google action so testers can sign in from /beta
      without bouncing to /login. Same implementation. */
-  google: async ({ locals, url }) => {
+  google: async ({ locals, url, cookies }) => {
+    cookies.set(AUTH_NEXT_COOKIE, "/beta", {
+      path: "/",
+      maxAge: AUTH_NEXT_MAX_AGE,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: url.protocol === "https:",
+    });
     const { data, error } = await locals.supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
+        /* ?next=/beta is kept as a belt-and-suspenders fallback; the
+           cookie is the primary signal /auth/callback reads. */
         redirectTo: `${url.origin}/auth/callback?next=/beta`,
       },
     });
@@ -67,7 +86,7 @@ export const actions: Actions = {
     return fail(500, { error: "No redirect URL returned from Supabase." });
   },
 
-  magiclink: async ({ request, locals, url }) => {
+  magiclink: async ({ request, locals, url, cookies }) => {
     const formData = await request.formData();
     const email = formData.get("email");
 
@@ -75,6 +94,13 @@ export const actions: Actions = {
       return fail(400, { email, error: "Please enter a valid email address." });
     }
 
+    cookies.set(AUTH_NEXT_COOKIE, "/beta", {
+      path: "/",
+      maxAge: AUTH_NEXT_MAX_AGE,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: url.protocol === "https:",
+    });
     const { error } = await locals.supabase.auth.signInWithOtp({
       email,
       options: {

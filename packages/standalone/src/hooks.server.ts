@@ -149,8 +149,17 @@ const authGuard: Handle = async ({ event, resolve }) => {
     }
   }
 
-  // Redirect already-signed-in paid OR active-beta users away from /login
-  if (event.url.pathname === "/login" && user && event.locals.hasAppAccess) {
+  // Redirect already-signed-in paid OR active-beta users away from /login.
+  // Gated on GET so POST form actions (e.g. /login?/signout) can reach
+  // their handler without being intercepted and bounced to /app - the
+  // redirect would fire before the signout action ran, leaving the user
+  // signed in with an empty-handed redirect.
+  if (
+    event.url.pathname === "/login" &&
+    event.request.method === "GET" &&
+    user &&
+    event.locals.hasAppAccess
+  ) {
     redirect(303, "/app");
   }
 
