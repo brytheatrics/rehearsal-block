@@ -638,6 +638,7 @@
         <button
           type="button"
           class="btn btn-primary btn-lg"
+          data-tour="new-show-empty"
           onclick={() => (newShowOpen = true)}
         >
           + New Show
@@ -845,11 +846,17 @@
 {/if}
 
 {#if clickNewShowHintActive}
+  <!--
+    Targets the big "+ New Show" button in the empty-state card at the
+    center of the screen, not the smaller one in the header toolbar.
+    The empty state only renders when shows.length === 0, which is
+    exactly when we fire this hint, so the target is always present.
+  -->
   <OnboardingHint
-    target="[data-tour='new-show']"
+    target="[data-tour='new-show-empty']"
     title="Start here"
     body="Click to create your first show. You'll name it, pick dates, and optionally configure event types, locations, and cast."
-    placement="bottom"
+    placement="top"
     closeWhen={clickNewShowHintClose}
     onclose={finishClickNewShowHint}
   />

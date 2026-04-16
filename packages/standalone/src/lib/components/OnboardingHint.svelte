@@ -44,10 +44,15 @@
   /* Target measurement. Re-computed on step-change, resize, scroll. */
   let rect = $state<DOMRect | null>(null);
   let effectivePlacement = $state<"top" | "bottom" | "left" | "right">("bottom");
+  /* Actual measured height of the hint element after render - used for
+     accurate positioning on narrow viewports where the body wraps to
+     more lines than the fixed estimate assumed. */
+  let hintEl: HTMLDivElement | undefined = $state();
+  let hintHeight = $state(140);
 
-  /* Popover sizing - must be roughly stable for the placement math. */
+  /* Popover sizing - width is stable, height is re-measured after render
+     since the body can wrap to 2-3 lines depending on viewport width. */
   const HINT_WIDTH = 280;
-  const HINT_HEIGHT_EST = 110;
   const GAP = 14; // distance between target and popover (leaves room for arrow)
   const EDGE_MARGIN = 12;
 
@@ -59,6 +64,17 @@
     }
     rect = el.getBoundingClientRect();
     effectivePlacement = chooseSide(rect, placement);
+    /* Re-measure the hint height on next frame once it renders. Lets
+       the positioning math use the real height when the body wraps to
+       more lines than the default assumption on narrow viewports. */
+    requestAnimationFrame(() => {
+      if (hintEl) {
+        const h = hintEl.getBoundingClientRect().height;
+        if (h > 0 && Math.abs(h - hintHeight) > 2) {
+          hintHeight = h;
+        }
+      }
+    });
   }
 
   function chooseSide(r: DOMRect, pref: Props["placement"]): "top" | "bottom" | "left" | "right" {
@@ -72,7 +88,7 @@
     if (pref && pref !== "auto") {
       /* Honor preference unless it clearly won't fit. */
       const room = pref === "top" ? roomTop : pref === "bottom" ? roomBottom : pref === "left" ? roomLeft : roomRight;
-      const need = pref === "top" || pref === "bottom" ? HINT_HEIGHT_EST + GAP : HINT_WIDTH + GAP;
+      const need = pref === "top" || pref === "bottom" ? hintHeight + GAP : HINT_WIDTH + GAP;
       if (room >= need) return pref;
     }
     /* Auto: pick the side with the most room. Prefer bottom/top since
@@ -97,17 +113,17 @@
       top = r.bottom + GAP;
       left = r.left + r.width / 2 - HINT_WIDTH / 2;
     } else if (effectivePlacement === "top") {
-      top = r.top - HINT_HEIGHT_EST - GAP;
+      top = r.top - hintHeight - GAP;
       left = r.left + r.width / 2 - HINT_WIDTH / 2;
     } else if (effectivePlacement === "right") {
-      top = r.top + r.height / 2 - HINT_HEIGHT_EST / 2;
+      top = r.top + r.height / 2 - hintHeight / 2;
       left = r.right + GAP;
     } else {
-      top = r.top + r.height / 2 - HINT_HEIGHT_EST / 2;
+      top = r.top + r.height / 2 - hintHeight / 2;
       left = r.left - HINT_WIDTH - GAP;
     }
     left = Math.max(EDGE_MARGIN, Math.min(vw - HINT_WIDTH - EDGE_MARGIN, left));
-    top = Math.max(EDGE_MARGIN, Math.min(vh - HINT_HEIGHT_EST - EDGE_MARGIN, top));
+    top = Math.max(EDGE_MARGIN, Math.min(vh - hintHeight - EDGE_MARGIN, top));
     return `top:${top}px;left:${left}px;`;
   });
 
@@ -120,13 +136,13 @@
     const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     let popoverLeft = r.left + r.width / 2 - HINT_WIDTH / 2;
-    let popoverTop = r.top + r.height / 2 - HINT_HEIGHT_EST / 2;
+    let popoverTop = r.top + r.height / 2 - hintHeight / 2;
     if (effectivePlacement === "bottom") popoverTop = r.bottom + GAP;
-    else if (effectivePlacement === "top") popoverTop = r.top - HINT_HEIGHT_EST - GAP;
+    else if (effectivePlacement === "top") popoverTop = r.top - hintHeight - GAP;
     else if (effectivePlacement === "right") popoverLeft = r.right + GAP;
     else if (effectivePlacement === "left") popoverLeft = r.left - HINT_WIDTH - GAP;
     popoverLeft = Math.max(EDGE_MARGIN, Math.min(vw - HINT_WIDTH - EDGE_MARGIN, popoverLeft));
-    popoverTop = Math.max(EDGE_MARGIN, Math.min(vh - HINT_HEIGHT_EST - EDGE_MARGIN, popoverTop));
+    popoverTop = Math.max(EDGE_MARGIN, Math.min(vh - hintHeight - EDGE_MARGIN, popoverTop));
 
     const targetCenterX = r.left + r.width / 2;
     const targetCenterY = r.top + r.height / 2;
@@ -140,11 +156,11 @@
       return `bottom:-7px;left:${x - 7}px;`;
     }
     if (effectivePlacement === "right") {
-      const y = Math.max(14, Math.min(HINT_HEIGHT_EST - 14, targetCenterY - popoverTop));
+      const y = Math.max(14, Math.min(hintHeight - 14, targetCenterY - popoverTop));
       return `left:-7px;top:${y - 7}px;transform:rotate(90deg);`;
     }
     /* left */
-    const y = Math.max(14, Math.min(HINT_HEIGHT_EST - 14, targetCenterY - popoverTop));
+    const y = Math.max(14, Math.min(hintHeight - 14, targetCenterY - popoverTop));
     return `right:-7px;top:${y - 7}px;transform:rotate(-90deg);`;
   });
 
@@ -179,6 +195,7 @@
     style={popoverStyle}
     role="status"
     aria-live="polite"
+    bind:this={hintEl}
   >
     <!-- Arrow/tail pointing at the target. Rotated depending on placement. -->
     <span class="hint-arrow" style={arrowStyle} aria-hidden="true"></span>
@@ -256,31 +273,15 @@
     background: rgba(255, 255, 255, 0.25);
   }
 
-  /* Mobile: popover becomes a small banner at the bottom. Arrow hidden
-     since there's no target to point at on a cramped screen. */
+  /* Mobile: keep same width as desktop so the positioning math (which
+     uses a fixed HINT_WIDTH constant) lines up the arrow correctly.
+     280px fits on iPhone SE-class screens with room to spare. */
   @media (max-width: 640px) {
     .hint {
-      position: fixed;
-      top: auto;
-      left: 16px !important;
-      right: 16px;
-      bottom: 16px;
-      width: auto;
-      max-width: none;
-      animation: hint-in-mobile 200ms ease-out;
+      padding: var(--space-2) var(--space-3);
     }
-    @keyframes hint-in-mobile {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    .hint-arrow {
-      display: none;
+    .hint-body {
+      font-size: 0.8125rem;
     }
   }
 </style>
