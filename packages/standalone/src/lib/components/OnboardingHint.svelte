@@ -76,17 +76,17 @@
     }
     rect = el.getBoundingClientRect();
     effectivePlacement = chooseSide(rect, placement);
-    /* Re-measure the hint height on next frame once it renders. Lets
+    /* Re-measure the hint height on next tick once it renders. Lets
        the positioning math use the real height when the body wraps to
        more lines than the default assumption on narrow viewports. */
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       if (hintEl) {
         const h = hintEl.getBoundingClientRect().height;
         if (h > 0 && Math.abs(h - hintHeight) > 2) {
           hintHeight = h;
         }
       }
-    });
+    }, 0);
   }
 
   function chooseSide(r: DOMRect, pref: Props["placement"]): "top" | "bottom" | "left" | "right" {
@@ -184,13 +184,16 @@
   });
 
   onMount(() => {
-    /* Defer one frame to let the target element paint before measuring. */
-    requestAnimationFrame(() => {
+    /* Defer a tick to let the target element paint before measuring.
+       Prefer setTimeout over requestAnimationFrame since RAF is
+       throttled/paused in background tabs which could leave the hint
+       invisible until the user focuses the tab. */
+    setTimeout(() => {
       measureTarget();
-      /* Second pass 50ms later covers late-paint targets (fonts loaded,
-         etc) so the arrow lands in the right place. */
+      /* Second pass covers late-paint targets (fonts loaded, etc) so
+         the arrow lands in the right place. */
       setTimeout(measureTarget, 50);
-    });
+    }, 0);
     const onResize = () => measureTarget();
     window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onResize, true);

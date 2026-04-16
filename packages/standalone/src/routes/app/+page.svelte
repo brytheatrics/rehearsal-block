@@ -849,8 +849,8 @@
   <!--
     Targets the big "+ New Show" button in the empty-state card at the
     center of the screen, not the smaller one in the header toolbar.
-    The empty state only renders when shows.length === 0, which is
-    exactly when we fire this hint, so the target is always present.
+    Empty state only renders when shows.length === 0, which is exactly
+    when we fire this hint, so the target is always present.
   -->
   <OnboardingHint
     target="[data-tour='new-show-empty']"
