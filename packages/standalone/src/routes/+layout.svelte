@@ -301,6 +301,11 @@
         </div>
         <div class="footer-meta">
           <span>&copy; {new Date().getFullYear()} BRY Theatrics</span>
+          <!-- Privacy + Terms links visible on every public page so Google's
+               OAuth consent-screen crawler can find them from the homepage
+               (requirement for app verification / production publishing). -->
+          <a href="/privacy" class="footer-legal-link">Privacy</a>
+          <a href="/terms" class="footer-legal-link">Terms</a>
         </div>
       </div>
     </footer>
@@ -634,6 +639,19 @@
     font-size: 0.875rem;
     opacity: 0.7;
     justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .footer-legal-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+  }
+  .footer-legal-link:hover {
+    color: var(--color-teal-light);
+    border-bottom-color: var(--color-teal-light);
   }
 
   /* ---- Mobile: hide the primary nav, reduce header height, make the
