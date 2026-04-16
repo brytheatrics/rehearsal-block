@@ -29,7 +29,7 @@
     CAST_COLOR_PALETTE,
     formatPhone,
     formatTime,
-    holidaysInRange,
+    usHolidaysForYear,
     parseCsvText,
     autoMapColumns,
     autoMapCrewColumns,
@@ -1411,16 +1411,38 @@
         </label>
       </div>
 
-      {#if (show.settings.showHolidays ?? true) && !(hideShowTab && hideContactsTab)}
-        {@const allHolidays = holidaysInRange(
-          show.show.startDate,
-          show.show.endDate,
-          show.settings.showUsHolidays ?? false,
-          show.settings.customHolidays ?? [],
-        )}
-        {#if allHolidays.length > 0}
+      {#if (show.settings.showHolidays ?? true)}
+        <!--
+          US holidays: always show ALL 11 federal holidays when "Include US
+          federal holidays" is on. Hidden-holiday preferences are name-based
+          (not date-based), so the list needs to be complete regardless of
+          the show's date range - otherwise a director with a Jan-Mar show
+          can never hide Thanksgiving, etc.
+
+          Date column shows each holiday's occurrence in the show's start
+          year (or the current year if no dates are set, e.g. in My Defaults).
+
+          Custom holidays are kept separate and still filtered to the show's
+          date range since they're date-specific by nature.
+        -->
+        {@const holidayYear =
+          show.show.startDate && show.show.startDate.length >= 4
+            ? parseInt(show.show.startDate.slice(0, 4))
+            : new Date().getFullYear()}
+        {@const usHolidays = (show.settings.showUsHolidays ?? false)
+          ? usHolidaysForYear(holidayYear)
+          : []}
+        {@const customHolidaysInRange =
+          show.show.startDate && show.show.endDate
+            ? (show.settings.customHolidays ?? []).filter(
+                (h) => h.date >= show.show.startDate && h.date <= show.show.endDate,
+              )
+            : (show.settings.customHolidays ?? [])}
+        {@const isDefaultsOnly = hideShowTab && hideContactsTab}
+
+        {#if usHolidays.length > 0 || customHolidaysInRange.length > 0}
           <div class="holiday-list">
-            {#each allHolidays as h (h.date + h.name)}
+            {#each usHolidays as h (h.name)}
               {@const isHidden = (show.settings.hiddenHolidays ?? []).includes(h.name)}
               <div class="holiday-row" class:holiday-hidden={isHidden}>
                 <input
@@ -1431,47 +1453,66 @@
                 />
                 <span class="holiday-badge-preview">{h.name}</span>
                 <span class="holiday-date">{h.date}</span>
-                {#if h.source === "custom"}
-                  <button
-                    type="button"
-                    class="remove-btn"
-                    title="Remove"
-                    aria-label={`Remove ${h.name}`}
-                    onclick={() => removeCustomHoliday(h.date, h.name)}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="16" height="16"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
-                  </button>
-                {:else}
-                  <span class="holiday-source">US</span>
-                {/if}
+                <span class="holiday-source">US</span>
+              </div>
+            {/each}
+            {#each customHolidaysInRange as h (h.date + h.name)}
+              {@const isHidden = (show.settings.hiddenHolidays ?? []).includes(h.name)}
+              <div class="holiday-row" class:holiday-hidden={isHidden}>
+                <input
+                  type="checkbox"
+                  checked={!isHidden}
+                  title={isHidden ? `Show ${h.name}` : `Hide ${h.name}`}
+                  onchange={() => toggleHoliday(h.name)}
+                />
+                <span class="holiday-badge-preview">{h.name}</span>
+                <span class="holiday-date">{h.date}</span>
+                <button
+                  type="button"
+                  class="remove-btn"
+                  title="Remove"
+                  aria-label={`Remove ${h.name}`}
+                  onclick={() => removeCustomHoliday(h.date, h.name)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="16" height="16"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
+                </button>
               </div>
             {/each}
           </div>
         {/if}
 
-        {#if addingHoliday}
-          <div class="holiday-add-form">
-            <input
-              type="date"
-              class="holiday-add-date"
-              bind:value={newHolidayDate}
-              min={show.show.startDate}
-              max={show.show.endDate}
-            />
-            <input
-              type="text"
-              class="holiday-add-name"
-              placeholder="Holiday name"
-              bind:value={newHolidayName}
-              onkeydown={(e) => { if (e.key === "Enter") addCustomHoliday(); if (e.key === "Escape") { addingHoliday = false; } }}
-            />
-            <button type="button" class="ghost-btn" onclick={addCustomHoliday}>Add</button>
-            <button type="button" class="mockup-action-btn" onclick={() => (addingHoliday = false)}>Cancel</button>
-          </div>
-        {:else}
-          <button type="button" class="add-location-btn" onclick={() => { addingHoliday = true; requestAnimationFrame(() => queueMicrotask(() => document.querySelector<HTMLInputElement>('.holiday-add-name')?.focus())); }}>
-            + Add custom holiday
-          </button>
+        <!--
+          Add custom holiday: only shown in show-specific contexts. In the
+          My Defaults flow (defaults-only = both tabs hidden), custom
+          holidays don't make sense as a template since they're date-
+          specific ("Opening Night 2026-05-15" shouldn't auto-copy to
+          every new show).
+        -->
+        {#if !isDefaultsOnly}
+          {#if addingHoliday}
+            <div class="holiday-add-form">
+              <input
+                type="date"
+                class="holiday-add-date"
+                bind:value={newHolidayDate}
+                min={show.show.startDate}
+                max={show.show.endDate}
+              />
+              <input
+                type="text"
+                class="holiday-add-name"
+                placeholder="Holiday name"
+                bind:value={newHolidayName}
+                onkeydown={(e) => { if (e.key === "Enter") addCustomHoliday(); if (e.key === "Escape") { addingHoliday = false; } }}
+              />
+              <button type="button" class="ghost-btn" onclick={addCustomHoliday}>Add</button>
+              <button type="button" class="mockup-action-btn" onclick={() => (addingHoliday = false)}>Cancel</button>
+            </div>
+          {:else}
+            <button type="button" class="add-location-btn" onclick={() => { addingHoliday = true; requestAnimationFrame(() => queueMicrotask(() => document.querySelector<HTMLInputElement>('.holiday-add-name')?.focus())); }}>
+              + Add custom holiday
+            </button>
+          {/if}
         {/if}
       {/if}
     </section>
