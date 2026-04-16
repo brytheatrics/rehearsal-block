@@ -24,6 +24,7 @@
     effectiveLocationColor,
     effectiveLocationShape,
     formatTime,
+    holidayMap,
     overlappingCallsByActor,
     parseIsoDate,
   } from "@rehearsal-block/core";
@@ -234,6 +235,22 @@
   const displayMode = $derived(show.settings.castDisplayMode ?? "actor");
   const displayNames = $derived(castDisplayNames(show.cast, displayMode, show.crew));
   const timeFmt = $derived(show.settings.timeFormat ?? "12h");
+
+  /* Holiday badges, keyed by ISO date. Matches what CalendarGrid does -
+     the list view was previously missing this, so directors on the list
+     view couldn't see holiday markers. Settings.showHolidays gates the
+     entire map so it stays empty when the user has holidays off. */
+  const holidayNamesByDate = $derived(
+    show.settings.showHolidays ?? true
+      ? holidayMap(
+          show.show.startDate,
+          show.show.endDate,
+          show.settings.showUsHolidays ?? false,
+          show.settings.customHolidays ?? [],
+          show.settings.hiddenHolidays ?? [],
+        )
+      : new Map<string, string>(),
+  );
   const allCalledLabel = $derived(
     show.settings.allCalledLabel?.trim() || "All Called",
   );
@@ -634,6 +651,9 @@
     >
       <div class="day-header">
         <span class="day-date">{formatDateLong(iso)}</span>
+        {#if holidayNamesByDate.get(iso)}
+          <span class="holiday-badge">{holidayNamesByDate.get(iso)}</span>
+        {/if}
         {#if et}
           <span
             class="badge"
@@ -1100,6 +1120,21 @@
     font-size: 0.9375rem;
     font-weight: 700;
     color: var(--color-plum);
+  }
+
+  /* Matches the amber pill in DayCell.svelte so calendar and list views
+     render holidays with identical visual weight. */
+  .holiday-badge {
+    display: inline-block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #b45309;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+    line-height: 1.4;
+    white-space: nowrap;
   }
 
   .badge {
