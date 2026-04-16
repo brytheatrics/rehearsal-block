@@ -21,7 +21,8 @@
   import { onMount } from "svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
-  import { getUserDefaults } from "$lib/storage/local.js";
+  import OnboardingHint from "$lib/components/OnboardingHint.svelte";
+  import { getUserDefaults, getOnboardingState, markTourCompleted } from "$lib/storage/local.js";
 
   interface Props {
     onclose: () => void;
@@ -36,6 +37,51 @@
   let error = $state("");
   let showSettings = $state(false);
   const hasDates = $derived(!!(startDate && endDate && endDate >= startDate));
+
+  /* Contextual onboarding hints inside the modal. Chain follows the
+     user's actions: name -> dates -> configure-settings expander.
+     Each hint auto-closes when the user completes the expected action.
+     Only fires once per device (tracked in IndexedDB).
+
+     "current" is an id string ("name" | "dates" | "config" | "done") so
+     template logic can switch on it. Stage 2 only - stage 3 will
+     continue the chain into DefaultsModal's Contacts tab once the user
+     opens Configure Settings. */
+  let modalTourStep = $state<"name" | "dates" | "config" | "done">("done");
+
+  onMount(async () => {
+    const onboarding = await getOnboardingState();
+    if (!onboarding.enabled) return;
+    if (onboarding.completed["new-show-modal"]) return;
+    /* Start at the first unresolved field - if somehow dates are pre-
+       filled (from My Defaults or similar) we skip the earlier hints. */
+    if (!name.trim()) modalTourStep = "name";
+    else if (!hasDates) modalTourStep = "dates";
+    else modalTourStep = "config";
+  });
+
+  /* Advance the chain when the user completes each field's action. */
+  $effect(() => {
+    if (modalTourStep === "name" && name.trim().length > 0) {
+      modalTourStep = "dates";
+    } else if (modalTourStep === "dates" && hasDates) {
+      modalTourStep = "config";
+    } else if (modalTourStep === "config" && showSettings) {
+      modalTourStep = "done";
+      markTourCompleted("new-show-modal");
+    }
+  });
+
+  /* Manual dismiss from a hint's Got it button - skips to the next
+     unresolved step so the chain doesn't stall. */
+  function dismissCurrentHint() {
+    if (modalTourStep === "name") modalTourStep = "dates";
+    else if (modalTourStep === "dates") modalTourStep = "config";
+    else if (modalTourStep === "config") {
+      modalTourStep = "done";
+      markTourCompleted("new-show-modal");
+    }
+  }
 
   // Temporary doc that DefaultsModal mutates via callbacks.
   // On "Create show", this fully configured doc is passed upstream.
@@ -367,7 +413,7 @@
 
   <div class="modal-scroll">
     <form class="modal-body" onsubmit={handleSubmit} novalidate>
-      <div class="field">
+      <div class="field" data-tour="show-name">
         <label for="show-name">Show name</label>
         <input
           id="show-name"
@@ -378,7 +424,7 @@
         />
       </div>
 
-      <div class="field-row">
+      <div class="field-row" data-tour="show-dates">
         <div class="field">
           <label for="show-start">Start date</label>
           <input
@@ -408,6 +454,7 @@
         class="settings-toggle"
         class:disabled={!hasDates}
         disabled={!hasDates}
+        data-tour="configure-settings"
         onclick={() => (showSettings = !showSettings)}
       >
         <svg
@@ -482,6 +529,38 @@
       action();
     }}
     oncancel={() => (confirmPending = null)}
+  />
+{/if}
+
+<!--
+  Onboarding hints that walk the user through filling out the new-show
+  form. Each hint auto-closes when the user takes the expected action;
+  Got it manually advances. Only fires once per device, tracked by the
+  "new-show-modal" key in IndexedDB.
+-->
+{#if modalTourStep === "name"}
+  <OnboardingHint
+    target="[data-tour='show-name']"
+    title="Name your show"
+    body="Any name works - you can change it later."
+    placement="bottom"
+    onclose={dismissCurrentHint}
+  />
+{:else if modalTourStep === "dates"}
+  <OnboardingHint
+    target="[data-tour='show-dates']"
+    title="Pick your dates"
+    body="Start and end dates for your run. The calendar is built from these."
+    placement="bottom"
+    onclose={dismissCurrentHint}
+  />
+{:else if modalTourStep === "config"}
+  <OnboardingHint
+    target="[data-tour='configure-settings']"
+    title="Configure settings (optional)"
+    body="Click here to set up event types, locations, and cast before you start the schedule - or skip and add them later."
+    placement="bottom"
+    onclose={dismissCurrentHint}
   />
 {/if}
 

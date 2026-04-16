@@ -856,7 +856,7 @@
     target="[data-tour='new-show-empty']"
     title="Start here"
     body="Click to create your first show. You'll name it, pick dates, and optionally configure event types, locations, and cast."
-    placement="top"
+    placement="bottom"
     closeWhen={clickNewShowHintClose}
     onclose={finishClickNewShowHint}
   />
