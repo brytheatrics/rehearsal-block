@@ -2431,11 +2431,26 @@
     `rehearsal-block:conflict-submissions:${conflictShowToken}`,
   );
 
-  function refreshPendingConflictCount() {
+  async function refreshPendingConflictCount() {
     if (typeof window === "undefined") {
       pendingConflictCount = 0;
       return;
     }
+    /* Source of truth is the R2-backed API (cross-device). localStorage
+       is the same-device fallback written by ConflictSubmitter when the
+       POST fails. Try API first, fall back to localStorage on error. */
+    try {
+      const res = await fetch(
+        `/api/conflict-submissions/${encodeURIComponent(conflictShowToken)}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        pendingConflictCount = Array.isArray(data?.submissions)
+          ? data.submissions.length
+          : 0;
+        return;
+      }
+    } catch { /* fall through to localStorage */ }
     try {
       const raw = localStorage.getItem(conflictSubmissionsKey);
       if (!raw) {
@@ -2455,6 +2470,18 @@
       if (e.key === conflictSubmissionsKey) refreshPendingConflictCount();
     };
     window.addEventListener("storage", handler);
+
+    /* Poll the pending-submissions count every 60s so the toolbar badge
+       lights up without the director having to reload the page. The
+       request is a single small GET; the ConflictRequestModal polls at
+       the same cadence when open, so we're not doubling traffic. */
+    const pollInterval = setInterval(refreshPendingConflictCount, 60_000);
+
+    /* Refresh on focus too - if the director was away (on another tab or
+       another device) and comes back, the badge should reflect reality
+       without waiting up to 60s for the next poll tick. */
+    const onFocus = () => refreshPendingConflictCount();
+    window.addEventListener("focus", onFocus);
 
     // Multi-tab detection. A single user with the same show open in two
     // tabs (or two devices) can silently race-write: both tabs save to
@@ -2562,6 +2589,8 @@
     return () => {
       window.removeEventListener("storage", handler);
       window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("focus", onFocus);
+      clearInterval(pollInterval);
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       if (channel) {
         try { channel.postMessage({ type: "bye", tabId: myTabId }); } catch {}
