@@ -15,15 +15,21 @@
   import { onMount } from "svelte";
 
   interface Props {
-    /** CSS selector for the element the arrow points at. */
+    /** CSS selector for the element the arrow points at (or highlights
+     *  when mode === "highlight"). */
     target: string;
     /** Short description of what the user should do. */
     body: string;
-    /** Optional title - rendered above body. If omitted, body stands alone. */
+    /** Optional title - rendered above body. */
     title?: string;
     /** Where to place the hint relative to the target. Auto picks the side
-     *  with the most room. */
+     *  with the most room. Ignored when mode === "highlight". */
     placement?: "top" | "bottom" | "left" | "right" | "auto";
+    /** Presentation mode:
+     *   - "pointer" (default): popover with arrow, anchored next to target.
+     *   - "highlight": target gets a teal glow ring; hint sits fixed at
+     *     the bottom of the viewport so it doesn't cover the modal content. */
+    mode?: "pointer" | "highlight";
     /** When true, the hint closes itself. Use to auto-advance when the
      *  user takes the expected action (e.g. opens a modal, clicks a tab). */
     closeWhen?: boolean;
@@ -37,6 +43,7 @@
     body,
     title,
     placement = "auto",
+    mode = "pointer",
     closeWhen = false,
     onclose,
   }: Props = $props();
@@ -189,7 +196,32 @@
   });
 </script>
 
-{#if rect}
+{#if rect && mode === "highlight"}
+  <!--
+    Highlight mode: target gets a plum glow ring (matches the popover
+    plum color), and the hint card sits at the bottom of the viewport
+    so it doesn't cover the thing being highlighted.
+  -->
+  <div
+    class="highlight-ring"
+    style:top="{rect.top - 4}px"
+    style:left="{rect.left - 4}px"
+    style:width="{rect.width + 8}px"
+    style:height="{rect.height + 8}px"
+    aria-hidden="true"
+  ></div>
+  <div class="hint hint-bottom-bar" role="status" aria-live="polite" bind:this={hintEl}>
+    <div class="hint-content">
+      {#if title}
+        <h4 class="hint-title">{title}</h4>
+      {/if}
+      <p class="hint-body">{body}</p>
+    </div>
+    <button type="button" class="hint-close" onclick={onclose} aria-label="Dismiss hint">
+      Got it
+    </button>
+  </div>
+{:else if rect}
   <div
     class="hint"
     style={popoverStyle}
@@ -271,6 +303,63 @@
   }
   .hint-close:hover {
     background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Highlight mode: plum ring around the target element + hint docked
+     at the bottom of the viewport. Matches the popover's plum color so
+     it reads as a single design language. */
+  .highlight-ring {
+    position: fixed;
+    border: 2px solid var(--color-plum);
+    border-radius: 6px;
+    box-shadow: 0 0 0 4px rgba(45, 31, 61, 0.2), 0 0 18px rgba(45, 31, 61, 0.35);
+    pointer-events: none;
+    z-index: 5001;
+    transition: top 160ms ease, left 160ms ease, width 160ms ease, height 160ms ease;
+    animation: highlight-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes highlight-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 4px rgba(45, 31, 61, 0.2), 0 0 18px rgba(45, 31, 61, 0.35);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(45, 31, 61, 0.3), 0 0 24px rgba(45, 31, 61, 0.5);
+    }
+  }
+
+  .hint-bottom-bar {
+    position: fixed;
+    left: 50%;
+    bottom: var(--space-5);
+    top: auto;
+    transform: translateX(-50%);
+    width: min(560px, calc(100vw - 2 * var(--space-4)));
+    max-width: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    animation: hint-bottom-in 220ms ease-out;
+  }
+  @keyframes hint-bottom-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 12px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+  .hint-content {
+    flex: 1;
+    min-width: 0;
+  }
+  .hint-bottom-bar .hint-title {
+    margin-bottom: 2px;
+  }
+  .hint-bottom-bar .hint-body {
+    margin-bottom: 0;
   }
 
   /* Mobile: keep same width as desktop so the positioning math (which

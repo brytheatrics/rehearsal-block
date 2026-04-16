@@ -543,7 +543,7 @@
     target="[data-tour='show-name']"
     title="Name your show"
     body="Any name works - you can change it later."
-    placement="bottom"
+    mode="highlight"
     onclose={dismissCurrentHint}
   />
 {:else if modalTourStep === "dates"}
@@ -551,7 +551,7 @@
     target="[data-tour='show-dates']"
     title="Pick your dates"
     body="Start and end dates for your run. The calendar is built from these."
-    placement="bottom"
+    mode="highlight"
     onclose={dismissCurrentHint}
   />
 {:else if modalTourStep === "config"}
@@ -559,7 +559,7 @@
     target="[data-tour='configure-settings']"
     title="Configure settings (optional)"
     body="Click here to set up event types, locations, and cast before you start the schedule - or skip and add them later."
-    placement="bottom"
+    mode="highlight"
     onclose={dismissCurrentHint}
   />
 {/if}
