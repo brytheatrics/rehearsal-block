@@ -24,8 +24,7 @@
     markTourCompleted,
   } from "$lib/storage/local.js";
   import type { StoredShow } from "$lib/storage/types.js";
-  import OnboardingTour from "$lib/components/OnboardingTour.svelte";
-  import { SHOW_LIST_TOUR } from "$lib/onboarding/tours.js";
+  import OnboardingHint from "$lib/components/OnboardingHint.svelte";
 
   let { data } = $props();
 
@@ -72,34 +71,38 @@
   /** Full docs cached in IndexedDB - used to compute "this week rehearsals". */
   let fullDocs = $state<Map<string, StoredShow>>(new Map());
 
-  /* Onboarding tour state. The show-list tour fires once per device on
-     first /app visit when the show list is empty and the user hasn't
-     dismissed it. Details: ~/.claude/plans/onboarding-tour.md */
-  let showListTourActive = $state(false);
+  /* Contextual onboarding hints. Non-blocking tooltip-with-arrow that
+     point at real UI and follow the user through their first show
+     setup, instead of a linear tutorial they watch and forget.
+     Plan: ~/.claude/plans/onboarding-tour.md */
+  let clickNewShowHintActive = $state(false);
 
-  async function maybeStartShowListTour() {
+  /* Close signal for the current hint - flipped to true when the user
+     takes the expected action (opens NewShowModal here). The hint
+     component auto-calls onclose when this transitions. */
+  const clickNewShowHintClose = $derived(newShowOpen);
+
+  async function maybeStartOnboarding() {
     if (loading) return;
-    /* ?tour=show-list force-trigger for dev / demoing. Bypasses all
-       state checks. Remove the query param after close. */
+    /* ?tour=show-list force-trigger for dev / demoing. */
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("tour") === "show-list") {
-        showListTourActive = true;
+        clickNewShowHintActive = true;
         return;
       }
     }
-    /* Only for empty-state users - seeing a tour while staring at your
-       existing shows is noisy. */
+    /* Only fire on empty-state. Seeing a hint over your real shows is noisy. */
     if (shows.length > 0) return;
     const state = await getOnboardingState();
     if (!state.enabled) return;
-    if (state.completed["show-list"]) return;
-    showListTourActive = true;
+    if (state.completed["click-new-show"]) return;
+    clickNewShowHintActive = true;
   }
 
-  async function finishShowListTourClean() {
-    showListTourActive = false;
-    await markTourCompleted("show-list");
+  async function finishClickNewShowHint() {
+    clickNewShowHintActive = false;
+    await markTourCompleted("click-new-show");
     /* Strip ?tour= so a refresh doesn't retrigger. */
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -331,7 +334,7 @@
     /* After the first real render of the show list, decide whether to
        start the onboarding tour. Keeps the initial page-load quiet
        until we've confirmed this is a first-time user with no shows. */
-    maybeStartShowListTour();
+    maybeStartOnboarding();
   }
 
   onMount(() => {
@@ -841,11 +844,14 @@
   </div>
 {/if}
 
-{#if showListTourActive}
-  <OnboardingTour
-    tourId="show-list"
-    steps={SHOW_LIST_TOUR}
-    oncomplete={finishShowListTourClean}
+{#if clickNewShowHintActive}
+  <OnboardingHint
+    target="[data-tour='new-show']"
+    title="Start here"
+    body="Click to create your first show. You'll name it, pick dates, and optionally configure event types, locations, and cast."
+    placement="bottom"
+    closeWhen={clickNewShowHintClose}
+    onclose={finishClickNewShowHint}
   />
 {/if}
 
