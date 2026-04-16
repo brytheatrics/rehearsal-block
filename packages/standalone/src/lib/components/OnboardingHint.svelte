@@ -27,9 +27,14 @@
     placement?: "top" | "bottom" | "left" | "right" | "auto";
     /** Presentation mode:
      *   - "pointer" (default): popover with arrow, anchored next to target.
-     *   - "highlight": target gets a teal glow ring; hint sits fixed at
-     *     the bottom of the viewport so it doesn't cover the modal content. */
-    mode?: "pointer" | "highlight";
+     *     Used from empty-state pages where there's no surrounding
+     *     container to dock the hint into.
+     *   - "banner": target gets a plum glow ring; the hint renders INLINE
+     *     as a banner wherever the parent places this component in the
+     *     markup. Meant for modal/tab contexts where the parent can put
+     *     the hint at the top of the container so it's always visible
+     *     without covering the form below. */
+    mode?: "pointer" | "banner";
     /** When true, the hint closes itself. Use to auto-advance when the
      *  user takes the expected action (e.g. opens a modal, clicks a tab). */
     closeWhen?: boolean;
@@ -196,21 +201,27 @@
   });
 </script>
 
-{#if rect && mode === "highlight"}
+{#if mode === "banner"}
   <!--
-    Highlight mode: target gets a plum glow ring (matches the popover
-    plum color), and the hint card sits at the bottom of the viewport
-    so it doesn't cover the thing being highlighted.
+    Banner mode. The ring is fixed-positioned on the target (rendered
+    via a Svelte portal-ish pattern: since Svelte 5 has no built-in
+    portal we render it as a root sibling which position:fixed escapes
+    into the viewport coordinate space anyway). The banner itself
+    renders INLINE where the parent placed this component - the parent
+    is expected to drop <OnboardingHint> at the top of a modal/panel
+    so the banner appears as a full-width strip above the content.
   -->
-  <div
-    class="highlight-ring"
-    style:top="{rect.top - 4}px"
-    style:left="{rect.left - 4}px"
-    style:width="{rect.width + 8}px"
-    style:height="{rect.height + 8}px"
-    aria-hidden="true"
-  ></div>
-  <div class="hint hint-bottom-bar" role="status" aria-live="polite" bind:this={hintEl}>
+  {#if rect}
+    <div
+      class="highlight-ring"
+      style:top="{rect.top - 4}px"
+      style:left="{rect.left - 4}px"
+      style:width="{rect.width + 8}px"
+      style:height="{rect.height + 8}px"
+      aria-hidden="true"
+    ></div>
+  {/if}
+  <div class="hint hint-inline-banner" role="status" aria-live="polite" bind:this={hintEl}>
     <div class="hint-content">
       {#if title}
         <h4 class="hint-title">{title}</h4>
@@ -327,39 +338,43 @@
     }
   }
 
-  .hint-bottom-bar {
-    position: fixed;
-    left: 50%;
-    bottom: var(--space-5);
-    top: auto;
-    transform: translateX(-50%);
-    width: min(560px, calc(100vw - 2 * var(--space-4)));
+  /* Inline banner. No fixed positioning - flows with the parent
+     container so the caller controls placement (typically the top of
+     a modal or tab panel). Full width of its parent. */
+  .hint-inline-banner {
+    position: static;
+    width: auto;
     max-width: none;
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    animation: hint-bottom-in 220ms ease-out;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-radius: 0;
+    box-shadow: none;
+    animation: hint-inline-in 180ms ease-out;
   }
-  @keyframes hint-bottom-in {
+  @keyframes hint-inline-in {
     from {
       opacity: 0;
-      transform: translate(-50%, 12px);
+      transform: translateY(-4px);
     }
     to {
       opacity: 1;
-      transform: translate(-50%, 0);
+      transform: translateY(0);
     }
   }
   .hint-content {
     flex: 1;
     min-width: 0;
   }
-  .hint-bottom-bar .hint-title {
-    margin-bottom: 2px;
-  }
-  .hint-bottom-bar .hint-body {
+  .hint-inline-banner .hint-title {
     margin-bottom: 0;
+    font-size: 0.8125rem;
+  }
+  .hint-inline-banner .hint-body {
+    margin-bottom: 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
   }
 
   /* Mobile: keep same width as desktop so the positioning math (which

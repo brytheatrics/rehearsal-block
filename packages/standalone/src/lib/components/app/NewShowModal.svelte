@@ -411,6 +411,40 @@
     <button type="button" class="close-btn" aria-label="Close" onclick={guardedClose}>&times;</button>
   </div>
 
+  <!--
+    Onboarding hint banner slot. Renders inline at the top of the
+    modal (between header and scroll area) so it's always visible
+    without covering form content. The OnboardingHint component
+    also renders a fixed-positioned plum ring around the target
+    field as a separate element. Only shown during the three
+    modal tour steps; disappears when tour is done.
+  -->
+  {#if modalTourStep === "name"}
+    <OnboardingHint
+      target="[data-tour='show-name']"
+      title="Name your show"
+      body="Any name works - you can change it later."
+      mode="banner"
+      onclose={dismissCurrentHint}
+    />
+  {:else if modalTourStep === "dates"}
+    <OnboardingHint
+      target="[data-tour='show-dates']"
+      title="Pick your dates"
+      body="Start and end dates for your run. The calendar is built from these."
+      mode="banner"
+      onclose={dismissCurrentHint}
+    />
+  {:else if modalTourStep === "config"}
+    <OnboardingHint
+      target="[data-tour='configure-settings']"
+      title="Configure settings (optional)"
+      body="Click here to set up event types, locations, and cast before you start - or skip and add them later."
+      mode="banner"
+      onclose={dismissCurrentHint}
+    />
+  {/if}
+
   <div class="modal-scroll">
     <form class="modal-body" onsubmit={handleSubmit} novalidate>
       <div class="field" data-tour="show-name">
@@ -532,37 +566,6 @@
   />
 {/if}
 
-<!--
-  Onboarding hints that walk the user through filling out the new-show
-  form. Each hint auto-closes when the user takes the expected action;
-  Got it manually advances. Only fires once per device, tracked by the
-  "new-show-modal" key in IndexedDB.
--->
-{#if modalTourStep === "name"}
-  <OnboardingHint
-    target="[data-tour='show-name']"
-    title="Name your show"
-    body="Any name works - you can change it later."
-    mode="highlight"
-    onclose={dismissCurrentHint}
-  />
-{:else if modalTourStep === "dates"}
-  <OnboardingHint
-    target="[data-tour='show-dates']"
-    title="Pick your dates"
-    body="Start and end dates for your run. The calendar is built from these."
-    mode="highlight"
-    onclose={dismissCurrentHint}
-  />
-{:else if modalTourStep === "config"}
-  <OnboardingHint
-    target="[data-tour='configure-settings']"
-    title="Configure settings (optional)"
-    body="Click here to set up event types, locations, and cast before you start the schedule - or skip and add them later."
-    mode="highlight"
-    onclose={dismissCurrentHint}
-  />
-{/if}
 
 <style>
   .backdrop {
