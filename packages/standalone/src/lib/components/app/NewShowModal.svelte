@@ -20,6 +20,7 @@
   } from "@rehearsal-block/core";
   import { onMount } from "svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { getUserDefaults } from "$lib/storage/local.js";
 
   interface Props {
@@ -100,10 +101,18 @@
        cast/crew/conflicts they thought they were adding. Same pattern as
        guardedClose(). */
     if (pendingCsvImport) {
-      const ok = confirm(
-        "You have an in-progress CSV import that hasn't been applied. Create the show anyway and discard the import?",
-      );
-      if (!ok) return;
+      confirmPending = {
+        message: "You have an in-progress CSV import that hasn't been applied. Create the show anyway and discard the import?",
+        confirmLabel: "Create show",
+        onconfirm: () => {
+          // Ensure final values are synced
+          tempDoc.show.name = trimmedName;
+          tempDoc.show.startDate = startDate;
+          tempDoc.show.endDate = endDate;
+          oncreate(tempDoc);
+        },
+      };
+      return;
     }
 
     // Ensure final values are synced
@@ -115,10 +124,23 @@
   }
 
   let pendingCsvImport = $state(false);
+
+  /* Active themed-confirm state. Holds the pending action so we can
+     re-run it after the user clicks Confirm. Replaces window.confirm(). */
+  let confirmPending = $state<{
+    message: string;
+    confirmLabel: string;
+    onconfirm: () => void;
+  } | null>(null);
+
   function guardedClose() {
     if (pendingCsvImport) {
-      const ok = confirm("You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?");
-      if (!ok) return;
+      confirmPending = {
+        message: "You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?",
+        confirmLabel: "Discard & close",
+        onconfirm: onclose,
+      };
+      return;
     }
     onclose();
   }
@@ -446,6 +468,22 @@
     </form>
   </div>
 </div>
+
+{#if confirmPending}
+  <ConfirmModal
+    title="Discard CSV import?"
+    message={confirmPending.message}
+    confirmLabel={confirmPending.confirmLabel}
+    cancelLabel="Keep import"
+    variant="danger"
+    onconfirm={() => {
+      const action = confirmPending!.onconfirm;
+      confirmPending = null;
+      action();
+    }}
+    oncancel={() => (confirmPending = null)}
+  />
+{/if}
 
 <style>
   .backdrop {

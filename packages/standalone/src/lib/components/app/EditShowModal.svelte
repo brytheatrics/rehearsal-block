@@ -16,6 +16,7 @@
   } from "@rehearsal-block/core";
   import { nextLocationColor } from "@rehearsal-block/core";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import { localLoadShow, localSaveShow } from "$lib/storage/local.js";
 
   interface Props {
@@ -58,10 +59,22 @@
     lastSavedJson = json;
   });
 
+  /* Active themed-confirm state. Replaces window.confirm(). */
+  let confirmPending = $state<{
+    message: string;
+    onconfirm: () => void;
+  } | null>(null);
+
   function handleClose() {
     if (pendingCsvImport) {
-      const ok = confirm("You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?");
-      if (!ok) return;
+      confirmPending = {
+        message: "You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?",
+        onconfirm: () => {
+          onsaved?.();
+          onclose();
+        },
+      };
+      return;
     }
     onsaved?.();
     onclose();
@@ -384,6 +397,22 @@
     <button type="button" class="primary-btn" onclick={handleClose}>Done</button>
   </div>
 </div>
+
+{#if confirmPending}
+  <ConfirmModal
+    title="Discard CSV import?"
+    message={confirmPending.message}
+    confirmLabel="Discard & close"
+    cancelLabel="Keep import"
+    variant="danger"
+    onconfirm={() => {
+      const action = confirmPending!.onconfirm;
+      confirmPending = null;
+      action();
+    }}
+    oncancel={() => (confirmPending = null)}
+  />
+{/if}
 
 <style>
   .backdrop {

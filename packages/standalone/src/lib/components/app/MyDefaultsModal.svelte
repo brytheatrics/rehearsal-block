@@ -16,6 +16,7 @@
     type Show,
   } from "@rehearsal-block/core";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import {
     getUserDefaults,
     saveUserDefaults,
@@ -36,10 +37,21 @@
   let loaded = $state(false);
   let pendingCsvImport = $state(false);
 
+  /* Active themed-confirm state. Replaces window.confirm(). */
+  let confirmPending = $state<{
+    message: string;
+    confirmLabel: string;
+    onconfirm: () => void;
+  } | null>(null);
+
   function guardedClose() {
     if (pendingCsvImport) {
-      const ok = confirm("You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?");
-      if (!ok) return;
+      confirmPending = {
+        message: "You have an in-progress CSV import that hasn't been applied. Close anyway and discard it?",
+        confirmLabel: "Discard & close",
+        onconfirm: onclose,
+      };
+      return;
     }
     onclose();
   }
@@ -69,17 +81,7 @@
     loaded = true;
   });
 
-  async function handleSave() {
-    /* Same guard as guardedClose - warn before saving if a CSV import
-       is staged but unapplied, otherwise the defaults save without the
-       cast/crew the user thought they were adding. */
-    if (pendingCsvImport) {
-      const ok = confirm(
-        "You have an in-progress CSV import that hasn't been applied. Save defaults anyway and discard the import?",
-      );
-      if (!ok) return;
-    }
-
+  async function doSaveDefaults() {
     // Clone via JSON to strip Svelte 5 reactive proxies before
     // writing to IndexedDB (structuredClone fails on proxies).
     const defaults: UserDefaults = JSON.parse(JSON.stringify({
@@ -91,6 +93,21 @@
     await saveUserDefaults(defaults);
     saved = true;
     setTimeout(() => (saved = false), 2000);
+  }
+
+  function handleSave() {
+    /* Same guard as guardedClose - warn before saving if a CSV import
+       is staged but unapplied, otherwise the defaults save without the
+       cast/crew the user thought they were adding. */
+    if (pendingCsvImport) {
+      confirmPending = {
+        message: "You have an in-progress CSV import that hasn't been applied. Save defaults anyway and discard the import?",
+        confirmLabel: "Save defaults",
+        onconfirm: () => { doSaveDefaults(); },
+      };
+      return;
+    }
+    doSaveDefaults();
   }
 
   async function handleReset() {
@@ -228,6 +245,22 @@
     </div>
   </div>
 </div>
+
+{#if confirmPending}
+  <ConfirmModal
+    title="Discard CSV import?"
+    message={confirmPending.message}
+    confirmLabel={confirmPending.confirmLabel}
+    cancelLabel="Keep import"
+    variant="danger"
+    onconfirm={() => {
+      const action = confirmPending!.onconfirm;
+      confirmPending = null;
+      action();
+    }}
+    oncancel={() => (confirmPending = null)}
+  />
+{/if}
 
 <style>
   .backdrop {

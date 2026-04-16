@@ -52,6 +52,8 @@ Use `preview_start` with the name `rehearsal-block` - `.claude/launch.json` is c
 
 **Mobile breakpoint**: `@media (max-width: 768px)`. See PATTERNS.md for the full mobile architecture.
 
+**Never use `window.confirm()`, `alert()`, or `prompt()`.** The browser-native dialogs look generic and break the visual continuity. All confirmations, warnings, and input prompts go through themed modals. Use the reusable `$lib/components/ConfirmModal.svelte` for yes/no confirmations (danger or primary variants) - match the existing delete-confirm pattern. For anything more complex (forms, multi-option choices) build a themed modal matching the app's styling conventions: plum headings, teal primary buttons, red danger buttons, var(--color-surface) backgrounds, rounded corners via var(--radius-lg), z-index above parent modals if stacked.
+
 ## Infrastructure
 
 ### Current vendors
