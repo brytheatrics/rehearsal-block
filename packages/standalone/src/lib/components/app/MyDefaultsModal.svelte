@@ -70,6 +70,16 @@
   });
 
   async function handleSave() {
+    /* Same guard as guardedClose - warn before saving if a CSV import
+       is staged but unapplied, otherwise the defaults save without the
+       cast/crew the user thought they were adding. */
+    if (pendingCsvImport) {
+      const ok = confirm(
+        "You have an in-progress CSV import that hasn't been applied. Save defaults anyway and discard the import?",
+      );
+      if (!ok) return;
+    }
+
     // Clone via JSON to strip Svelte 5 reactive proxies before
     // writing to IndexedDB (structuredClone fails on proxies).
     const defaults: UserDefaults = JSON.parse(JSON.stringify({
