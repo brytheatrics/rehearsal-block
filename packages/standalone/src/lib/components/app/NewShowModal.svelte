@@ -95,6 +95,17 @@
       return;
     }
 
+    /* If a CSV import is staged but not yet applied, warn the user before
+       creating the show - otherwise the show is created without the
+       cast/crew/conflicts they thought they were adding. Same pattern as
+       guardedClose(). */
+    if (pendingCsvImport) {
+      const ok = confirm(
+        "You have an in-progress CSV import that hasn't been applied. Create the show anyway and discard the import?",
+      );
+      if (!ok) return;
+    }
+
     // Ensure final values are synced
     tempDoc.show.name = trimmedName;
     tempDoc.show.startDate = startDate;
@@ -451,7 +462,11 @@
     transform: translateX(-50%);
     width: 440px;
     max-width: calc(100vw - 2 * var(--space-4));
-    max-height: calc(100vh - 2 * var(--space-4));
+    /* top: 5vh + max-height: 90vh = 95vh, leaving 5vh breathing at the
+       bottom so the modal's footer (and the embedded CSV-import sticky
+       bars) stay above the fold instead of getting clipped by the
+       viewport / browser chrome. */
+    max-height: 90vh;
     background: var(--color-surface);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
@@ -574,7 +589,12 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     margin-bottom: var(--space-4);
-    overflow: hidden;
+    /* overflow must be visible (not hidden) so the CSV-import sticky
+       bars inside the embedded DefaultsModal can reach the outer
+       .modal-scroll scroll container without being clipped. Border-
+       radius still renders; the minor corner overflow from embedded
+       children is imperceptible in practice. */
+    overflow: visible;
   }
 
   .actions {

@@ -2765,6 +2765,15 @@
     box-shadow: none;
     border-radius: 0;
     z-index: auto;
+    /* When embedded (inside MyDefaultsModal's settings-embed scroller),
+       don't create a second scroll container - bubble the scroll up so
+       the CSV-import sticky bars actually stick to the outer viewport
+       instead of scrolling away inside a silently-non-scrolling inner
+       modal-body. */
+    overflow: visible;
+  }
+  .modal-embedded .modal-body {
+    overflow-y: visible;
   }
 
   .modal.dragging {
