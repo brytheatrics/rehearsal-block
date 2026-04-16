@@ -2083,6 +2083,7 @@
                           class="cast-color-swatch"
                           class:selected={member.color === hex}
                           style:background={hex}
+                          aria-label={`Use color ${hex}`}
                           onclick={() => { onupdatemember?.(member.id, { color: hex }); castColorPopoverFor = null; }}
                         ></button>
                       {/each}
@@ -2419,6 +2420,7 @@
                           class="cast-color-swatch"
                           class:selected={member.color === hex}
                           style:background={hex}
+                          aria-label={`Use color ${hex}`}
                           onclick={() => { onupdatecrew?.(member.id, { color: hex }); crewColorPopoverFor = null; }}
                         ></button>
                       {/each}

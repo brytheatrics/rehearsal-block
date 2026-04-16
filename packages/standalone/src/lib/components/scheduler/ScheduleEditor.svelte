@@ -2704,9 +2704,16 @@
       await navigator.clipboard.writeText(url);
       showToast("Link copied!");
     } catch {
-      window.prompt("Copy this link to share with your cast:", url);
+      /* Clipboard unavailable (insecure context, permission denied). Show
+         the URL in a themed readonly input the user can select + copy
+         manually. Replaces window.prompt() which breaks visual continuity. */
+      manualCopyUrl = url;
     }
   }
+
+  /* URL to show in the themed "manual copy" fallback modal. Null when
+     closed. See copyShareLink() for when this gets populated. */
+  let manualCopyUrl = $state<string | null>(null);
 
   /** Find calls with a start time but no end time. */
   function findMissingEndTimes(): { date: IsoDate; callIndex: number; label: string; isDressPerf: boolean }[] {
@@ -4047,9 +4054,100 @@
 
 <Toast message={toastMessage} ondismiss={() => (toastMessage = "")} />
 
+<!--
+  Themed fallback for copying the share link when navigator.clipboard
+  is unavailable (insecure context, permission denied). Replaces the old
+  window.prompt() fallback. Shows the URL in a readonly, auto-selected
+  input so the user can Cmd/Ctrl+C to copy manually.
+-->
+{#if manualCopyUrl}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="manual-copy-backdrop" onclick={() => (manualCopyUrl = null)}></div>
+  <div class="manual-copy-modal" role="dialog" aria-modal="true" aria-label="Copy share link">
+    <h3>Copy the link</h3>
+    <p>Your browser blocked the automatic copy. Select the link below and copy it manually.</p>
+    <input
+      type="text"
+      class="manual-copy-input"
+      readonly
+      value={manualCopyUrl}
+      onclick={(e) => e.currentTarget.select()}
+    />
+    <div class="manual-copy-actions">
+      <button type="button" class="manual-copy-close" onclick={() => (manualCopyUrl = null)}>Close</button>
+    </div>
+  </div>
+{/if}
+
 <!-- Paywall modal removed - handled by parent page -->
 
 <style>
+  .manual-copy-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(45, 31, 61, 0.6);
+    z-index: 2000;
+  }
+  .manual-copy-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 480px;
+    max-width: calc(100vw - 2 * var(--space-4));
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    z-index: 2010;
+    padding: var(--space-5);
+  }
+  .manual-copy-modal h3 {
+    margin: 0 0 var(--space-2);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+  .manual-copy-modal p {
+    margin: 0 0 var(--space-4);
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+  .manual-copy-input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-alt);
+    color: var(--color-text);
+    margin-bottom: var(--space-4);
+  }
+  .manual-copy-input:focus {
+    outline: 2px solid var(--color-teal);
+    outline-offset: 2px;
+  }
+  .manual-copy-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .manual-copy-close {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--color-teal);
+    color: #fff;
+    cursor: pointer;
+  }
+  .manual-copy-close:hover {
+    background: var(--color-teal-dark, #2e6b68);
+  }
+
   .demo-page {
     width: 100%;
   }
