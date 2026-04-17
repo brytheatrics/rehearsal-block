@@ -50,9 +50,19 @@
   let modalTourStep = $state<"name" | "dates" | "config" | "done">("done");
 
   onMount(async () => {
-    const onboarding = await getOnboardingState();
-    if (!onboarding.enabled) return;
-    if (onboarding.completed["new-show-modal"]) return;
+    /* ?tour=show-list in the URL is the dev/demo force-trigger for the
+       whole onboarding sequence. When set, bypass the saved completion
+       flag so the user can retest without clearing IndexedDB. This
+       matches the behavior in /app/+page.svelte. */
+    const forceTour =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("tour") === "show-list";
+
+    if (!forceTour) {
+      const onboarding = await getOnboardingState();
+      if (!onboarding.enabled) return;
+      if (onboarding.completed["new-show-modal"]) return;
+    }
     /* Start at the first unresolved field - if somehow dates are pre-
        filled (from My Defaults or similar) we skip the earlier hints. */
     if (!name.trim()) modalTourStep = "name";

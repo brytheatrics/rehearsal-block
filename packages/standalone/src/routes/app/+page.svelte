@@ -103,14 +103,12 @@
   async function finishClickNewShowHint() {
     clickNewShowHintActive = false;
     await markTourCompleted("click-new-show");
-    /* Strip ?tour= so a refresh doesn't retrigger. */
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (url.searchParams.has("tour")) {
-        url.searchParams.delete("tour");
-        window.history.replaceState({}, "", url.toString());
-      }
-    }
+    /* Previously we stripped ?tour= from the URL here, but that broke
+       the force-trigger for downstream tour steps (NewShowModal hints)
+       which also check the query param. The tour chain needs the
+       param to persist until the whole sequence finishes. Real users
+       never see this URL anyway - it's only used for dev / demo -
+       so leaving it in place has no user-facing impact. */
   }
 
 
