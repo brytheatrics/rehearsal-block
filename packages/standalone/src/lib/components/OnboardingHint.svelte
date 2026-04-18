@@ -233,26 +233,30 @@
   });
 </script>
 
+<!--
+  Highlight ring renders in BOTH modes - the whole point is to help the
+  user navigate, so every hint should call attention to its target
+  element regardless of whether the hint itself is a pointer popover
+  or an inline banner.
+-->
+{#if rect}
+  <div
+    class="highlight-ring"
+    style:top="{rect.top - 4}px"
+    style:left="{rect.left - 4}px"
+    style:width="{rect.width + 8}px"
+    style:height="{rect.height + 8}px"
+    aria-hidden="true"
+  ></div>
+{/if}
+
 {#if mode === "banner"}
   <!--
-    Banner mode. The ring is fixed-positioned on the target (rendered
-    via a Svelte portal-ish pattern: since Svelte 5 has no built-in
-    portal we render it as a root sibling which position:fixed escapes
-    into the viewport coordinate space anyway). The banner itself
-    renders INLINE where the parent placed this component - the parent
-    is expected to drop <OnboardingHint> at the top of a modal/panel
-    so the banner appears as a full-width strip above the content.
+    Banner renders INLINE where the parent placed this component - the
+    parent is expected to drop <OnboardingHint> at the top of a
+    modal/panel so the banner appears as a full-width strip above the
+    content.
   -->
-  {#if rect}
-    <div
-      class="highlight-ring"
-      style:top="{rect.top - 4}px"
-      style:left="{rect.left - 4}px"
-      style:width="{rect.width + 8}px"
-      style:height="{rect.height + 8}px"
-      aria-hidden="true"
-    ></div>
-  {/if}
   <div class="hint hint-inline-banner" role="status" aria-live="polite" bind:this={hintEl}>
     <div class="hint-content">
       {#if title}
