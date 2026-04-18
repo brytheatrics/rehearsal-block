@@ -113,6 +113,21 @@
     hideShowTab?: boolean;
     /** When true, hide the "Contacts" tab (used in My Defaults where cast/crew are per-show). */
     hideContactsTab?: boolean;
+    /** Optional allowlist of tabs to show, in order. Unlisted tabs are
+     *  hidden. Combined with `stacked`, turns this modal into a
+     *  filtered set of stacked sections - used by NewShowModal to
+     *  render Event Types / Locations / Cast inline. */
+    tabs?: Array<"appearance" | "schedule" | "event-types" | "locations" | "contacts" | "show">;
+    /** When true, render visible tabs as stacked sections (no tab nav,
+     *  all sections visible at once). */
+    stacked?: boolean;
+    /** Within the Contacts tab: "cast" hides the Production team
+     *  sub-section, "crew" hides the Cast sub-section, "both" (default)
+     *  shows the normal Cast/Crew sub-tab toggle. */
+    contactsShowOnly?: "cast" | "crew" | "both";
+    /** When true, each visible section's root element is tagged with
+     *  data-tour="section-{id}" so onboarding hints can highlight it. */
+    withTourAttrs?: boolean;
     /** Fires whenever the pending-import state flips. Parent modals use
      *  this to guard their close/Done button against accidental discards. */
     onpendingcsvchange?: (pending: boolean) => void;
@@ -155,8 +170,46 @@
     embedded = false,
     hideShowTab = false,
     hideContactsTab = false,
+    tabs: tabsOverride,
+    stacked = false,
+    contactsShowOnly = "both",
+    withTourAttrs = false,
     onpendingcsvchange,
   }: Props = $props();
+
+  /* Visible tab list derived from hideShowTab/hideContactsTab/tabsOverride.
+     When tabsOverride is set, we honor its order and filter out any tab
+     that's been explicitly hidden by the other flags. */
+  const visibleTabIds = $derived.by<Array<"appearance" | "schedule" | "event-types" | "locations" | "contacts" | "show">>(() => {
+    const allIds = ["appearance", "schedule", "event-types", "locations", "contacts", "show"] as const;
+    const hidden = new Set<string>();
+    if (hideShowTab) hidden.add("show");
+    if (hideContactsTab) hidden.add("contacts");
+    if (tabsOverride) {
+      return tabsOverride.filter((id) => !hidden.has(id));
+    }
+    return allIds.filter((id) => !hidden.has(id)) as typeof allIds[number][] as Array<
+      "appearance" | "schedule" | "event-types" | "locations" | "contacts" | "show"
+    >;
+  });
+
+  /* In stacked mode, all visible tabs render simultaneously. In tabbed
+     mode, only the active tab renders. showTab() unifies the check so
+     each section's conditional block can call it directly. */
+  function showTab(id: "appearance" | "schedule" | "event-types" | "locations" | "contacts" | "show"): boolean {
+    if (!visibleTabIds.includes(id)) return false;
+    if (stacked) return true;
+    return activeTab === id;
+  }
+
+  const TAB_LABELS: Record<string, string> = {
+    "appearance": "Appearance",
+    "schedule": "Schedule",
+    "event-types": "Event Types",
+    "locations": "Locations",
+    "contacts": "Contacts",
+    "show": "Show",
+  };
 
   // pendingCsvImport / requestClose are defined further down, once the CSV
   // parse state variables exist.
@@ -1023,35 +1076,31 @@
   </header>
   {/if}
 
-    <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-    <nav class="tab-nav" role="tablist">
-      {#each [
-        { id: "appearance", label: "Appearance" },
-        { id: "schedule", label: "Schedule" },
-        { id: "event-types", label: "Event Types" },
-        { id: "locations", label: "Locations" },
-        ...(hideContactsTab ? [] : [{ id: "contacts", label: "Contacts" }]),
-        ...(hideShowTab ? [] : [{ id: "show", label: "Show" }]),
-      ] as tab (tab.id)}
-        <button
-          type="button"
-          class="tab-btn"
-          class:active={activeTab === tab.id}
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          data-tour={`tab-${tab.id}`}
-          onclick={() => { activeTab = tab.id as Tab; if (tab.id === "contacts") focusContactsSection(); }}
-        >
-          {tab.label}
-        </button>
-      {/each}
-    </nav>
+    {#if !stacked}
+      <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+      <nav class="tab-nav" role="tablist">
+        {#each visibleTabIds as tabId (tabId)}
+          <button
+            type="button"
+            class="tab-btn"
+            class:active={activeTab === tabId}
+            role="tab"
+            aria-selected={activeTab === tabId}
+            data-tour={`tab-${tabId}`}
+            onclick={() => { activeTab = tabId as Tab; if (tabId === "contacts") focusContactsSection(); }}
+          >
+            {TAB_LABELS[tabId]}
+          </button>
+        {/each}
+      </nav>
+    {/if}
 
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="modal-body">
     <!-- ==================== APPEARANCE TAB ==================== -->
-    {#if activeTab === "appearance"}
+    {#if showTab("appearance")}
+    <div data-tour={withTourAttrs ? "section-appearance" : undefined}>
 
     <section class="section">
       <div class="section-header">
@@ -1291,8 +1340,11 @@
       </div>
     </section>
 
+    </div>
+    {/if}
     <!-- ==================== SCHEDULE TAB ==================== -->
-    {:else if activeTab === "schedule"}
+    {#if showTab("schedule")}
+    <div data-tour={withTourAttrs ? "section-schedule" : undefined}>
 
     <section class="section">
       <div class="section-header">
@@ -1566,8 +1618,11 @@
       </div>
     </section>
 
+    </div>
+    {/if}
     <!-- ==================== EVENT TYPES TAB ==================== -->
-    {:else if activeTab === "event-types"}
+    {#if showTab("event-types")}
+    <div data-tour={withTourAttrs ? "section-event-types" : undefined}>
 
     <section class="section">
       <div class="section-header section-header-row">
@@ -1722,8 +1777,11 @@
       </ul>
     </section>
 
+    </div>
+    {/if}
     <!-- ==================== LOCATIONS TAB ==================== -->
-    {:else if activeTab === "locations"}
+    {#if showTab("locations")}
+    <div data-tour={withTourAttrs ? "section-locations" : undefined}>
 
     <section class="section">
       <div class="section-header section-header-row">
@@ -1858,10 +1916,12 @@
       </ul>
     </section>
 
+    </div>
     {/if}
 
     <!-- ==================== CONTACTS TAB ==================== -->
-    {#if activeTab === "contacts"}
+    {#if showTab("contacts")}
+    <div data-tour={withTourAttrs ? (contactsShowOnly === "cast" ? "section-cast" : contactsShowOnly === "crew" ? "section-crew" : "section-contacts") : undefined}>
 
     {#if contactsLocked}
       <div class="contacts-locked-banner">
@@ -1870,13 +1930,18 @@
       </div>
     {/if}
 
-    <div class="contacts-subtabs">
-      <button type="button" class="contacts-subtab" class:active={contactsSubTab === "cast"} onclick={() => { contactsSubTab = "cast"; queueMicrotask(() => castListEl?.focus()); }}>Cast</button>
-      <button type="button" class="contacts-subtab" class:active={contactsSubTab === "crew"} onclick={() => { contactsSubTab = "crew"; queueMicrotask(() => crewListEl?.focus()); }}>Production Team</button>
-    </div>
+    <!-- Sub-tab switcher only when BOTH cast and crew are shown. When
+         the parent has filtered to one side via contactsShowOnly, the
+         sub-tabs are redundant and we hide them. -->
+    {#if contactsShowOnly === "both"}
+      <div class="contacts-subtabs">
+        <button type="button" class="contacts-subtab" class:active={contactsSubTab === "cast"} onclick={() => { contactsSubTab = "cast"; queueMicrotask(() => castListEl?.focus()); }}>Cast</button>
+        <button type="button" class="contacts-subtab" class:active={contactsSubTab === "crew"} onclick={() => { contactsSubTab = "crew"; queueMicrotask(() => crewListEl?.focus()); }}>Production Team</button>
+      </div>
+    {/if}
 
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    {#if contactsSubTab === "cast"}
+    {#if contactsShowOnly === "cast" || (contactsShowOnly === "both" && contactsSubTab === "cast")}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <section class="section" tabindex="-1" bind:this={castListEl}
         onpointerdowncapture={contactsPointerGuard}
@@ -2218,7 +2283,8 @@
           />
         {/if}
       </section>
-    {:else}
+    {/if}
+    {#if contactsShowOnly === "crew" || (contactsShowOnly === "both" && contactsSubTab === "crew")}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <section class="section" tabindex="-1" bind:this={crewListEl}
@@ -2557,10 +2623,12 @@
       </section>
     {/if}
 
+    </div>
     {/if}
 
     <!-- ==================== SHOW TAB ==================== -->
-    {#if activeTab === "show"}
+    {#if showTab("show")}
+    <div data-tour={withTourAttrs ? "section-show" : undefined}>
 
     <section class="section">
       <div class="section-header">
@@ -2611,6 +2679,7 @@
       {/if}
     </section>
 
+    </div>
     {/if}
 
   </div>

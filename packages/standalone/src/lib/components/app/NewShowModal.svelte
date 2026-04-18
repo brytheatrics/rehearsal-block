@@ -43,8 +43,11 @@
      Each hint auto-closes when the user completes the expected action.
      Only fires once per device (tracked in IndexedDB).
 
-     Step ids: name -> dates -> config -> done. */
-  type ModalTourStep = "name" | "dates" | "config" | "done";
+     Step ids: name -> dates -> event-types -> locations -> cast -> done.
+     Event Types / Locations / Cast are inline sections in the main
+     modal body (not hidden behind Configure Settings), so each gets
+     its own banner+ring hint in the same pattern as name/dates. */
+  type ModalTourStep = "name" | "dates" | "event-types" | "locations" | "cast" | "done";
   let modalTourStep = $state<ModalTourStep>("done");
 
   onMount(async () => {
@@ -61,39 +64,35 @@
       if (!onboarding.enabled) return;
       if (onboarding.completed["new-show-modal"]) return;
     }
-    /* Start at the first unresolved field - if somehow dates are pre-
-       filled (from My Defaults or similar) we skip the earlier hints. */
+    /* Start at the first unresolved step. Name/dates auto-advance on
+       form fill; event-types/locations/cast advance only on Got it
+       (can't auto-detect "done setting these up"). */
     if (!name.trim()) modalTourStep = "name";
     else if (!hasDates) modalTourStep = "dates";
-    else modalTourStep = "config";
+    else modalTourStep = "event-types";
   });
 
-  /* Advance the chain when the user completes each field's action. The
-     config-settings step is the final step for now - the tab-by-tab
-     walkthrough felt confusing since clicking a tab dismissed the hint
-     before the user could explore it. A follow-up session will move
-     Event Types / Locations / Cast out of the Configure Settings
-     expander and into the main modal body so each section can get its
-     own hint, matching the name/dates pattern. Tracked in
-     ~/.claude/plans/onboarding-tour.md. */
+  /* Auto-advance logic. Only name -> dates -> event-types auto-advance
+     based on form state. The three inline-section hints require user
+     confirmation (Got it) since we can't tell when someone is "done"
+     adding event types, locations, or cast. */
   $effect(() => {
     if (modalTourStep === "name" && name.trim().length > 0) {
       modalTourStep = "dates";
     } else if (modalTourStep === "dates" && hasDates) {
-      modalTourStep = "config";
-    } else if (modalTourStep === "config" && showSettings) {
-      modalTourStep = "done";
-      markTourCompleted("new-show-modal");
+      modalTourStep = "event-types";
     }
   });
 
-  /* Manual dismiss via Got it - advances to the next unresolved step
-     if the user doesn't want to fill in the current field. Only the
-     three real steps now (name, dates, config). */
+  /* Manual dismiss - Got it button on each hint. Advances to the next
+     step in the chain. Tour is marked completed when the user dismisses
+     the final (cast) hint. */
   function dismissCurrentHint() {
     if (modalTourStep === "name") modalTourStep = "dates";
-    else if (modalTourStep === "dates") modalTourStep = "config";
-    else if (modalTourStep === "config") {
+    else if (modalTourStep === "dates") modalTourStep = "event-types";
+    else if (modalTourStep === "event-types") modalTourStep = "locations";
+    else if (modalTourStep === "locations") modalTourStep = "cast";
+    else if (modalTourStep === "cast") {
       modalTourStep = "done";
       markTourCompleted("new-show-modal");
     }
@@ -451,11 +450,27 @@
       mode="banner"
       onclose={dismissCurrentHint}
     />
-  {:else if modalTourStep === "config"}
+  {:else if modalTourStep === "event-types"}
     <OnboardingHint
-      target="[data-tour='configure-settings']"
-      title="Set up event types, locations, and cast"
-      body="Click here to add them now - you'll need them as soon as you start building the schedule. Explore the tabs and click Create show when ready."
+      target="[data-tour='section-event-types']"
+      title="Event types"
+      body="Color-coded labels for different kinds of days - Rehearsal, Dress, Performance, etc. You'll drop these on the calendar. Add or edit them below, then Got it when you're done."
+      mode="banner"
+      onclose={dismissCurrentHint}
+    />
+  {:else if modalTourStep === "locations"}
+    <OnboardingHint
+      target="[data-tour='section-locations']"
+      title="Locations"
+      body="Places you rehearse - stage, rehearsal hall, dressing room. Adding them here lets you drop a location onto any day on the calendar."
+      mode="banner"
+      onclose={dismissCurrentHint}
+    />
+  {:else if modalTourStep === "cast"}
+    <OnboardingHint
+      target="[data-tour='section-cast']"
+      title="Cast"
+      body="Your actors. Drag them onto rehearsal days to set who's called. You can also import a CSV. Got it when your cast is set up (you can add more later)."
       mode="banner"
       onclose={dismissCurrentHint}
     />
@@ -498,7 +513,66 @@
         <p class="error-msg">{error}</p>
       {/if}
 
-      <!-- Settings toggle - requires dates so holidays can show the right range -->
+      <!--
+        Core show setup sections, inlined. Event Types, Locations, and
+        Cast are rendered as stacked sections right in the modal body
+        (not hidden behind Configure Settings) because users need them
+        as soon as they start the schedule. Each section is the same
+        UI as DefaultsModal's corresponding tab - same state flow,
+        same CSV imports, same callbacks - just displayed without the
+        tab nav.
+      -->
+      <div class="inline-sections" class:needs-dates={!hasDates}>
+        {#if !hasDates}
+          <p class="inline-sections-hint">Pick your dates above to start adding event types, locations, and cast.</p>
+        {:else}
+          <DefaultsModal
+            show={tempDoc}
+            embedded={true}
+            stacked={true}
+            tabs={["event-types", "locations", "contacts"]}
+            contactsShowOnly="cast"
+            withTourAttrs={true}
+            hideShowTab={true}
+            onchange={updateSettings}
+            onaddlocationpreset={addLocationPreset}
+            onremovelocationpreset={removeLocationPreset}
+            onupdatelocationpreset={updateLocationPreset}
+            onreorderlocationpreset={reorderLocationPreset}
+            onaddeventtype={addEventType}
+            onupdateeventtype={updateEventType}
+            onremoveeventtype={removeEventType}
+            onreordereventtype={reorderEventType}
+            onassigneventtype={assignEventType}
+            onclose={() => {}}
+            onconvertgroups={convertGroups}
+            onupdateshow={updateShow}
+            onaddmember={addCastMember}
+            onupdatemember={updateCastMember}
+            onremovemember={removeCastMember}
+            onreordermember={reorderCastMember}
+            onaddconflict={addConflict}
+            onremoveconflict={removeConflict}
+            onaddcrew={addCrewMember}
+            onupdatecrew={updateCrewMember}
+            onremovecrew={removeCrewMember}
+            onreordercrew={reorderCrewMember}
+            onimportcast={importCast}
+            onimportcrew={importCrew}
+            onimportconflicts={importConflicts}
+            onmovecasttocrew={moveCastToCrew}
+            onmovecrewtocast={moveCrewToCast}
+            onpendingcsvchange={(p) => (pendingCsvImport = p)}
+          />
+        {/if}
+      </div>
+
+      <!--
+        Remaining optional settings - collapsed by default. Holds the
+        less-critical stuff that beta testers can skip: theme/font
+        appearance, weekday call-time defaults, and production team
+        (crew) contacts. Cast went into the inline section above.
+      -->
       <button
         type="button"
         class="settings-toggle"
@@ -519,11 +593,13 @@
         <span class="settings-hint">{hasDates ? "(optional)" : "(set dates first)"}</span>
       </button>
 
-      {#if showSettings}
+      {#if showSettings && hasDates}
         <div class="settings-embed">
           <DefaultsModal
             show={tempDoc}
             embedded={true}
+            tabs={["appearance", "schedule", "contacts"]}
+            contactsShowOnly="crew"
             hideShowTab={true}
             onchange={updateSettings}
             onaddlocationpreset={addLocationPreset}
@@ -731,6 +807,23 @@
        radius still renders; the minor corner overflow from embedded
        children is imperceptible in practice. */
     overflow: visible;
+  }
+
+  /* Inline Event Types / Locations / Cast sections rendered between
+     dates and the Configure Settings expander. No border container -
+     the sections flow naturally into the form layout so they don't
+     look boxed off. */
+  .inline-sections {
+    margin-bottom: var(--space-4);
+  }
+  .inline-sections.needs-dates {
+    margin-bottom: 0;
+  }
+  .inline-sections-hint {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin: var(--space-1) 0 var(--space-2);
+    font-style: italic;
   }
 
   .actions {
