@@ -38,6 +38,12 @@
     /** When true, the hint closes itself. Use to auto-advance when the
      *  user takes the expected action (e.g. opens a modal, clicks a tab). */
     closeWhen?: boolean;
+    /** When true, attach a click listener to the target element and
+     *  close the hint when the target is clicked. Lets the hint
+     *  auto-advance on the user's natural action (clicking a tab,
+     *  pressing a button) without parent components having to observe
+     *  internal state from child components. */
+    advanceOnClick?: boolean;
     /** Fired when the hint closes (either via Got it, auto-close, or
      *  target disappearing). Parent should mark the hint as completed. */
     onclose: () => void;
@@ -50,6 +56,7 @@
     placement = "auto",
     mode = "pointer",
     closeWhen = false,
+    advanceOnClick = false,
     onclose,
   }: Props = $props();
 
@@ -194,12 +201,34 @@
          the arrow lands in the right place. */
       setTimeout(measureTarget, 50);
     }, 0);
+
+    /* advanceOnClick: wire a delegated click listener on window that
+       advances the tour when the target element (or its child) is
+       clicked. Delegated (not directly on the target) so we don't fight
+       Svelte's event bindings and so the listener auto-applies when the
+       target re-mounts. Fires onclose, parent handles the transition. */
+    let onWindowClick: ((e: MouseEvent) => void) | null = null;
+    if (advanceOnClick) {
+      onWindowClick = (e: MouseEvent) => {
+        const path = e.composedPath() as Element[];
+        for (const node of path) {
+          if (node && node.matches && node.matches(target)) {
+            onclose();
+            return;
+          }
+        }
+      };
+      window.addEventListener("click", onWindowClick, true);
+    }
     const onResize = () => measureTarget();
     window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onResize, true);
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onResize, true);
+      if (onWindowClick) {
+        window.removeEventListener("click", onWindowClick, true);
+      }
     };
   });
 </script>

@@ -1039,6 +1039,7 @@
           class:active={activeTab === tab.id}
           role="tab"
           aria-selected={activeTab === tab.id}
+          data-tour={`tab-${tab.id}`}
           onclick={() => { activeTab = tab.id as Tab; if (tab.id === "contacts") focusContactsSection(); }}
         >
           {tab.label}

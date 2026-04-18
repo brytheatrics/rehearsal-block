@@ -43,11 +43,20 @@
      Each hint auto-closes when the user completes the expected action.
      Only fires once per device (tracked in IndexedDB).
 
-     "current" is an id string ("name" | "dates" | "config" | "done") so
-     template logic can switch on it. Stage 2 only - stage 3 will
-     continue the chain into DefaultsModal's Contacts tab once the user
-     opens Configure Settings. */
-  let modalTourStep = $state<"name" | "dates" | "config" | "done">("done");
+     Step ids flow the user through the whole new-show setup:
+       name -> dates -> config (expander) -> event-types tab
+         -> locations tab -> contacts tab -> create-show button
+         -> done */
+  type ModalTourStep =
+    | "name"
+    | "dates"
+    | "config"
+    | "event-types"
+    | "locations"
+    | "contacts"
+    | "create-show"
+    | "done";
+  let modalTourStep = $state<ModalTourStep>("done");
 
   onMount(async () => {
     /* ?tour=show-list in the URL is the dev/demo force-trigger for the
@@ -70,27 +79,54 @@
     else modalTourStep = "config";
   });
 
-  /* Advance the chain when the user completes each field's action. */
+  /* Advance the chain when the user completes each field's action. The
+     tab-click steps (event-types, locations, contacts) advance via the
+     OnboardingHint's advanceOnClick listener, not via this effect. */
   $effect(() => {
     if (modalTourStep === "name" && name.trim().length > 0) {
       modalTourStep = "dates";
     } else if (modalTourStep === "dates" && hasDates) {
       modalTourStep = "config";
     } else if (modalTourStep === "config" && showSettings) {
-      modalTourStep = "done";
-      markTourCompleted("new-show-modal");
+      /* User opened Configure Settings - continue the tour into the
+         Event Types tab (first tab we want to highlight). */
+      modalTourStep = "event-types";
     }
   });
 
   /* Manual dismiss from a hint's Got it button - skips to the next
-     unresolved step so the chain doesn't stall. */
+     step so the chain doesn't stall if the user doesn't want to
+     complete the expected action. The tour is marked completed only
+     when they reach (or skip through) the final create-show step. */
   function dismissCurrentHint() {
     if (modalTourStep === "name") modalTourStep = "dates";
     else if (modalTourStep === "dates") modalTourStep = "config";
-    else if (modalTourStep === "config") {
+    else if (modalTourStep === "config") modalTourStep = "event-types";
+    else if (modalTourStep === "event-types") modalTourStep = "locations";
+    else if (modalTourStep === "locations") modalTourStep = "contacts";
+    else if (modalTourStep === "contacts") modalTourStep = "create-show";
+    else if (modalTourStep === "create-show") {
       modalTourStep = "done";
       markTourCompleted("new-show-modal");
     }
+  }
+
+  /* advanceOnClick paths. Clicking a tab advances to the next tab
+     (except the last - contacts click goes to create-show). Clicking
+     the Create show button (which submits the form) also marks the
+     tour done so a cancelled-then-reopened modal doesn't replay. */
+  function advanceFromEventTypes() {
+    if (modalTourStep === "event-types") modalTourStep = "locations";
+  }
+  function advanceFromLocations() {
+    if (modalTourStep === "locations") modalTourStep = "contacts";
+  }
+  function advanceFromContacts() {
+    if (modalTourStep === "contacts") modalTourStep = "create-show";
+  }
+  function advanceFromCreateShow() {
+    modalTourStep = "done";
+    markTourCompleted("new-show-modal");
   }
 
   // Temporary doc that DefaultsModal mutates via callbacks.
@@ -453,6 +489,42 @@
       mode="banner"
       onclose={dismissCurrentHint}
     />
+  {:else if modalTourStep === "event-types"}
+    <OnboardingHint
+      target="[data-tour='tab-event-types']"
+      title="Event Types"
+      body="Color-coded labels for each kind of day - Rehearsal, Dress, Performance, etc. Click the tab to review or edit them."
+      mode="banner"
+      advanceOnClick
+      onclose={advanceFromEventTypes}
+    />
+  {:else if modalTourStep === "locations"}
+    <OnboardingHint
+      target="[data-tour='tab-locations']"
+      title="Locations"
+      body="Places you rehearse - stage, rehearsal hall, etc. Add them here so you can quickly assign them on the calendar."
+      mode="banner"
+      advanceOnClick
+      onclose={advanceFromLocations}
+    />
+  {:else if modalTourStep === "contacts"}
+    <OnboardingHint
+      target="[data-tour='tab-contacts']"
+      title="Cast and production team"
+      body="Add everyone involved. Drag them onto rehearsal days to schedule their calls."
+      mode="banner"
+      advanceOnClick
+      onclose={advanceFromContacts}
+    />
+  {:else if modalTourStep === "create-show"}
+    <OnboardingHint
+      target="[data-tour='create-show']"
+      title="Ready to go"
+      body="Click Create show to finish. You'll land in the schedule editor where you can start adding rehearsal days."
+      mode="banner"
+      advanceOnClick
+      onclose={advanceFromCreateShow}
+    />
   {/if}
 
   <div class="modal-scroll">
@@ -554,7 +626,7 @@
 
       <div class="actions">
         <button type="button" class="ghost-btn" onclick={guardedClose}>Cancel</button>
-        <button type="submit" class="primary-btn">Create show</button>
+        <button type="submit" class="primary-btn" data-tour="create-show">Create show</button>
       </div>
     </form>
   </div>
