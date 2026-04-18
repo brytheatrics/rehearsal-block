@@ -14,6 +14,19 @@
    */
   import { onMount } from "svelte";
 
+  /** Svelte action: move the element to document.body on mount, put
+   *  it back on destroy. Lets a fixed-position element escape the
+   *  containing block established by a transformed ancestor (modals
+   *  with `transform: translateX(-50%)` are the common case). */
+  function portalToBody(node: HTMLElement) {
+    if (typeof document !== "undefined") document.body.appendChild(node);
+    return {
+      destroy() {
+        node.parentNode?.removeChild(node);
+      },
+    };
+  }
+
   interface Props {
     /** CSS selector for the element the arrow points at (or highlights
      *  when mode === "highlight"). */
@@ -240,7 +253,17 @@
   or an inline banner.
 -->
 {#if rect}
+  <!--
+    Portal the ring to document.body so it escapes any ancestor that
+    establishes a containing block for fixed-position elements (most
+    commonly a `transform` or `filter` on a parent modal, which traps
+    fixed descendants and clips them under overflow:hidden). Without
+    this portal the ring appears to be missing when the hint is used
+    inside a transform-centered modal - the ring IS rendering, but
+    inside the modal's box and getting clipped.
+  -->
   <div
+    use:portalToBody
     class="highlight-ring"
     style:top="{rect.top - 4}px"
     style:left="{rect.left - 4}px"
