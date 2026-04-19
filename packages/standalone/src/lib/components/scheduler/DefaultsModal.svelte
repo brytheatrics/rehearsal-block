@@ -2114,9 +2114,6 @@
           </div>
         </div>
 
-        {#if show.cast.length === 0}
-          <p class="empty-hint">No cast members yet. Click "+ Add actor" or import a CSV to get started.</p>
-        {/if}
 
         <div class="mockup-list">
           {#each show.cast as member, idx (member.id)}
