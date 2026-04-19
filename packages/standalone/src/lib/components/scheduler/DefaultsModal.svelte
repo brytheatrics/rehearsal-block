@@ -1626,18 +1626,15 @@
 
     <section class="section">
       <div class="section-header section-header-row">
-        <div>
-          <h3>Event types</h3>
-          <p class="hint">
-            Badges applied to each day. Star a type to make it the
-            default for new days. Colors match the grid and the
-            toolbar pills.
-          </p>
-        </div>
+        <h3>Event types</h3>
         <button type="button" class="ghost-btn" onclick={addEventType}>
           + Add type
         </button>
       </div>
+      <p class="hint section-header-hint">
+        Badges applied to each day. Star a type to make it the default
+        for new days. Colors match the grid and the toolbar pills.
+      </p>
       <ul class="event-type-list">
         {#each show.eventTypes as type, etIdx (type.id)}
           {@const uses = usageCount(type.id)}
@@ -1785,17 +1782,15 @@
 
     <section class="section">
       <div class="section-header section-header-row">
-        <div>
-          <h3>Locations</h3>
-          <p class="hint">
-            Star a location to make it the default for new days. Click a name
-            to toggle it as default.
-          </p>
-        </div>
+        <h3>Locations</h3>
         <button type="button" class="ghost-btn" onclick={startAddLocation}>
           + Add location
         </button>
       </div>
+      <p class="hint section-header-hint">
+        Star a location to make it the default for new days. Click a name
+        to toggle it as default.
+      </p>
       <label class="shape-toggle">
         <input
           type="checkbox"
@@ -1952,10 +1947,7 @@
         if (e.shiftKey && e.key === "<") { castCollapseAll(); e.preventDefault(); }
       }}>
         <div class="section-header section-header-row">
-          <div>
-            <h3>Cast ({show.cast.length})</h3>
-            <p class="hint">Click a card to expand and edit. Shift+&lt; / Shift+&gt; to collapse/expand all.</p>
-          </div>
+          <h3>Cast ({show.cast.length})</h3>
           <div class="section-header-actions">
             {#if oncollectconflicts}
               <button type="button" class="ghost-btn ghost-btn-outline" onclick={oncollectconflicts} title="Send a link to actors so they can submit their conflicts">
@@ -1971,6 +1963,7 @@
             <button type="button" class="ghost-btn" onclick={addCastMember}>+ Add actor</button>
           </div>
         </div>
+        <p class="hint section-header-hint">Click a card to expand and edit. Shift+&lt; / Shift+&gt; to collapse/expand all.</p>
 
         <!-- CSV Import Result Summary -->
         {#if csvImportResult}
@@ -2293,10 +2286,7 @@
         if (e.shiftKey && e.key === "<") { crewCollapseAll(); e.preventDefault(); }
       }}>
         <div class="section-header section-header-row">
-          <div>
-            <h3>Production Team ({show.crew.length})</h3>
-            <p class="hint">Click a card to expand and edit. Shift+&lt; / Shift+&gt; to collapse/expand all.</p>
-          </div>
+          <h3>Production Team ({show.crew.length})</h3>
           <div class="section-header-actions">
             <button type="button" class="ghost-btn ghost-btn-outline" onclick={() => openImportChooser("crew")}>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor" width="14" height="14"><path d="M440-320v-326L336-542l-56-58 200-200 200 200-56 58-104-104v326h-80ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z"/></svg>
@@ -2306,6 +2296,7 @@
             <button type="button" class="ghost-btn" onclick={addCrewMember}>+ Add member</button>
           </div>
         </div>
+        <p class="hint section-header-hint">Click a card to expand and edit. Shift+&lt; / Shift+&gt; to collapse/expand all.</p>
 
         <!-- Crew CSV Import Result Summary -->
         {#if crewCsvResult}
@@ -3289,9 +3280,16 @@
 
   .section-header-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
+  }
+
+  /* Section description hint rendered below the section-header-row so
+     the copy flows full-width under the action buttons instead of
+     being squeezed next to them. */
+  .section-header-hint {
+    margin: var(--space-1) 0 var(--space-3);
   }
 
   .ghost-btn {
