@@ -2093,7 +2093,10 @@
               </button>
             </div>
           </div>
-        {:else}
+        {:else if show.cast.length > 0}
+        <!-- Collapse / Expand All are only useful when there are cards
+             to fold. Hide them on an empty cast list so the empty
+             section doesn't look cluttered. -->
         <div class="mockup-toolbar">
           <div class="mockup-toggle-group">
             <button type="button" class="mockup-toggle-labeled" title="Collapse all (Shift+<)" onclick={castCollapseAll}>
@@ -2426,7 +2429,7 @@
               </button>
             </div>
           </div>
-        {:else}
+        {:else if show.crew.length > 0}
         <div class="mockup-toolbar">
           <div class="mockup-toggle-group">
             <button type="button" class="mockup-toggle-labeled" title="Collapse all (Shift+<)" onclick={crewCollapseAll}>
