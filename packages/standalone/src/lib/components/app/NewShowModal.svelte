@@ -514,57 +514,55 @@
       {/if}
 
       <!--
-        Core show setup sections, inlined. Event Types, Locations, and
-        Cast are rendered as stacked sections right in the modal body
-        (not hidden behind Configure Settings) because users need them
-        as soon as they start the schedule. Each section is the same
-        UI as DefaultsModal's corresponding tab - same state flow,
-        same CSV imports, same callbacks - just displayed without the
-        tab nav.
+        Core show setup sections, inlined right below the dates. Event
+        Types, Locations, and Cast are always visible (not gated on
+        dates) and marked "(optional)" so users know they can fill them
+        in now or later. Same UI and callbacks as DefaultsModal's
+        corresponding tabs, just stacked without tab nav.
       -->
-      <div class="inline-sections" class:needs-dates={!hasDates}>
-        {#if !hasDates}
-          <p class="inline-sections-hint">Pick your dates above to start adding event types, locations, and cast.</p>
-        {:else}
-          <DefaultsModal
-            show={tempDoc}
-            embedded={true}
-            stacked={true}
-            tabs={["event-types", "locations", "contacts"]}
-            contactsShowOnly="cast"
-            withTourAttrs={true}
-            hideShowTab={true}
-            onchange={updateSettings}
-            onaddlocationpreset={addLocationPreset}
-            onremovelocationpreset={removeLocationPreset}
-            onupdatelocationpreset={updateLocationPreset}
-            onreorderlocationpreset={reorderLocationPreset}
-            onaddeventtype={addEventType}
-            onupdateeventtype={updateEventType}
-            onremoveeventtype={removeEventType}
-            onreordereventtype={reorderEventType}
-            onassigneventtype={assignEventType}
-            onclose={() => {}}
-            onconvertgroups={convertGroups}
-            onupdateshow={updateShow}
-            onaddmember={addCastMember}
-            onupdatemember={updateCastMember}
-            onremovemember={removeCastMember}
-            onreordermember={reorderCastMember}
-            onaddconflict={addConflict}
-            onremoveconflict={removeConflict}
-            onaddcrew={addCrewMember}
-            onupdatecrew={updateCrewMember}
-            onremovecrew={removeCrewMember}
-            onreordercrew={reorderCrewMember}
-            onimportcast={importCast}
-            onimportcrew={importCrew}
-            onimportconflicts={importConflicts}
-            onmovecasttocrew={moveCastToCrew}
-            onmovecrewtocast={moveCrewToCast}
-            onpendingcsvchange={(p) => (pendingCsvImport = p)}
-          />
-        {/if}
+      <div class="inline-sections-heading">
+        <span>Event types, locations, and cast</span>
+        <span class="optional-label">(optional - add now or later)</span>
+      </div>
+      <div class="inline-sections">
+        <DefaultsModal
+          show={tempDoc}
+          embedded={true}
+          stacked={true}
+          tabs={["event-types", "locations", "contacts"]}
+          contactsShowOnly="cast"
+          withTourAttrs={true}
+          hideShowTab={true}
+          onchange={updateSettings}
+          onaddlocationpreset={addLocationPreset}
+          onremovelocationpreset={removeLocationPreset}
+          onupdatelocationpreset={updateLocationPreset}
+          onreorderlocationpreset={reorderLocationPreset}
+          onaddeventtype={addEventType}
+          onupdateeventtype={updateEventType}
+          onremoveeventtype={removeEventType}
+          onreordereventtype={reorderEventType}
+          onassigneventtype={assignEventType}
+          onclose={() => {}}
+          onconvertgroups={convertGroups}
+          onupdateshow={updateShow}
+          onaddmember={addCastMember}
+          onupdatemember={updateCastMember}
+          onremovemember={removeCastMember}
+          onreordermember={reorderCastMember}
+          onaddconflict={addConflict}
+          onremoveconflict={removeConflict}
+          onaddcrew={addCrewMember}
+          onupdatecrew={updateCrewMember}
+          onremovecrew={removeCrewMember}
+          onreordercrew={reorderCrewMember}
+          onimportcast={importCast}
+          onimportcrew={importCrew}
+          onimportconflicts={importConflicts}
+          onmovecasttocrew={moveCastToCrew}
+          onmovecrewtocast={moveCrewToCast}
+          onpendingcsvchange={(p) => (pendingCsvImport = p)}
+        />
       </div>
 
       <!--
@@ -576,8 +574,6 @@
       <button
         type="button"
         class="settings-toggle"
-        class:disabled={!hasDates}
-        disabled={!hasDates}
         data-tour="configure-settings"
         onclick={() => (showSettings = !showSettings)}
       >
@@ -590,10 +586,10 @@
           <path d="M9 18l6-6-6-6" />
         </svg>
         Configure settings
-        <span class="settings-hint">{hasDates ? "(optional)" : "(set dates first)"}</span>
+        <span class="settings-hint">(optional)</span>
       </button>
 
-      {#if showSettings && hasDates}
+      {#if showSettings}
         <div class="settings-embed">
           <DefaultsModal
             show={tempDoc}
@@ -810,20 +806,28 @@
   }
 
   /* Inline Event Types / Locations / Cast sections rendered between
-     dates and the Configure Settings expander. No border container -
-     the sections flow naturally into the form layout so they don't
-     look boxed off. */
+     dates and the Configure Settings expander. Heading + "(optional)"
+     label above the sections to signal they can be skipped. */
+  .inline-sections-heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: var(--space-4) 0 var(--space-2);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+  .optional-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+  }
   .inline-sections {
     margin-bottom: var(--space-4);
-  }
-  .inline-sections.needs-dates {
-    margin-bottom: 0;
-  }
-  .inline-sections-hint {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-    margin: var(--space-1) 0 var(--space-2);
-    font-style: italic;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-alt);
   }
 
   .actions {
