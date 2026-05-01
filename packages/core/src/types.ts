@@ -263,6 +263,8 @@ export interface Settings {
   showCastConflicts: boolean;
   /** Show production team conflicts on the calendar grid. */
   showCrewConflicts: boolean;
+  /** Show start/end times next to names in the conflict footer for partial conflicts. */
+  showConflictTimes: boolean;
   /** Show event type badges on the calendar grid. */
   showEventTypes: boolean;
   /** Show location labels on the calendar grid. */

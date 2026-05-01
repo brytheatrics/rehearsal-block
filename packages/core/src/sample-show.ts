@@ -257,6 +257,7 @@ export const sampleShow: ScheduleDoc = {
     sizeConflicts: "md",
     showCastConflicts: true,
     showCrewConflicts: false,
+    showConflictTimes: false,
     showEventTypes: true,
     showLocations: true,
     theme: "light",

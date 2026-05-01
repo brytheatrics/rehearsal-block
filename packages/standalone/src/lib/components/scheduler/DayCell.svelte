@@ -332,6 +332,15 @@
       .filter((g): g is Group => !!g);
   }
 
+  function formatConflictTime(start: string, end: string): string {
+    const fmt = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      const hour = h % 12 || 12;
+      return m === 0 ? `${hour}` : `${hour}:${String(m).padStart(2, "0")}`;
+    };
+    return `${fmt(start)}-${fmt(end)}`;
+  }
+
   /** People with at least one conflict today, filtered by visibility settings. */
   const conflictedMembers = $derived.by<CastMember[]>(() => {
     if (dayConflicts.length === 0) return [];
@@ -1303,7 +1312,14 @@
         <span class="conflict-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM480-160q54 0 104-17.5t92-50.5L228-676q-33 42-50.5 92T160-480q0 134 93 227t227 93Zm252-124q33-42 50.5-92T800-480q0-134-93-227t-227-93q-54 0-104 17.5T284-732l448 448ZM480-480Z"/></svg></span>
         <span class="conflict-names">
           {conflictedMembers
-            .map((m) => displayNames.get(m.id) ?? m.firstName)
+            .map((m) => {
+              const name = displayNames.get(m.id) ?? m.firstName;
+              if (show.settings.showConflictTimes ?? false) {
+                const c = dayConflicts.find((x) => x.actorId === m.id && x.startTime && x.endTime);
+                if (c) return `${name} ${formatConflictTime(c.startTime!, c.endTime!)}`;
+              }
+              return name;
+            })
             .join(", ")}
         </span>
       </div>

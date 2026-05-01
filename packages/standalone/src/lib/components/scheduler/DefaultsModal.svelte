@@ -1142,6 +1142,10 @@
           <input type="checkbox" checked={show.settings.showCrewConflicts ?? false} onchange={(e) => onchange({ showCrewConflicts: e.currentTarget.checked })} />
           <span>Production team conflicts</span>
         </label>
+        <label class="vis-toggle" title="Show start/end times next to names for partial conflicts">
+          <input type="checkbox" checked={show.settings.showConflictTimes ?? false} onchange={(e) => onchange({ showConflictTimes: e.currentTarget.checked })} />
+          <span>Conflict times</span>
+        </label>
         <label class="vis-toggle" title="Show text labels next to each icon in the top toolbar">
           <input type="checkbox" checked={show.settings.showToolbarLabels ?? false} onchange={(e) => onchange({ showToolbarLabels: e.currentTarget.checked })} />
           <span>Toolbar text labels</span>
