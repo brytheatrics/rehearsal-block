@@ -5,6 +5,13 @@
       "name": "rehearsal-block",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@rehearsal-block/standalone", "dev"],
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "south-sound",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "C:\\Users\\blake\\dev\\south-sound-theatre-artists", "dev"],
       "port": 5173
     }
   ]

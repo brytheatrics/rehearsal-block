@@ -15,7 +15,7 @@ export default defineConfig({
     sveltekit(),
   ],
   server: {
-    port: 5173,
+    port: process.env.PORT ? parseInt(process.env.PORT) : 5173,
     strictPort: false,
   },
 });

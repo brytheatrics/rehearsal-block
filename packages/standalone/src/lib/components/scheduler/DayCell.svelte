@@ -741,7 +741,7 @@
   aria-hidden={cell.inRange ? undefined : "true"}
 >
   <div class="cell-header">
-    <span class="day-number">{cell.dayOfMonth}{#if cell.dayOfMonth === 1 || cell.date === show.show.startDate} <span class="day-month">{["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][cell.month]}</span>{/if}</span>
+    <span class="day-number"><span class="day-digit">{cell.dayOfMonth}</span>{#if cell.dayOfMonth === 1 || cell.date === show.show.startDate} <span class="day-month">{["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][cell.month]}</span>{/if}</span>
     <div class="badge-group">
       {#if eventType && (show.settings.showEventTypes ?? true) && showEventBadge}
         <span
@@ -1505,7 +1505,7 @@
     background: rgba(0, 0, 0, 0.25);
   }
 
-  .cell.today .day-number {
+  .cell.today .day-digit {
     background: var(--color-teal);
     color: var(--color-text-inverse);
     border-radius: var(--radius-full);
