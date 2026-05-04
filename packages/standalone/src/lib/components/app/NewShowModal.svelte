@@ -24,6 +24,10 @@
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import OnboardingHint from "$lib/components/OnboardingHint.svelte";
   import { getUserDefaults, getOnboardingState, markTourCompleted } from "$lib/storage/local.js";
+  import {
+    TLT_HIDDEN_FEDERAL_HOLIDAY_NAMES,
+    tltExtraHolidaysInRange,
+  } from "$lib/tlt-holidays.js";
 
   interface Props {
     onclose: () => void;
@@ -166,6 +170,27 @@
        creating the show - otherwise the show is created without the
        cast/crew/conflicts they thought they were adding. Same pattern as
        guardedClose(). */
+    /* Apply Task Schedule defaults (TLT holidays) just before commit -
+     * shared between the normal-submit and pending-CSV branches. Merges
+     * with anything the user entered manually via DefaultsModal during
+     * this session. */
+    function applyTaskScheduleDefaults() {
+      if (!isTaskSchedule) return;
+      const existingHidden = tempDoc.settings.hiddenHolidays ?? [];
+      const mergedHidden = Array.from(
+        new Set([...existingHidden, ...TLT_HIDDEN_FEDERAL_HOLIDAY_NAMES]),
+      );
+      const existingCustom = tempDoc.settings.customHolidays ?? [];
+      const tltExtras = tltExtraHolidaysInRange(startDate, endDate);
+      tempDoc.settings = {
+        ...tempDoc.settings,
+        showUsHolidays: true,
+        showHolidays: true,
+        hiddenHolidays: mergedHidden,
+        customHolidays: [...existingCustom, ...tltExtras],
+      };
+    }
+
     if (pendingCsvImport) {
       confirmPending = {
         message: "You have an in-progress CSV import that hasn't been applied. Create the show anyway and discard the import?",
@@ -175,6 +200,7 @@
           tempDoc.show.name = trimmedName;
           tempDoc.show.startDate = startDate;
           tempDoc.show.endDate = endDate;
+          applyTaskScheduleDefaults();
           oncreate(tempDoc);
         },
       };
@@ -185,6 +211,7 @@
     tempDoc.show.name = trimmedName;
     tempDoc.show.startDate = startDate;
     tempDoc.show.endDate = endDate;
+    applyTaskScheduleDefaults();
 
     oncreate(tempDoc);
   }
