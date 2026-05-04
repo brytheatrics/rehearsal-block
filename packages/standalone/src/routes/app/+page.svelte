@@ -46,15 +46,6 @@
   let newShowKind = $state<ScheduleKind>("rehearsal");
   let defaultsOpen = $state(false);
 
-  /* Task Schedule is a personal-use feature for technical directors -
-     hidden behind an email allowlist. Only shows the second button
-     when the signed-in user matches. Localhost dev gets it for free
-     to match the existing `/app` localhost bypass pattern.
-     See $lib/task-schedule-access.ts. */
-  const canCreateTask = $derived(
-    isLocalhost || canCreateTaskSchedule(data.user?.email),
-  );
-
   function openNewShow(kind: ScheduleKind) {
     newShowKind = kind;
     newShowOpen = true;
@@ -283,6 +274,15 @@
   const isLocalhost = $derived(
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"),
+  );
+
+  /* Task Schedule is a personal-use feature for technical directors -
+     hidden behind an email allowlist. Only shows the second button
+     when the signed-in user matches. Localhost dev gets it for free
+     to match the existing `/app` localhost bypass pattern.
+     See $lib/task-schedule-access.ts. */
+  const canCreateTask = $derived(
+    isLocalhost || canCreateTaskSchedule(data.user?.email),
   );
 
   function metaToEntry(row: ShowIndexRow): ShowEntry {

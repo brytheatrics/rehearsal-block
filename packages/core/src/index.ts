@@ -7,5 +7,6 @@ export * from "./time.js";
 export * from "./export.js";
 export * from "./holidays.js";
 export * from "./csv-import.js";
+export * from "./tasks.js";
 export { sampleShow } from "./sample-show.js";
 export { newEmptyScheduleDoc } from "./new-show.js";

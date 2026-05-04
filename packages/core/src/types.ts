@@ -130,6 +130,39 @@ export interface Call {
   manuallyAdded?: boolean;
 }
 
+// ------------------------------------------------------------------
+// Tasks (Task Schedule mode only)
+// ------------------------------------------------------------------
+
+/**
+ * A single task on a Task Schedule day or in the show-level backlog.
+ *
+ * Task Schedule mode is a personal-use feature for technical directors
+ * managing build schedules. Tasks have a text description, an optional
+ * roster of assignees (pulled from the existing `cast` array since TDs
+ * already use cast members to track team availability via the conflict
+ * system), and a check-off state owned by carpenters via the share link.
+ *
+ * Done-state metadata (`doneBy`, `doneAt`) is intentionally optional and
+ * stored on the task itself for the local user's view. The authoritative
+ * carpenter check-off state lives in a separate Supabase table keyed by
+ * (share_token, task_id) and is merged in on the share page.
+ *
+ * Only meaningful when `ScheduleDoc.kind === 'task'`. Ignored in
+ * rehearsal mode.
+ */
+export interface Task {
+  id: string;
+  text: string;
+  done: boolean;
+  /** Who checked it off. Stored when `done` flips true, cleared on uncheck. */
+  doneBy?: string;
+  /** ISO timestamp when checked. */
+  doneAt?: string;
+  /** Cast-member ids assigned to this task. Reuses the existing cast array. */
+  assigneeIds?: string[];
+}
+
 export interface ScheduleDay {
   eventTypeId: string;
   /**
@@ -165,6 +198,12 @@ export interface ScheduleDay {
    * set; ignored for normal rehearsal days.
    */
   curtainTime?: string;
+  /**
+   * Tasks scheduled for this day. Only meaningful when the document is
+   * a Task Schedule (`ScheduleDoc.kind === 'task'`). Ignored in rehearsal
+   * mode. Stored in display order; reorder by mutating the array.
+   */
+  tasks?: Task[];
 }
 
 // ------------------------------------------------------------------
@@ -386,4 +425,10 @@ export interface ScheduleDoc {
   /** Rich location presets with custom color and shape. */
   locationPresetsV2?: LocationPreset[];
   settings: Settings;
+  /**
+   * Unscheduled tasks for Task Schedule mode. Carpenters can pull from
+   * this list when they finish their day's scheduled tasks. Only meaningful
+   * when `kind === 'task'`. Ignored in rehearsal mode.
+   */
+  backlog?: Task[];
 }
