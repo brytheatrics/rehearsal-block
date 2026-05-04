@@ -2105,6 +2105,31 @@
     doc.schedule[date] = { ...day, notes: "" };
   }
 
+  /**
+   * Toggle a task's done state (Task Schedule mode). `date` is the
+   * original day owning the task, which may be earlier than today
+   * for carried-over (overdue) tasks. Stamps `doneAt` on check, clears
+   * `doneAt` and `doneBy` on uncheck. `doneBy` is only set when the
+   * carpenter share view triggers the toggle - this editor-side
+   * handler leaves it unset.
+   */
+  function toggleTask(date: IsoDate, taskId: string) {
+    const day = doc.schedule[date];
+    if (!day || !day.tasks) return;
+    pushUndoImmediate();
+    doc.schedule[date] = {
+      ...day,
+      tasks: day.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        if (t.done) {
+          const { doneAt: _da, doneBy: _db, ...rest } = t;
+          return { ...rest, done: false };
+        }
+        return { ...t, done: true, doneAt: new Date().toISOString() };
+      }),
+    };
+  }
+
   /** Remove a location from a day everywhere it appears: clears
    *  `day.location` if matched, removes from `extraLocations`, and
    *  clears any `call.location` matches. */
@@ -3569,6 +3594,7 @@
             oncommitinline={commitInlineEdit}
             oncancelinline={cancelInlineEdit}
             dayViewDate={scopeMode === "day" ? (scopeAnchor || doc.show.startDate) : undefined}
+            ontoggletask={toggleTask}
           />
         {:else}
           <ListView

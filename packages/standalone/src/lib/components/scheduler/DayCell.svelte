@@ -15,6 +15,7 @@
     Group,
     ScheduleDay,
     ScheduleDoc,
+    Task,
   } from "@rehearsal-block/core";
   import {
     blockingConflictsFor,
@@ -24,6 +25,7 @@
     effectiveLocation,
     expandCalledActorIds,
     formatTime,
+    getCarriedOverTasks,
     locationColor,
     locationShape,
     effectiveLocationColor,
@@ -88,6 +90,13 @@
     oncancelinline?: () => void;
     /** Map of ISO date to holiday name, computed by parent. */
     holidayNames?: Map<string, string>;
+    /**
+     * Toggle a task's done state. Only fires in Task Schedule mode.
+     * `date` is the ORIGINAL day the task lives on - which may be earlier
+     * than `cell.date` for carried-over (overdue) tasks. Parent uses
+     * `date` to find and mutate the right `schedule[date].tasks` entry.
+     */
+    ontoggletask?: (date: string, taskId: string) => void;
   }
 
   const {
@@ -124,7 +133,49 @@
     oncommitinline,
     oncancelinline,
     holidayNames,
+    ontoggletask,
   }: Props = $props();
+
+  /** Task Schedule mode renders checkboxes + text instead of calls. */
+  const isTaskMode = $derived((show.kind ?? "rehearsal") === "task");
+
+  /**
+   * Tasks displayed in this cell. In task mode, today's cell also shows
+   * any uncompleted tasks from prior days at the top (view-only carryover -
+   * the underlying tasks remain on their original days for record-keeping).
+   * Each row carries its `originalDate` so toggling reaches back to the
+   * day that owns the task.
+   */
+  type DisplayTaskRow = { task: Task; originalDate: string; carriedOver: boolean };
+  const displayTaskRows = $derived.by<DisplayTaskRow[]>(() => {
+    if (!isTaskMode || !cell.inRange) return [];
+    const rows: DisplayTaskRow[] = [];
+    if (cell.isToday) {
+      for (const c of getCarriedOverTasks(show, cell.date)) {
+        rows.push({ task: c.task, originalDate: c.originalDate, carriedOver: true });
+      }
+    }
+    const own = day?.tasks ?? [];
+    for (const t of own) {
+      rows.push({ task: t, originalDate: cell.date, carriedOver: false });
+    }
+    return rows;
+  });
+
+  /** Map of cast id -> display name, used for assignee chips on tasks. */
+  function assigneeDisplay(id: string): { name: string; color: string } | null {
+    const m = show.cast.find((c) => c.id === id);
+    if (!m) return null;
+    return { name: displayNames.get(id) ?? m.firstName, color: m.color };
+  }
+
+  function formatCarryoverDate(iso: string): string {
+    // "May 3" style label for the "↩ from <date>" caption.
+    const [, mm, dd] = iso.split("-").map(Number);
+    if (!mm || !dd) return iso;
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[mm - 1]} ${dd}`;
+  }
 
   function isInlineEditing(field: InlineField, callId?: string): boolean {
     if (!inlineEdit) return false;
@@ -828,7 +879,42 @@
   {/if}
 
   {#if cell.inRange}
-    {#if day}
+    {#if isTaskMode}
+      <!-- Task Schedule mode: checkboxes + assignee chips. Carryover from
+           prior days is prepended on today's cell only. Tasks on Show / Dark
+           days still render so a glance at the calendar shows everything. -->
+      {#if displayTaskRows.length > 0}
+        <ul class="task-list">
+          {#each displayTaskRows as row (row.originalDate + ":" + row.task.id)}
+            <li class="task-row" class:done={row.task.done} class:carried={row.carriedOver}>
+              <label class="task-check">
+                <input
+                  type="checkbox"
+                  checked={row.task.done}
+                  onclick={(e) => e.stopPropagation()}
+                  onchange={() => ontoggletask?.(row.originalDate, row.task.id)}
+                  aria-label={`Toggle ${row.task.text}`}
+                />
+                <span class="task-text">{row.task.text}</span>
+              </label>
+              {#if row.carriedOver}
+                <span class="task-carryover-caption">↩ from {formatCarryoverDate(row.originalDate)}</span>
+              {/if}
+              {#if row.task.assigneeIds && row.task.assigneeIds.length > 0}
+                <span class="task-assignees">
+                  {#each row.task.assigneeIds as aid (aid)}
+                    {@const a = assigneeDisplay(aid)}
+                    {#if a}
+                      <span class="task-assignee" style:background={a.color}>{a.name}</span>
+                    {/if}
+                  {/each}
+                </span>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    {:else if day}
       {#if populatedCalls.length === 0}
         <!-- No populated calls: day may still show a day-level description
              (content) and/or notes. Times + locations stay hidden until the
@@ -1339,6 +1425,76 @@
 </div>
 
 <style>
+  /* ---- Task Schedule mode ---- */
+  .task-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .task-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: calc(0.75rem * var(--cell-scale, 1));
+    line-height: 1.3;
+    padding: 2px 0;
+    border-bottom: 1px solid transparent;
+  }
+  .task-row.done .task-text {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+  }
+  .task-row.carried {
+    background: rgba(45, 31, 61, 0.04);
+    border-radius: var(--radius-sm);
+    padding-inline: 4px;
+  }
+  .task-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .task-check input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--color-teal);
+  }
+  .task-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-text);
+  }
+  .task-carryover-caption {
+    font-size: 0.625rem;
+    color: var(--color-text-subtle);
+    font-style: italic;
+    flex-basis: 100%;
+    margin-left: 18px;
+  }
+  .task-assignees {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    flex-basis: 100%;
+    margin-left: 18px;
+  }
+  .task-assignee {
+    font-size: 0.625rem;
+    line-height: 1.2;
+    padding: 1px 5px;
+    border-radius: var(--radius-full);
+    color: #fff;
+    font-weight: 500;
+  }
+
   .cell {
     position: relative;
     display: flex;

@@ -63,6 +63,10 @@
     oncancelinline?: () => void;
     /** When set, renders a single-day view (no weekday headers, just the one cell centered). */
     dayViewDate?: IsoDate;
+    /** Toggle a task's done state in Task Schedule mode. `date` is the
+     *  original day owning the task (may differ from the cell's date for
+     *  carried-over tasks). */
+    ontoggletask?: (date: IsoDate, taskId: string) => void;
   }
 
   const WEEKDAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -103,6 +107,7 @@
     oncommitinline,
     oncancelinline,
     dayViewDate,
+    ontoggletask,
   }: Props = $props();
 
   const grid = $derived(
@@ -190,6 +195,7 @@
           {oncommitinline}
           {oncancelinline}
           holidayNames={holidays}
+          {ontoggletask}
         />
       </div>
     </div>
@@ -245,6 +251,7 @@
             {oncommitinline}
             {oncancelinline}
             holidayNames={holidays}
+            {ontoggletask}
           />
         {/each}
       </div>
