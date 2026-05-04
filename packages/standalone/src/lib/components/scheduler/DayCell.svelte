@@ -104,6 +104,21 @@
      * `date` to find and mutate the right `schedule[date].tasks` entry.
      */
     ontoggletask?: (date: string, taskId: string) => void;
+    /** Update an existing task's text on this cell's day. Used by the
+     *  cell-level inline editor that opens after a Task chip drop so
+     *  the cursor lands directly in the cell. */
+    onupdatetasktext?: (date: string, taskId: string, text: string) => void;
+    /** Remove a task from this cell's day. Used to clean up an empty
+     *  cell-inline edit that was abandoned via Esc / blur with no text. */
+    onremovetask?: (date: string, taskId: string) => void;
+    /**
+     * When set, the cell with `pendingCellTaskFocus.date === cell.date`
+     * enters inline-edit mode for the task id. Set by ScheduleEditor
+     * after a Task chip drop so the cursor lands in the cell instead of
+     * opening the day editor.
+     */
+    pendingCellTaskFocus?: { date: string; taskId: string } | null;
+    onclearpendingcelltaskfocus?: () => void;
   }
 
   const {
@@ -143,7 +158,44 @@
     oncancelinline,
     holidayNames,
     ontoggletask,
+    onupdatetasktext,
+    onremovetask,
+    pendingCellTaskFocus = null,
+    onclearpendingcelltaskfocus,
   }: Props = $props();
+
+  /* Local cell-level inline-edit state. Populated when the parent sends
+     a `pendingCellTaskFocus` matching this cell's date - typically right
+     after a Task chip is dropped here. The matching task renders an
+     auto-focused input instead of the read-only span until the user
+     commits (Enter/blur) or cancels (Esc). */
+  let cellEditingTaskId = $state<string | null>(null);
+  let cellEditingInputEl = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    if (
+      pendingCellTaskFocus &&
+      pendingCellTaskFocus.date === cell.date &&
+      pendingCellTaskFocus.taskId !== cellEditingTaskId
+    ) {
+      cellEditingTaskId = pendingCellTaskFocus.taskId;
+      onclearpendingcelltaskfocus?.();
+      queueMicrotask(() => {
+        cellEditingInputEl?.focus();
+        cellEditingInputEl?.select();
+      });
+    }
+  });
+
+  function commitCellTaskText(taskId: string, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      onremovetask?.(cell.date, taskId);
+    } else {
+      onupdatetasktext?.(cell.date, taskId, trimmed);
+    }
+    cellEditingTaskId = null;
+  }
 
   /** Task Schedule mode renders checkboxes + text instead of calls. */
   const isTaskMode = $derived((show.kind ?? "rehearsal") === "task");
@@ -913,7 +965,7 @@
         <ul class="task-list">
           {#each displayTaskRows as row (row.originalDate + ":" + row.task.id)}
             <li class="task-row" class:done={row.task.done} class:carried={row.carriedOver}>
-              <label class="task-check">
+              <label class="task-check" title={row.carriedOver ? `Carried over from ${formatCarryoverDate(row.originalDate)}` : undefined}>
                 <input
                   type="checkbox"
                   checked={row.task.done}
@@ -921,11 +973,36 @@
                   onchange={() => ontoggletask?.(row.originalDate, row.task.id)}
                   aria-label={`Toggle ${row.task.text}`}
                 />
-                <span class="task-text">{row.task.text}</span>
+                {#if cellEditingTaskId === row.task.id && !row.carriedOver}
+                  <input
+                    type="text"
+                    class="task-text-input"
+                    bind:this={cellEditingInputEl}
+                    value={row.task.text}
+                    placeholder="New task..."
+                    onclick={(e) => e.stopPropagation()}
+                    ondblclick={(e) => e.stopPropagation()}
+                    onblur={(e) => commitCellTaskText(row.task.id, e.currentTarget.value)}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.currentTarget.blur();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Revert WIP so blur commits the original text -
+                        // a no-op for existing tasks; remove-on-empty for
+                        // brand-new chip drops that were never typed into.
+                        e.currentTarget.value = row.task.text;
+                        e.currentTarget.blur();
+                      }
+                    }}
+                  />
+                {:else}
+                  <span class="task-text">{row.task.text}</span>
+                {/if}
               </label>
-              {#if row.carriedOver}
-                <span class="task-carryover-caption">↩ from {formatCarryoverDate(row.originalDate)}</span>
-              {/if}
               {#if row.task.assigneeIds && row.task.assigneeIds.length > 0}
                 <span class="task-assignees">
                   {#each row.task.assigneeIds as aid (aid)}
@@ -1498,12 +1575,21 @@
     overflow-wrap: anywhere;
     color: var(--color-text);
   }
-  .task-carryover-caption {
-    font-size: 0.625rem;
-    color: var(--color-text-subtle);
-    font-style: italic;
-    flex-basis: 100%;
-    margin-left: 18px;
+  .task-text-input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: calc(0.75rem * var(--cell-scale, 1));
+    line-height: 1.3;
+    padding: 1px 4px;
+    border: 1px solid var(--color-plum);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    outline: none;
+  }
+  .task-text-input:focus {
+    box-shadow: 0 0 0 1px var(--color-plum);
   }
   .task-assignees {
     display: inline-flex;

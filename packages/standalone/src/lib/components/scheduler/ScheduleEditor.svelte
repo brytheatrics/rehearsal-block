@@ -2244,10 +2244,11 @@
 
   /**
    * Drop the Task chip on a day. Creates a blank-text task on that day
-   * (seeding the schedule entry if needed) and signals the day editor
-   * to open it in inline-edit mode so the cursor lands in the text
-   * input. If the user blurs/Escapes without typing anything, the
-   * empty task is removed by the editor's `commitTaskTextEdit` path.
+   * (seeding the schedule entry if needed) and signals the matching
+   * day cell to enter inline-edit mode for it - cursor lands directly
+   * in the cell's task input, no day-editor open. If the user blurs
+   * or Escapes without typing anything, the cell's commit path removes
+   * the empty task.
    */
   function dropTaskOnDate(date: IsoDate) {
     const existing = doc.schedule[date];
@@ -2264,13 +2265,17 @@
       ...baseDay,
       tasks: [...(baseDay.tasks ?? []), task],
     };
-    selectDay(date);
-    pendingFocusTaskId = task.id;
+    pendingCellTaskFocus = { date, taskId: task.id };
   }
 
-  /** When set, the day editor enters inline-edit on this task id, then
-   *  clears the value via the callback below. Used by the Task chip drop
-   *  flow so the cursor lands in the text input automatically. */
+  /** When set, the matching DayCell (by date) enters inline-edit on
+   *  the task id and clears this signal via the callback below. Used
+   *  by the Task chip drop flow so the cursor lands directly in the
+   *  cell's task input without opening the day editor. */
+  let pendingCellTaskFocus = $state<{ date: IsoDate; taskId: string } | null>(null);
+
+  /** Legacy day-editor focus signal (retained for any flow that still
+   *  needs it, even though the chip drop now skips the editor). */
   let pendingFocusTaskId = $state<string | null>(null);
 
   function reorderTaskOnDay(date: IsoDate, taskId: string, dir: "up" | "down") {
@@ -3766,6 +3771,10 @@
             ontoggletask={toggleTask}
             ondroptask={dropTaskOnDate}
             ondropbacklogtask={moveBacklogTaskToDay}
+            onupdatetasktext={(date, taskId, text) => updateTaskOnDay(date, taskId, { text })}
+            onremovetask={removeTaskFromDay}
+            {pendingCellTaskFocus}
+            onclearpendingcelltaskfocus={() => (pendingCellTaskFocus = null)}
           />
         {:else}
           <ListView

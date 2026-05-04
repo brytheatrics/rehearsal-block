@@ -69,6 +69,10 @@
      *  original day owning the task (may differ from the cell's date for
      *  carried-over tasks). */
     ontoggletask?: (date: IsoDate, taskId: string) => void;
+    onupdatetasktext?: (date: IsoDate, taskId: string, text: string) => void;
+    onremovetask?: (date: IsoDate, taskId: string) => void;
+    pendingCellTaskFocus?: { date: IsoDate; taskId: string } | null;
+    onclearpendingcelltaskfocus?: () => void;
   }
 
   const WEEKDAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -112,6 +116,10 @@
     oncancelinline,
     dayViewDate,
     ontoggletask,
+    onupdatetasktext,
+    onremovetask,
+    pendingCellTaskFocus,
+    onclearpendingcelltaskfocus,
   }: Props = $props();
 
   const grid = $derived(
@@ -186,6 +194,11 @@
           {ondropnote}
           {ondroptask}
           {ondropbacklogtask}
+          {ontoggletask}
+          {onupdatetasktext}
+          {onremovetask}
+          {pendingCellTaskFocus}
+          {onclearpendingcelltaskfocus}
           {onmoveactor}
           {onmovecrew}
           {onmovegroup}
@@ -201,7 +214,6 @@
           {oncommitinline}
           {oncancelinline}
           holidayNames={holidays}
-          {ontoggletask}
         />
       </div>
     </div>
@@ -260,6 +272,10 @@
             {oncancelinline}
             holidayNames={holidays}
             {ontoggletask}
+            {onupdatetasktext}
+            {onremovetask}
+            {pendingCellTaskFocus}
+            {onclearpendingcelltaskfocus}
           />
         {/each}
       </div>

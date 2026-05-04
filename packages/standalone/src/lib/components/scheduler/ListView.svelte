@@ -766,7 +766,7 @@
           <ul class="list-task-list">
             {#each listRows as row (row.originalDate + ":" + row.task.id)}
               <li class="list-task-row" class:done={row.task.done} class:carried={row.carriedOver}>
-                <label class="list-task-check">
+                <label class="list-task-check" title={row.carriedOver ? `Carried over from ${listFormatCarryoverDate(row.originalDate)}` : undefined}>
                   <input
                     type="checkbox"
                     checked={row.task.done}
@@ -776,9 +776,6 @@
                   />
                   <span class="list-task-text">{row.task.text}</span>
                 </label>
-                {#if row.carriedOver}
-                  <span class="list-task-carryover">↩ from {listFormatCarryoverDate(row.originalDate)}</span>
-                {/if}
                 {#if row.task.assigneeIds && row.task.assigneeIds.length > 0}
                   <span class="list-task-assignees">
                     {#each row.task.assigneeIds as aid (aid)}
@@ -1588,11 +1585,6 @@
     flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  .list-task-carryover {
-    font-size: 0.6875rem;
-    color: var(--color-text-subtle);
-    font-style: italic;
   }
   .list-task-assignees {
     display: inline-flex;
