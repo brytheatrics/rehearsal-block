@@ -9,6 +9,7 @@
   import { onMount } from "svelte";
   import { browser } from "$app/environment";
   import type { ScheduleDoc } from "@rehearsal-block/core";
+  import { weekStartOf } from "@rehearsal-block/core";
   import ScheduleEditor from "$lib/components/scheduler/ScheduleEditor.svelte";
   import RevisionHistoryModal from "$lib/components/app/RevisionHistoryModal.svelte";
   import { localLoadShow, localSaveShow } from "$lib/storage/local.js";
@@ -58,6 +59,33 @@
   let loadPromise = $state<Promise<ScheduleDoc>>(loadDoc());
 
   /**
+   * Auto-roll the start date of a task schedule forward each week so the
+   * current week sits at the top of the calendar view. Blake builds task
+   * schedules a year-plus in advance and manually advances startDate
+   * weekly so the past stays out of view; this does it for him.
+   *
+   * Triggers when the doc is in task mode AND its startDate is before
+   * the current week's start (per `settings.weekStartsOn`). Skipped if
+   * advancing would push startDate past endDate (show is over).
+   *
+   * Past tasks are NOT lost - their data still lives in
+   * `doc.schedule[date]`. They just fall out of the rendered grid range.
+   * Uncompleted ones still surface on today's cell via the existing
+   * view-only carryover renderer.
+   */
+  function rollTaskScheduleStartDateIfNeeded(doc: ScheduleDoc): { doc: ScheduleDoc; changed: boolean } {
+    if ((doc.kind ?? "rehearsal") !== "task") return { doc, changed: false };
+    const today = new Date().toISOString().slice(0, 10);
+    const weekStart = weekStartOf(today, doc.settings.weekStartsOn ?? 0);
+    if (doc.show.startDate >= weekStart) return { doc, changed: false };
+    if (weekStart > doc.show.endDate) return { doc, changed: false };
+    return {
+      doc: { ...doc, show: { ...doc.show, startDate: weekStart } },
+      changed: true,
+    };
+  }
+
+  /**
    * One-time backfill for task-mode docs that were created before the
    * TLT holiday seeding patch landed. Applies the same defaults the
    * NewShowModal applies on creation, but ONLY when the doc has never
@@ -96,16 +124,18 @@
     try {
       const localShow = await localLoadShow(showId);
       if (localShow) {
-        const { doc, changed } = applyTltHolidayBackfillIfNeeded(localShow.document);
-        if (changed) {
+        const backfill = applyTltHolidayBackfillIfNeeded(localShow.document);
+        const roll = rollTaskScheduleStartDateIfNeeded(backfill.doc);
+        const finalDoc = roll.doc;
+        if (backfill.changed || roll.changed) {
           localSaveShow({
             id: showId,
             name: localShow.name,
             updatedAt: new Date().toISOString(),
-            document: doc,
+            document: finalDoc,
           }).catch(() => {});
         }
-        return doc;
+        return finalDoc;
       }
     } catch { /* IndexedDB unavailable */ }
 
@@ -118,17 +148,19 @@
     }
     const show = await res.json();
 
-    const { doc: backfilledDoc } = applyTltHolidayBackfillIfNeeded(show.document);
+    const backfill = applyTltHolidayBackfillIfNeeded(show.document);
+    const roll = rollTaskScheduleStartDateIfNeeded(backfill.doc);
+    const finalDoc = roll.doc;
 
     // Cache in IndexedDB
     localSaveShow({
       id: showId,
       name: show.name,
       updatedAt: show.updatedAt,
-      document: backfilledDoc,
+      document: finalDoc,
     }).catch(() => {});
 
-    return backfilledDoc;
+    return finalDoc;
   }
 
   onMount(() => {
