@@ -14,6 +14,10 @@
   import { localLoadShow, localSaveShow } from "$lib/storage/local.js";
   import { createSyncedStorage, type SyncedStorage } from "$lib/storage/sync.js";
   import { createSupabaseBrowserClient } from "$lib/supabase/client.js";
+  import {
+    TLT_HIDDEN_FEDERAL_HOLIDAY_NAMES,
+    tltExtraHolidaysInRange,
+  } from "$lib/tlt-holidays.js";
 
   import { onDestroy } from "svelte";
 
@@ -53,6 +57,33 @@
   // Use a promise for the {#await} block - Svelte handles reactivity natively
   let loadPromise = $state<Promise<ScheduleDoc>>(loadDoc());
 
+  /**
+   * One-time backfill for task-mode docs that were created before the
+   * TLT holiday seeding patch landed. Applies the same defaults the
+   * NewShowModal applies on creation, but ONLY when the doc has never
+   * been seeded (`hiddenHolidays === undefined`). Returns the (possibly
+   * mutated) doc and a flag indicating whether anything changed so the
+   * caller can persist.
+   */
+  function applyTltHolidayBackfillIfNeeded(doc: ScheduleDoc): { doc: ScheduleDoc; changed: boolean } {
+    if ((doc.kind ?? "rehearsal") !== "task") return { doc, changed: false };
+    if (doc.settings.hiddenHolidays !== undefined) return { doc, changed: false };
+    const tltExtras = tltExtraHolidaysInRange(doc.show.startDate, doc.show.endDate);
+    return {
+      doc: {
+        ...doc,
+        settings: {
+          ...doc.settings,
+          showUsHolidays: true,
+          showHolidays: true,
+          hiddenHolidays: [...TLT_HIDDEN_FEDERAL_HOLIDAY_NAMES],
+          customHolidays: [...(doc.settings.customHolidays ?? []), ...tltExtras],
+        },
+      },
+      changed: true,
+    };
+  }
+
   async function loadDoc(): Promise<ScheduleDoc> {
     if (!browser) {
       // SSR: return a never-resolving promise so the loading state shows
@@ -64,7 +95,18 @@
     // Try IndexedDB first
     try {
       const localShow = await localLoadShow(showId);
-      if (localShow) return localShow.document;
+      if (localShow) {
+        const { doc, changed } = applyTltHolidayBackfillIfNeeded(localShow.document);
+        if (changed) {
+          localSaveShow({
+            id: showId,
+            name: localShow.name,
+            updatedAt: new Date().toISOString(),
+            document: doc,
+          }).catch(() => {});
+        }
+        return doc;
+      }
     } catch { /* IndexedDB unavailable */ }
 
     // Fall back to API
@@ -76,15 +118,17 @@
     }
     const show = await res.json();
 
+    const { doc: backfilledDoc } = applyTltHolidayBackfillIfNeeded(show.document);
+
     // Cache in IndexedDB
     localSaveShow({
       id: showId,
       name: show.name,
       updatedAt: show.updatedAt,
-      document: show.document,
+      document: backfilledDoc,
     }).catch(() => {});
 
-    return show.document as ScheduleDoc;
+    return backfilledDoc;
   }
 
   onMount(() => {
