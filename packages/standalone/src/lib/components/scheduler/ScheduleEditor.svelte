@@ -2175,6 +2175,37 @@
     };
   }
 
+  /**
+   * Drop the Task chip on a day. Creates a blank-text task on that day
+   * (seeding the schedule entry if needed) and signals the day editor
+   * to open it in inline-edit mode so the cursor lands in the text
+   * input. If the user blurs/Escapes without typing anything, the
+   * empty task is removed by the editor's `commitTaskTextEdit` path.
+   */
+  function dropTaskOnDate(date: IsoDate) {
+    const existing = doc.schedule[date];
+    pushUndoImmediate();
+    const task = newTask({ text: "" });
+    const baseDay: ScheduleDay = existing ?? {
+      eventTypeId: "",
+      calls: [],
+      description: "",
+      notes: "",
+      location: "",
+    };
+    doc.schedule[date] = {
+      ...baseDay,
+      tasks: [...(baseDay.tasks ?? []), task],
+    };
+    selectDay(date);
+    pendingFocusTaskId = task.id;
+  }
+
+  /** When set, the day editor enters inline-edit on this task id, then
+   *  clears the value via the callback below. Used by the Task chip drop
+   *  flow so the cursor lands in the text input automatically. */
+  let pendingFocusTaskId = $state<string | null>(null);
+
   function reorderTaskOnDay(date: IsoDate, taskId: string, dir: "up" | "down") {
     const day = doc.schedule[date];
     if (!day || !day.tasks) return;
@@ -3592,6 +3623,7 @@
       class:sidebar-collapsed={sidebarCollapsed}
       class:right-sidebar-collapsed={rightSidebarCollapsed && !dayEditorOpen}
     >
+      {#if doc.kind !== "task"}
       <div class="scheduler-sidebar">
         <Sidebar
           show={doc}
@@ -3615,6 +3647,7 @@
           }}
         />
       </div>
+      {/if}
       <div class="scheduler-grid">
         {#if viewMode === "calendar"}
           <CalendarGrid
@@ -3653,6 +3686,7 @@
             oncancelinline={cancelInlineEdit}
             dayViewDate={scopeMode === "day" ? (scopeAnchor || doc.show.startDate) : undefined}
             ontoggletask={toggleTask}
+            ondroptask={dropTaskOnDate}
           />
         {:else}
           <ListView
@@ -3660,6 +3694,8 @@
             {selectedDate}
             {selectedDates}
             onselectday={selectDay}
+            ontoggletask={toggleTask}
+            ondroptask={dropTaskOnDate}
             onremoveactor={removeActorFromCall}
             onremovecrew={removeCrewFromCall}
             onremovegroup={removeGroupFromCall}
@@ -3718,6 +3754,8 @@
           onupdatetask={updateTaskOnDay}
           onremovetask={removeTaskFromDay}
           onreordertask={reorderTaskOnDay}
+          {pendingFocusTaskId}
+          onclearpendingfocus={() => (pendingFocusTaskId = null)}
         />
       {:else}
         <div class="scheduler-right-sidebar">

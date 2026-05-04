@@ -63,6 +63,9 @@
     ondroplocation?: (date: string, locName: string, callId?: string) => void;
     ondropcall?: (date: string) => void;
     ondropnote?: (date: string) => void;
+    /** Drop the Task chip on this cell. Only fires when the doc is in
+     *  Task Schedule mode. */
+    ondroptask?: (date: string) => void;
     /** Move an actor/crew/group/allCalled from one call to another
      *  within the same day. Wired by dragging an in-cell chip onto a
      *  different call block and dropping. The demo handler removes
@@ -118,6 +121,7 @@
     ondroplocation,
     ondropcall,
     ondropnote,
+    ondroptask,
     onmoveactor,
     onmovecrew,
     onmovegroup,
@@ -580,6 +584,7 @@
       types.includes("text/rb-location") ||
       types.includes("text/rb-call") ||
       types.includes("text/rb-note") ||
+      types.includes("text/rb-task") ||
       types.includes("text/rb-move-actor") ||
       types.includes("text/rb-move-crew") ||
       types.includes("text/rb-move-group") ||
@@ -717,6 +722,10 @@
     }
     if (dt.getData("text/rb-note") === "1") {
       ondropnote?.(cell.date);
+      return;
+    }
+    if (dt.getData("text/rb-task") === "1") {
+      ondroptask?.(cell.date);
       return;
     }
   }

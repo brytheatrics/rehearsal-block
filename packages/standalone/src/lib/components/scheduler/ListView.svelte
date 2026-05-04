@@ -14,6 +14,7 @@
     IsoDate,
     ScheduleDay,
     ScheduleDoc,
+    Task,
   } from "@rehearsal-block/core";
   import {
     blockingConflictsFor,
@@ -24,6 +25,7 @@
     effectiveLocationColor,
     effectiveLocationShape,
     formatTime,
+    getCarriedOverTasks,
     holidayMap,
     overlappingCallsByActor,
     parseIsoDate,
@@ -57,6 +59,8 @@
     ondroplocation?: (date: IsoDate, locName: string, callId?: string) => void;
     ondropcall?: (date: IsoDate) => void;
     ondropnote?: (date: IsoDate) => void;
+    ondroptask?: (date: IsoDate) => void;
+    ontoggletask?: (date: IsoDate, taskId: string) => void;
     onmoveactor?: (date: IsoDate, sourceCallId: string, targetCallId: string, actorId: string) => void;
     onmovecrew?: (date: IsoDate, sourceCallId: string, targetCallId: string, crewId: string) => void;
     onmovegroup?: (date: IsoDate, sourceCallId: string, targetCallId: string, groupId: string) => void;
@@ -95,6 +99,8 @@
     ondroplocation,
     ondropcall,
     ondropnote,
+    ondroptask,
+    ontoggletask,
     onmoveactor,
     onmovecrew,
     onmovegroup,
@@ -113,6 +119,40 @@
     oncommitinline,
     oncancelinline,
   }: Props = $props();
+
+  /** Task Schedule mode renders a checkbox list per day instead of calls. */
+  const isTaskMode = $derived((show.kind ?? "rehearsal") === "task");
+
+  /** Same view-only carryover logic as DayCell - on the today row, prepend
+   *  any uncompleted prior-day tasks at the top with their original date. */
+  type ListTaskRow = { task: Task; originalDate: IsoDate; carriedOver: boolean };
+  function displayTasksForList(iso: IsoDate, day: ScheduleDay): ListTaskRow[] {
+    if (!isTaskMode) return [];
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const rows: ListTaskRow[] = [];
+    if (iso === todayIso) {
+      for (const c of getCarriedOverTasks(show, iso)) {
+        rows.push({ task: c.task, originalDate: c.originalDate, carriedOver: true });
+      }
+    }
+    for (const t of day.tasks ?? []) {
+      rows.push({ task: t, originalDate: iso, carriedOver: false });
+    }
+    return rows;
+  }
+
+  function listAssigneeDisplay(id: string): { name: string; color: string } | null {
+    const m = show.cast.find((c) => c.id === id);
+    if (!m) return null;
+    return { name: displayNames.get(id) ?? m.firstName, color: m.color };
+  }
+
+  function listFormatCarryoverDate(iso: string): string {
+    const [, mm, dd] = iso.split("-").map(Number);
+    if (!mm || !dd) return iso;
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[mm - 1]} ${dd}`;
+  }
 
   function isInlineEditing(iso: IsoDate, field: InlineField, callId?: string): boolean {
     if (!inlineEdit || inlineEdit.date !== iso) return false;
@@ -209,7 +249,8 @@
         day.calls.length === 0 &&
         !day.description &&
         !day.notes &&
-        !day.location;
+        !day.location &&
+        !(day.tasks && day.tasks.length > 0);
       if (hideBlankDays && isBlank) continue;
       const d = parseIsoDate(iso);
       days.push({ iso, day, month: d.getUTCMonth(), year: d.getUTCFullYear() });
@@ -413,6 +454,7 @@
       types.includes("text/rb-location") ||
       types.includes("text/rb-call") ||
       types.includes("text/rb-note") ||
+      types.includes("text/rb-task") ||
       types.includes("text/rb-move-actor") ||
       types.includes("text/rb-move-crew") ||
       types.includes("text/rb-move-group") ||
@@ -527,6 +569,10 @@
       ondropnote?.(date);
       return;
     }
+    if (dt.getData("text/rb-task") === "1") {
+      ondroptask?.(date);
+      return;
+    }
   }
 
   function handleDayDragEnter(e: DragEvent, iso: IsoDate) {
@@ -616,7 +662,7 @@
     {@const notes = notesPlain(day)}
     {@const conflicts = conflictedMembers(iso)}
     {@const overlapNames = doubleBookedNamesFor(day)}
-    {@const isBlank = !day.eventTypeId && day.calls.length === 0 && !day.description && !day.notes && !day.location}
+    {@const isBlank = !day.eventTypeId && day.calls.length === 0 && !day.description && !day.notes && !day.location && !(day.tasks && day.tasks.length > 0)}
 
     {#if monthBreaks.has(i)}
       <h3 class="month-header">{MONTH_NAMES[entry.month]} {entry.year}</h3>
@@ -703,7 +749,43 @@
         {/if}
       </div>
 
-      {#if isDressPerf && day.curtainTime}
+      {#if isTaskMode}
+        {#if day.description}
+          <div class="day-desc-line">{day.description}</div>
+        {/if}
+        {@const listRows = displayTasksForList(iso, day)}
+        {#if listRows.length > 0}
+          <ul class="list-task-list">
+            {#each listRows as row (row.originalDate + ":" + row.task.id)}
+              <li class="list-task-row" class:done={row.task.done} class:carried={row.carriedOver}>
+                <label class="list-task-check">
+                  <input
+                    type="checkbox"
+                    checked={row.task.done}
+                    onclick={(e) => e.stopPropagation()}
+                    onchange={() => ontoggletask?.(row.originalDate, row.task.id)}
+                    aria-label={`Toggle ${row.task.text}`}
+                  />
+                  <span class="list-task-text">{row.task.text}</span>
+                </label>
+                {#if row.carriedOver}
+                  <span class="list-task-carryover">↩ from {listFormatCarryoverDate(row.originalDate)}</span>
+                {/if}
+                {#if row.task.assigneeIds && row.task.assigneeIds.length > 0}
+                  <span class="list-task-assignees">
+                    {#each row.task.assigneeIds as aid (aid)}
+                      {@const a = listAssigneeDisplay(aid)}
+                      {#if a}
+                        <span class="list-task-assignee" style:background={a.color}>{a.name}</span>
+                      {/if}
+                    {/each}
+                  </span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {:else if isDressPerf && day.curtainTime}
         <div class="dp-curtain" style:color={et?.textColor ?? "#1a1a1a"}>
           {fmtTime(day.curtainTime)} CURTAIN
         </div>
@@ -1436,5 +1518,74 @@
     text-align: center;
     color: var(--color-text-muted);
     font-size: 0.875rem;
+  }
+
+  /* ---- Task Schedule mode (list view) ---- */
+  .day-desc-line {
+    font-size: 0.875rem;
+    color: var(--color-text);
+    padding: 4px 12px 0;
+    line-height: 1.4;
+  }
+  .list-task-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .list-task-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    line-height: 1.3;
+  }
+  .list-task-row.done .list-task-text {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+  }
+  .list-task-row.carried {
+    background: rgba(45, 31, 61, 0.04);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+  }
+  .list-task-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .list-task-check input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--color-teal);
+  }
+  .list-task-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .list-task-carryover {
+    font-size: 0.6875rem;
+    color: var(--color-text-subtle);
+    font-style: italic;
+  }
+  .list-task-assignees {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .list-task-assignee {
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    color: #fff;
+    font-weight: 500;
   }
 </style>

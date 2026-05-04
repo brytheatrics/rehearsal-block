@@ -82,6 +82,14 @@
     onupdatetask?: (date: IsoDate, taskId: string, patch: Partial<Task>) => void;
     onremovetask?: (date: IsoDate, taskId: string) => void;
     onreordertask?: (date: IsoDate, taskId: string, dir: "up" | "down") => void;
+    /**
+     * When set by the parent (after a Task chip drop), the day editor
+     * enters inline-edit mode for this task id and immediately calls
+     * `onclearpendingfocus` so the parent doesn't re-trigger on every
+     * subsequent render.
+     */
+    pendingFocusTaskId?: string | null;
+    onclearpendingfocus?: () => void;
   }
 
   const {
@@ -105,6 +113,8 @@
     onupdatetask,
     onremovetask,
     onreordertask,
+    pendingFocusTaskId = null,
+    onclearpendingfocus,
   }: Props = $props();
 
   /** Task Schedule mode swaps the call body for a task list editor. */
@@ -130,6 +140,17 @@
       editingTaskInputEl?.select();
     });
   }
+
+  /* When the Task chip is dropped on a day, the parent passes a
+     `pendingFocusTaskId` to tell us "open this brand-new task in
+     inline-edit mode." We trigger startEditingTask once and then clear
+     the flag via the callback so re-renders don't re-fire. */
+  $effect(() => {
+    if (pendingFocusTaskId && pendingFocusTaskId !== editingTaskId) {
+      startEditingTask(pendingFocusTaskId);
+      onclearpendingfocus?.();
+    }
+  });
 
   function commitNewTask() {
     const text = newTaskText.trim();
@@ -867,9 +888,16 @@
                     onkeydown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
+                        e.stopPropagation();
                         e.currentTarget.blur();
                       } else if (e.key === "Escape") {
                         e.preventDefault();
+                        e.stopPropagation();
+                        // Revert any WIP changes so the about-to-fire
+                        // blur commits the original text (a no-op for
+                        // existing tasks; remove-on-empty for fresh
+                        // chip drops that were never typed into).
+                        e.currentTarget.value = task.text;
                         editingTaskId = null;
                       }
                     }}

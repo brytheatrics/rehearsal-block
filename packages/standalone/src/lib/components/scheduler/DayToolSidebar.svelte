@@ -109,6 +109,18 @@
     e.dataTransfer.effectAllowed = "copy";
   }
 
+  function dragTask(e: DragEvent) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("text/rb-task", "1");
+    e.dataTransfer.setData("text/plain", "Task");
+    e.dataTransfer.effectAllowed = "copy";
+  }
+
+  /** Task Schedule mode swaps the Call chip for a Task chip and hides
+   *  rehearsal-only sections (event-types-and-locations are still useful;
+   *  this just changes the Add chip). */
+  const isTaskMode = $derived((show.kind ?? "rehearsal") === "task");
+
   function dragNote(e: DragEvent) {
     if (!e.dataTransfer) return;
     e.dataTransfer.setData("text/rb-note", "1");
@@ -276,19 +288,35 @@
 
       <section class="tool-section add-section">
         <h4 class="section-title">Add</h4>
-        <div
-          class="tool-pill call-pill"
-          role="button"
-          tabindex="0"
-          draggable="true"
-          ondragstart={dragCall}
-          title="Drag to add a blank call"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="14" height="14" fill="currentColor" aria-hidden="true">
-            <path d="m612-292 56-56-148-148v-184h-80v216l172 172ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 320q133 0 226.5-93.5T800-480q0-133-93.5-226.5T480-800q-133 0-226.5 93.5T160-480q0 133 93.5 226.5T480-160Z"/>
-          </svg>
-          Call
-        </div>
+        {#if isTaskMode}
+          <div
+            class="tool-pill task-pill"
+            role="button"
+            tabindex="0"
+            draggable="true"
+            ondragstart={dragTask}
+            title="Drag onto a day to add a new task"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <path d="M382-200 154-428l57-57 171 171 367-367 57 57-424 424Z"/>
+            </svg>
+            Task
+          </div>
+        {:else}
+          <div
+            class="tool-pill call-pill"
+            role="button"
+            tabindex="0"
+            draggable="true"
+            ondragstart={dragCall}
+            title="Drag to add a blank call"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <path d="m612-292 56-56-148-148v-184h-80v216l172 172ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 320q133 0 226.5-93.5T800-480q0-133-93.5-226.5T480-800q-133 0-226.5 93.5T160-480q0 133 93.5 226.5T480-160Z"/>
+            </svg>
+            Call
+          </div>
+        {/if}
         <div
           class="tool-pill note-pill"
           role="button"
@@ -503,6 +531,16 @@
   .note-pill:hover {
     background: #4a148c;
     border-color: #4a148c;
+  }
+
+  .task-pill {
+    background: var(--color-teal);
+    color: var(--color-text-inverse);
+    border-color: var(--color-teal);
+  }
+  .task-pill:hover {
+    background: var(--color-teal-dark);
+    border-color: var(--color-teal-dark);
   }
 
   .sidebar-collapse-toggle {

@@ -41,6 +41,7 @@
     ondroplocation?: (date: IsoDate, locName: string, callId?: string) => void;
     ondropcall?: (date: IsoDate) => void;
     ondropnote?: (date: IsoDate) => void;
+    ondroptask?: (date: IsoDate) => void;
     onmoveactor?: (date: IsoDate, sourceCallId: string, targetCallId: string, actorId: string) => void;
     onmovecrew?: (date: IsoDate, sourceCallId: string, targetCallId: string, crewId: string) => void;
     onmovegroup?: (date: IsoDate, sourceCallId: string, targetCallId: string, groupId: string) => void;
@@ -89,6 +90,7 @@
     ondroplocation,
     ondropcall,
     ondropnote,
+    ondroptask,
     onmoveactor,
     onmovecrew,
     onmovegroup,
@@ -180,6 +182,7 @@
           {ondroplocation}
           {ondropcall}
           {ondropnote}
+          {ondroptask}
           {onmoveactor}
           {onmovecrew}
           {onmovegroup}
@@ -236,6 +239,7 @@
             {ondroplocation}
             {ondropcall}
             {ondropnote}
+            {ondroptask}
             {onmoveactor}
             {onmovecrew}
             {onmovegroup}
