@@ -39,12 +39,17 @@
   /**
    * Drag a backlog task. Carries `text/rb-backlog-task` with the task id
    * so DayCell's drop dispatcher can route it to the move-to-day flow.
+   *
+   * `effectAllowed` is "copyMove" rather than "move" so the day cell's
+   * drop targets - which set `dropEffect: copy` to match the existing
+   * call/note chip pattern - aren't rejected by the browser as
+   * incompatible.
    */
   function dragBacklogTask(e: DragEvent, taskId: string) {
     if (!e.dataTransfer) return;
     e.dataTransfer.setData("text/rb-backlog-task", taskId);
     e.dataTransfer.setData("text/plain", "Task");
-    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.effectAllowed = "copyMove";
   }
 
   /** All tasks marked done across the doc, with their origin location.
