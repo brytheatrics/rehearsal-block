@@ -118,6 +118,19 @@
   let newTaskAssignees = $state<string[]>([]);
   let assigneePickerOpenFor = $state<string | "new" | null>(null);
 
+  /* Inline-edit state for task text. Set to a task id when the user
+     double-clicks the text span; cleared on blur/Enter commit. */
+  let editingTaskId = $state<string | null>(null);
+  let editingTaskInputEl = $state<HTMLInputElement | null>(null);
+
+  function startEditingTask(taskId: string) {
+    editingTaskId = taskId;
+    queueMicrotask(() => {
+      editingTaskInputEl?.focus();
+      editingTaskInputEl?.select();
+    });
+  }
+
   function commitNewTask() {
     const text = newTaskText.trim();
     if (!text) return;
@@ -841,18 +854,35 @@
                   )}
                   aria-label={`Mark "${task.text}" as ${task.done ? "not done" : "done"}`}
                 />
-                <input
-                  type="text"
-                  class="task-edit-text"
-                  value={task.text}
-                  onblur={(e) => commitTaskTextEdit(task.id, e.currentTarget.value)}
-                  onkeydown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      e.currentTarget.blur();
-                    }
-                  }}
-                />
+                {#if editingTaskId === task.id}
+                  <input
+                    type="text"
+                    class="task-edit-text"
+                    bind:this={editingTaskInputEl}
+                    value={task.text}
+                    onblur={(e) => {
+                      commitTaskTextEdit(task.id, e.currentTarget.value);
+                      editingTaskId = null;
+                    }}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        editingTaskId = null;
+                      }
+                    }}
+                  />
+                {:else}
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <span
+                    class="task-edit-text-display"
+                    title="Double-click to edit"
+                    ondblclick={() => startEditingTask(task.id)}
+                  >{task.text}</span>
+                {/if}
                 <div class="task-assignee-control">
                   <button
                     type="button"
@@ -2636,6 +2666,21 @@
     outline: none;
     border-color: var(--color-plum);
     background: var(--color-surface);
+  }
+  .task-edit-text-display {
+    font-size: 0.875rem;
+    padding: 5px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-text);
+    cursor: text;
+    user-select: none;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+  .task-edit-text-display:hover {
+    border-color: var(--color-border);
+    background: var(--color-bg-alt);
   }
   .task-row-buttons {
     display: inline-flex;

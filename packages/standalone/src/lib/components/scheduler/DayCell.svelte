@@ -883,6 +883,9 @@
       <!-- Task Schedule mode: checkboxes + assignee chips. Carryover from
            prior days is prepended on today's cell only. Tasks on Show / Dark
            days still render so a glance at the calendar shows everything. -->
+      {#if day?.description}
+        <div class="description">{day.description}</div>
+      {/if}
       {#if displayTaskRows.length > 0}
         <ul class="task-list">
           {#each displayTaskRows as row (row.originalDate + ":" + row.task.id)}
