@@ -652,7 +652,7 @@
   }
 </script>
 
-<div class="list-view">
+<div class="list-view" class:task-mode={isTaskMode}>
   {#each listDays as entry, i (entry.iso)}
     {@const day = entry.day}
     {@const iso = entry.iso}
@@ -1228,6 +1228,17 @@
     padding: 1px 6px;
     border-radius: var(--radius-full);
     white-space: nowrap;
+  }
+
+  /* Task Schedule mode: tighter event badges, plus wider line-length
+     since rows now carry a checkbox + task text + assignee chips and
+     can wrap awkwardly inside the rehearsal-tuned 620px column. */
+  .list-view.task-mode .badge {
+    font-size: 0.625rem;
+    padding: 1px 5px;
+  }
+  .list-view.task-mode {
+    max-width: 1000px;
   }
 
   /* Dress/perf styles */

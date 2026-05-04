@@ -3622,6 +3622,7 @@
       class:editor-open={dayEditorOpen}
       class:sidebar-collapsed={sidebarCollapsed}
       class:right-sidebar-collapsed={rightSidebarCollapsed && !dayEditorOpen}
+      class:task-mode={doc.kind === "task"}
     >
       {#if doc.kind !== "task"}
       <div class="scheduler-sidebar">
@@ -4987,6 +4988,19 @@
 
   .scheduler.sidebar-collapsed.editor-open {
     grid-template-columns: 32px minmax(0, 1fr) minmax(360px, 440px);
+  }
+
+  /* Task Schedule mode hides the left "cast" sidebar entirely, so the
+     grid drops to two columns and lets the calendar / list fill the
+     freed width. */
+  .scheduler.task-mode {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 220px);
+  }
+  .scheduler.task-mode.right-sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr) minmax(32px, 32px);
+  }
+  .scheduler.task-mode.editor-open {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
   }
 
   .scheduler-sidebar {

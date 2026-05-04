@@ -797,6 +797,7 @@
   class:today={cell.isToday}
   class:drag-hot={cellIsDragHot}
   class:shake={shaking}
+  class:task-mode={isTaskMode}
   role={cell.inRange ? "button" : "presentation"}
   tabindex={cell.inRange ? 0 : undefined}
   onclick={handleClick}
@@ -1766,6 +1767,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Task Schedule mode: event-type badges are tighter and quieter
+     since they're informational (Show, Designer Run, etc.) rather
+     than driving rehearsal layout decisions. */
+  .cell.task-mode .badge {
+    font-size: 0.5em;
+    padding: 1px 5px;
+    letter-spacing: 0.03em;
   }
 
   /* The ✕ remove button: completely collapsed when not hovered so it
