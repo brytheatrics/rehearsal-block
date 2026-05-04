@@ -26,8 +26,9 @@
     ScheduleDoc,
     Settings,
     Show,
+    Task,
   } from "@rehearsal-block/core";
-  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays, formatUsDateRange, blockingConflictsFor, nextLocationColor } from "@rehearsal-block/core";
+  import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays, formatUsDateRange, blockingConflictsFor, nextLocationColor, newTask } from "@rehearsal-block/core";
   import { publishSchedule, buildShareUrlFromId } from "$lib/share";
   import { page } from "$app/state";
 
@@ -2130,6 +2131,63 @@
     };
   }
 
+  /**
+   * Add a new task to a day. Creates the day entry if it doesn't exist
+   * yet (so opening the editor on a blank day and adding a task seeds
+   * the schedule properly).
+   */
+  function addTaskToDay(date: IsoDate, text: string, assigneeIds: string[]) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    pushUndoImmediate();
+    const existing = doc.schedule[date];
+    const task = newTask({ text: trimmed, assigneeIds });
+    const baseDay: ScheduleDay = existing ?? {
+      eventTypeId: "",
+      calls: [],
+      description: "",
+      notes: "",
+      location: "",
+    };
+    doc.schedule[date] = {
+      ...baseDay,
+      tasks: [...(baseDay.tasks ?? []), task],
+    };
+  }
+
+  function updateTaskOnDay(date: IsoDate, taskId: string, patch: Partial<Task>) {
+    const day = doc.schedule[date];
+    if (!day || !day.tasks) return;
+    pushUndoImmediate();
+    doc.schedule[date] = {
+      ...day,
+      tasks: day.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
+    };
+  }
+
+  function removeTaskFromDay(date: IsoDate, taskId: string) {
+    const day = doc.schedule[date];
+    if (!day || !day.tasks) return;
+    pushUndoImmediate();
+    doc.schedule[date] = {
+      ...day,
+      tasks: day.tasks.filter((t) => t.id !== taskId),
+    };
+  }
+
+  function reorderTaskOnDay(date: IsoDate, taskId: string, dir: "up" | "down") {
+    const day = doc.schedule[date];
+    if (!day || !day.tasks) return;
+    const idx = day.tasks.findIndex((t) => t.id === taskId);
+    if (idx < 0) return;
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= day.tasks.length) return;
+    pushUndoImmediate();
+    const next = [...day.tasks];
+    [next[idx]!, next[swap]!] = [next[swap]!, next[idx]!];
+    doc.schedule[date] = { ...day, tasks: next };
+  }
+
   /** Remove a location from a day everywhere it appears: clears
    *  `day.location` if matched, removes from `extraLocations`, and
    *  clears any `call.location` matches. */
@@ -3656,6 +3714,10 @@
           hasClipboard={!!clipboard}
           allCollapsed={editorAllCollapsed}
           onclose={closeEditor}
+          onaddtask={addTaskToDay}
+          onupdatetask={updateTaskOnDay}
+          onremovetask={removeTaskFromDay}
+          onreordertask={reorderTaskOnDay}
         />
       {:else}
         <div class="scheduler-right-sidebar">

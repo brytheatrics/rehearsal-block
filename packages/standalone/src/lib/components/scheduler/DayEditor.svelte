@@ -26,10 +26,12 @@
     IsoDate,
     ScheduleDay,
     ScheduleDoc,
+    Task,
   } from "@rehearsal-block/core";
   import {
     EVENT_TYPE_COLOR_PALETTE,
     blockingConflictsFor,
+    castDisplayNames,
     effectiveDescription,
     formatTime,
     getDefaultCallTimes,
@@ -70,6 +72,16 @@
      * to changes via $effect.
      */
     allCollapsed?: boolean;
+    /**
+     * Task Schedule mode callbacks. Only fired when `show.kind === 'task'`.
+     * The editor renders a task list (text + assignee picker + reorder)
+     * in place of the call/dress-perf bodies; these callbacks handle the
+     * mutations.
+     */
+    onaddtask?: (date: IsoDate, text: string, assigneeIds: string[]) => void;
+    onupdatetask?: (date: IsoDate, taskId: string, patch: Partial<Task>) => void;
+    onremovetask?: (date: IsoDate, taskId: string) => void;
+    onreordertask?: (date: IsoDate, taskId: string, dir: "up" | "down") => void;
   }
 
   const {
@@ -89,7 +101,51 @@
     hasClipboard = false,
     onclose,
     allCollapsed,
+    onaddtask,
+    onupdatetask,
+    onremovetask,
+    onreordertask,
   }: Props = $props();
+
+  /** Task Schedule mode swaps the call body for a task list editor. */
+  const isTaskMode = $derived((show.kind ?? "rehearsal") === "task");
+
+  /** Disambiguated cast display names for assignee chips and the picker. */
+  const taskCastNames = $derived(castDisplayNames(show.cast, "actor", show.crew));
+
+  /* New-task form state. Cleared after each successful add. */
+  let newTaskText = $state("");
+  let newTaskAssignees = $state<string[]>([]);
+  let assigneePickerOpenFor = $state<string | "new" | null>(null);
+
+  function commitNewTask() {
+    const text = newTaskText.trim();
+    if (!text) return;
+    onaddtask?.(date, text, newTaskAssignees);
+    newTaskText = "";
+    newTaskAssignees = [];
+    assigneePickerOpenFor = null;
+  }
+
+  function toggleAssignee(taskId: string | "new", castId: string, current: string[]) {
+    const next = current.includes(castId)
+      ? current.filter((id) => id !== castId)
+      : [...current, castId];
+    if (taskId === "new") {
+      newTaskAssignees = next;
+    } else {
+      onupdatetask?.(date, taskId, { assigneeIds: next.length > 0 ? next : undefined });
+    }
+  }
+
+  function commitTaskTextEdit(taskId: string, text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      onremovetask?.(date, taskId);
+      return;
+    }
+    onupdatetask?.(date, taskId, { text: trimmed });
+  }
 
   // React to the parent toggling allCollapsed via hotkeys.
   $effect(() => {
@@ -686,7 +742,193 @@
       {/if}
     </section>
 
-    {#if eventType?.isDressPerf}
+    {#if isTaskMode}
+      <!-- ============================================================
+           TASK SCHEDULE MODE
+           Day-level description above, then a task list with assignee
+           picker per row. Reorder + delete buttons inline. The Conflicts
+           and Notes sections below this if/else still render via the
+           shared sections so unavailable assignees flag visually and
+           Blake can leave day-wide notes.
+           ============================================================ -->
+      <section class="field">
+        <label class="field-label" for={`day-desc-task-${date}`}>Day description</label>
+        <textarea
+          id={`day-desc-task-${date}`}
+          class="day-desc-textarea"
+          rows="2"
+          value={day.description}
+          placeholder="Optional day-wide note (e.g. 'Crew meeting at 8')"
+          oninput={(e) => onchange({ description: e.currentTarget.value })}
+        ></textarea>
+      </section>
+
+      <section class="field">
+        <div class="field-label">Tasks <span class="count">({day.tasks?.length ?? 0})</span></div>
+
+        <!-- New task input -->
+        <div class="task-add-row">
+          <input
+            type="text"
+            class="task-add-input"
+            placeholder="Add task and press Enter..."
+            value={newTaskText}
+            oninput={(e) => (newTaskText = e.currentTarget.value)}
+            onkeydown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                commitNewTask();
+              }
+            }}
+          />
+          <div class="task-assignee-control">
+            <button
+              type="button"
+              class="task-assignee-btn"
+              title="Assign team members"
+              aria-label="Assign team members to new task"
+              onclick={() => assigneePickerOpenFor = assigneePickerOpenFor === "new" ? null : "new"}
+            >
+              {#if newTaskAssignees.length === 0}
+                + assign
+              {:else}
+                {newTaskAssignees.length} assigned
+              {/if}
+            </button>
+            {#if assigneePickerOpenFor === "new"}
+              <div class="task-assignee-popover">
+                {#each show.cast as member (member.id)}
+                  {@const checked = newTaskAssignees.includes(member.id)}
+                  <label class="task-assignee-option">
+                    <input
+                      type="checkbox"
+                      {checked}
+                      onchange={() => toggleAssignee("new", member.id, newTaskAssignees)}
+                    />
+                    <span class="task-assignee-swatch" style:background={member.color}></span>
+                    <span>{taskCastNames.get(member.id) ?? member.firstName}</span>
+                  </label>
+                {/each}
+                {#if show.cast.length === 0}
+                  <p class="task-assignee-empty">Add team members in the sidebar to assign tasks.</p>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <button
+            type="button"
+            class="task-add-btn"
+            disabled={!newTaskText.trim()}
+            onclick={commitNewTask}
+          >
+            Add
+          </button>
+        </div>
+
+        <!-- Task list -->
+        {#if day.tasks && day.tasks.length > 0}
+          <ul class="task-edit-list">
+            {#each day.tasks as task, idx (task.id)}
+              <li class="task-edit-row" class:done={task.done}>
+                <span class="task-edit-handle" aria-hidden="true">⋮⋮</span>
+                <input
+                  type="checkbox"
+                  class="task-edit-check"
+                  checked={task.done}
+                  onchange={() => onupdatetask?.(date, task.id, task.done
+                    ? { done: false, doneAt: undefined, doneBy: undefined }
+                    : { done: true, doneAt: new Date().toISOString() }
+                  )}
+                  aria-label={`Mark "${task.text}" as ${task.done ? "not done" : "done"}`}
+                />
+                <input
+                  type="text"
+                  class="task-edit-text"
+                  value={task.text}
+                  onblur={(e) => commitTaskTextEdit(task.id, e.currentTarget.value)}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+                <div class="task-assignee-control">
+                  <button
+                    type="button"
+                    class="task-assignee-btn"
+                    title="Assign team members"
+                    onclick={() => assigneePickerOpenFor = assigneePickerOpenFor === task.id ? null : task.id}
+                  >
+                    {#if !task.assigneeIds || task.assigneeIds.length === 0}
+                      + assign
+                    {:else}
+                      {task.assigneeIds.length}
+                    {/if}
+                  </button>
+                  {#if assigneePickerOpenFor === task.id}
+                    <div class="task-assignee-popover">
+                      {#each show.cast as member (member.id)}
+                        {@const checked = (task.assigneeIds ?? []).includes(member.id)}
+                        <label class="task-assignee-option">
+                          <input
+                            type="checkbox"
+                            {checked}
+                            onchange={() => toggleAssignee(task.id, member.id, task.assigneeIds ?? [])}
+                          />
+                          <span class="task-assignee-swatch" style:background={member.color}></span>
+                          <span>{taskCastNames.get(member.id) ?? member.firstName}</span>
+                        </label>
+                      {/each}
+                      {#if show.cast.length === 0}
+                        <p class="task-assignee-empty">Add team members in the sidebar.</p>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+                <div class="task-row-buttons">
+                  <button
+                    type="button"
+                    class="task-icon-btn"
+                    title="Move up"
+                    aria-label="Move up"
+                    disabled={idx === 0}
+                    onclick={() => onreordertask?.(date, task.id, "up")}
+                  >↑</button>
+                  <button
+                    type="button"
+                    class="task-icon-btn"
+                    title="Move down"
+                    aria-label="Move down"
+                    disabled={idx === (day.tasks!.length - 1)}
+                    onclick={() => onreordertask?.(date, task.id, "down")}
+                  >↓</button>
+                  <button
+                    type="button"
+                    class="task-icon-btn task-icon-danger"
+                    title="Remove task"
+                    aria-label={`Remove ${task.text}`}
+                    onclick={() => onremovetask?.(date, task.id)}
+                  >×</button>
+                </div>
+                {#if task.assigneeIds && task.assigneeIds.length > 0}
+                  <div class="task-edit-assignees">
+                    {#each task.assigneeIds as aid (aid)}
+                      {@const m = show.cast.find((c) => c.id === aid)}
+                      {#if m}
+                        <span class="task-edit-assignee" style:background={m.color}>{taskCastNames.get(m.id) ?? m.firstName}</span>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="task-empty-hint">No tasks for this day yet.</p>
+        {/if}
+      </section>
+    {:else if eventType?.isDressPerf}
       <!-- ============================================================
            DRESS/PERFORMANCE MODE
            Simplified layout: curtain time, location, labeled call-time
@@ -2216,5 +2458,241 @@
       box-shadow: var(--shadow-lg);
       z-index: 60;
     }
+  }
+
+  /* ---- Task Schedule mode editor body ---- */
+  .day-desc-textarea {
+    font: inherit;
+    font-size: 0.875rem;
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    resize: vertical;
+    min-height: 2.5rem;
+    line-height: 1.4;
+  }
+  .day-desc-textarea:focus {
+    outline: 2px solid var(--color-plum);
+    outline-offset: 1px;
+    border-color: var(--color-plum);
+  }
+
+  .task-add-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: stretch;
+    margin-bottom: var(--space-3);
+  }
+  .task-add-input {
+    font: inherit;
+    font-size: 0.875rem;
+    flex: 1;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+  }
+  .task-add-input:focus {
+    outline: 2px solid var(--color-plum);
+    outline-offset: 1px;
+    border-color: var(--color-plum);
+  }
+  .task-add-btn {
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--color-plum);
+    color: var(--color-text-inverse);
+    cursor: pointer;
+  }
+  .task-add-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .task-add-btn:hover:not(:disabled) {
+    background: var(--color-plum-dark);
+  }
+
+  .task-assignee-control {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .task-assignee-btn {
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .task-assignee-btn:hover {
+    border-color: var(--color-teal);
+    color: var(--color-teal);
+  }
+  .task-assignee-popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 200px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-2);
+    z-index: 70;
+  }
+  .task-assignee-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.8125rem;
+  }
+  .task-assignee-option:hover {
+    background: var(--color-bg-alt);
+  }
+  .task-assignee-option input {
+    margin: 0;
+    cursor: pointer;
+  }
+  .task-assignee-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .task-assignee-empty {
+    margin: 0;
+    padding: var(--space-2);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .task-edit-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .task-edit-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto;
+    gap: 6px;
+    align-items: center;
+    padding: 4px 6px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+  }
+  .task-edit-row.done .task-edit-text {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
+  }
+  .task-edit-handle {
+    color: var(--color-text-subtle);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: grab;
+    user-select: none;
+  }
+  .task-edit-check {
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--color-teal);
+  }
+  .task-edit-text {
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text);
+    min-width: 0;
+    width: 100%;
+  }
+  .task-edit-text:hover {
+    border-color: var(--color-border);
+  }
+  .task-edit-text:focus {
+    outline: none;
+    border-color: var(--color-plum);
+    background: var(--color-surface);
+  }
+  .task-row-buttons {
+    display: inline-flex;
+    gap: 2px;
+    align-items: center;
+  }
+  .task-icon-btn {
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .task-icon-btn:hover:not(:disabled) {
+    border-color: var(--color-border);
+    color: var(--color-text);
+  }
+  .task-icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .task-icon-danger:hover:not(:disabled) {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+  }
+  .task-edit-assignees {
+    grid-column: 3 / 4;
+    grid-row: 2 / 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding-top: 2px;
+  }
+  .task-edit-assignee {
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    color: #fff;
+    font-weight: 500;
+  }
+  .task-empty-hint {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    background: var(--color-bg-alt);
+    border-radius: var(--radius-sm);
   }
 </style>
