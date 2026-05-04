@@ -6,15 +6,17 @@
  */
 
 import { DOCUMENT_VERSION } from "./types.js";
-import type { ScheduleDoc } from "./types.js";
+import type { ScheduleDoc, ScheduleKind } from "./types.js";
 
 export function newEmptyScheduleDoc(opts: {
   name: string;
   startDate: string;
   endDate: string;
+  kind?: ScheduleKind;
 }): ScheduleDoc {
   return {
     version: DOCUMENT_VERSION,
+    kind: opts.kind ?? "rehearsal",
     show: {
       name: opts.name,
       startDate: opts.startDate,

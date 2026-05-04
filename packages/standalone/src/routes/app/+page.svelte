@@ -8,7 +8,8 @@
    */
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import { type ScheduleDoc } from "@rehearsal-block/core";
+  import { type ScheduleDoc, type ScheduleKind } from "@rehearsal-block/core";
+  import { canCreateTaskSchedule } from "$lib/task-schedule-access.js";
   import ShowCard from "$lib/components/app/ShowCard.svelte";
   import NewShowModal from "$lib/components/app/NewShowModal.svelte";
   import MyDefaultsModal from "$lib/components/app/MyDefaultsModal.svelte";
@@ -42,7 +43,22 @@
   });
 
   let newShowOpen = $state(false);
+  let newShowKind = $state<ScheduleKind>("rehearsal");
   let defaultsOpen = $state(false);
+
+  /* Task Schedule is a personal-use feature for technical directors -
+     hidden behind an email allowlist. Only shows the second button
+     when the signed-in user matches. Localhost dev gets it for free
+     to match the existing `/app` localhost bypass pattern.
+     See $lib/task-schedule-access.ts. */
+  const canCreateTask = $derived(
+    isLocalhost || canCreateTaskSchedule(data.user?.email),
+  );
+
+  function openNewShow(kind: ScheduleKind) {
+    newShowKind = kind;
+    newShowOpen = true;
+  }
   let editShowId = $state<string | null>(null);
   let historyShowId = $state<string | null>(null);
   let showArchived = $state(false);
@@ -604,10 +620,20 @@
         type="button"
         class="btn btn-primary"
         data-tour="new-show"
-        onclick={() => (newShowOpen = true)}
+        onclick={() => openNewShow("rehearsal")}
       >
         + New Show
       </button>
+      {#if canCreateTask}
+        <button
+          type="button"
+          class="btn btn-task-schedule"
+          title="Create a task schedule (personal-use feature)"
+          onclick={() => openNewShow("task")}
+        >
+          + New Task Schedule
+        </button>
+      {/if}
     </div>
   </header>
 
@@ -637,7 +663,7 @@
           type="button"
           class="btn btn-primary btn-lg"
           data-tour="new-show-empty"
-          onclick={() => (newShowOpen = true)}
+          onclick={() => openNewShow("rehearsal")}
         >
           + New Show
         </button>
@@ -650,6 +676,15 @@
           Import Show File
         </button>
       </div>
+      {#if canCreateTask}
+        <button
+          type="button"
+          class="empty-task-link"
+          onclick={() => openNewShow("task")}
+        >
+          or start a task schedule
+        </button>
+      {/if}
     </div>
   {:else}
     <div class="dashboard">
@@ -795,6 +830,7 @@
 
 {#if newShowOpen}
   <NewShowModal
+    kind={newShowKind}
     onclose={() => (newShowOpen = false)}
     oncreate={handleCreate}
   />
@@ -1162,6 +1198,32 @@
   .btn-secondary:hover {
     border-color: var(--color-text-muted);
     color: var(--color-text);
+  }
+
+  .btn-task-schedule {
+    background: var(--color-teal);
+    color: var(--color-text-inverse);
+    border: none;
+    font-weight: 600;
+  }
+  .btn-task-schedule:hover {
+    background: var(--color-teal-dark);
+  }
+
+  .empty-task-link {
+    font: inherit;
+    font-size: 0.8125rem;
+    color: var(--color-teal);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: var(--space-2);
+    margin-top: var(--space-2);
+  }
+  .empty-task-link:hover {
+    color: var(--color-teal-dark);
   }
 
   .btn-sm {

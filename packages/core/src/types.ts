@@ -358,8 +358,21 @@ export interface LocationPreset {
 // Root document (one per show)
 // ------------------------------------------------------------------
 
+/**
+ * Whether this document is a normal rehearsal schedule (the standard
+ * product) or a task schedule (a personal-use feature for technical
+ * directors building shop schedules - tasks per day with carpenter
+ * check-offs via the share link).
+ *
+ * Read code must treat undefined as "rehearsal" so legacy docs without
+ * the field continue to work unchanged.
+ */
+export type ScheduleKind = "rehearsal" | "task";
+
 export interface ScheduleDoc {
   version: typeof DOCUMENT_VERSION;
+  /** Optional - undefined means "rehearsal" for legacy docs. */
+  kind?: ScheduleKind;
   show: Show;
   cast: CastMember[];
   crew: CrewMember[];

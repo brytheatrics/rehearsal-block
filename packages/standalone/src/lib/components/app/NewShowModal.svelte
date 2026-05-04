@@ -15,6 +15,7 @@
     type CrewMember,
     type EventType,
     type ScheduleDoc,
+    type ScheduleKind,
     type Settings,
     type Show,
   } from "@rehearsal-block/core";
@@ -27,9 +28,13 @@
   interface Props {
     onclose: () => void;
     oncreate: (doc: ScheduleDoc) => void;
+    /** Defaults to "rehearsal" for normal users. Set to "task" by the
+     *  show list when an allowlisted user picks "+ New Task Schedule". */
+    kind?: ScheduleKind;
   }
 
-  const { onclose, oncreate }: Props = $props();
+  const { onclose, oncreate, kind = "rehearsal" }: Props = $props();
+  const isTaskSchedule = $derived(kind === "task");
 
   let name = $state("");
   let startDate = $state("");
@@ -101,7 +106,7 @@
   // Temporary doc that DefaultsModal mutates via callbacks.
   // On "Create show", this fully configured doc is passed upstream.
   let tempDoc = $state<ScheduleDoc>(
-    newEmptyScheduleDoc({ name: "", startDate: "2026-01-01", endDate: "2026-03-01" }),
+    newEmptyScheduleDoc({ name: "", startDate: "2026-01-01", endDate: "2026-03-01", kind }),
   );
 
   // Pre-fill from saved "My Defaults" if available.
@@ -422,7 +427,7 @@
 
 <div class="modal" class:expanded={showSettings} role="dialog" aria-labelledby="new-show-title">
   <div class="modal-header">
-    <h2 id="new-show-title">New show</h2>
+    <h2 id="new-show-title">{isTaskSchedule ? "New task schedule" : "New show"}</h2>
     <button type="button" class="close-btn" aria-label="Close" onclick={guardedClose}>&times;</button>
   </div>
 
@@ -632,7 +637,7 @@
 
       <div class="actions">
         <button type="button" class="ghost-btn" onclick={guardedClose}>Cancel</button>
-        <button type="submit" class="primary-btn" data-tour="create-show">Create show</button>
+        <button type="submit" class="primary-btn" data-tour="create-show">{isTaskSchedule ? "Create task schedule" : "Create show"}</button>
       </div>
     </form>
   </div>

@@ -187,6 +187,12 @@
     <p>Loading show...</p>
   </div>
 {:then doc}
+  {#if (doc.kind ?? "rehearsal") === "task"}
+    <div class="task-mode-banner" role="status">
+      <strong>Task Schedule mode</strong>
+      <span>The task editor and carpenter share view land in TS-2 and TS-3. For now this opens the rehearsal editor so you can set up cast, dates, and event types.</span>
+    </div>
+  {/if}
   <ScheduleEditor
     initialDoc={doc}
     readOnly={false}
@@ -233,5 +239,20 @@
   .error-state p {
     margin: 0;
     max-width: 400px;
+  }
+
+  .task-mode-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: var(--space-3) var(--space-5);
+    background: var(--color-teal);
+    color: var(--color-text-inverse);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .task-mode-banner strong {
+    font-size: 0.875rem;
+    font-weight: 700;
   }
 </style>
