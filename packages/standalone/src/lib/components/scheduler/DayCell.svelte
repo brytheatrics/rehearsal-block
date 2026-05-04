@@ -66,6 +66,10 @@
     /** Drop the Task chip on this cell. Only fires when the doc is in
      *  Task Schedule mode. */
     ondroptask?: (date: string) => void;
+    /** Drop a backlog task on this cell. Only fires in Task Schedule
+     *  mode when an item from the Backlog sidebar is dragged onto a
+     *  day. The task is moved out of `doc.backlog` and onto that day. */
+    ondropbacklogtask?: (taskId: string, date: string) => void;
     /** Move an actor/crew/group/allCalled from one call to another
      *  within the same day. Wired by dragging an in-cell chip onto a
      *  different call block and dropping. The demo handler removes
@@ -122,6 +126,7 @@
     ondropcall,
     ondropnote,
     ondroptask,
+    ondropbacklogtask,
     onmoveactor,
     onmovecrew,
     onmovegroup,
@@ -148,7 +153,9 @@
    * any uncompleted tasks from prior days at the top (view-only carryover -
    * the underlying tasks remain on their original days for record-keeping).
    * Each row carries its `originalDate` so toggling reaches back to the
-   * day that owns the task.
+   * day that owns the task. Done tasks are filtered out entirely - they
+   * surface in the Completed section of the task sidebar instead, so the
+   * day cell stays focused on what's still left to do.
    */
   type DisplayTaskRow = { task: Task; originalDate: string; carriedOver: boolean };
   const displayTaskRows = $derived.by<DisplayTaskRow[]>(() => {
@@ -159,7 +166,7 @@
         rows.push({ task: c.task, originalDate: c.originalDate, carriedOver: true });
       }
     }
-    const own = day?.tasks ?? [];
+    const own = (day?.tasks ?? []).filter((t) => !t.done);
     for (const t of own) {
       rows.push({ task: t, originalDate: cell.date, carriedOver: false });
     }
@@ -585,6 +592,7 @@
       types.includes("text/rb-call") ||
       types.includes("text/rb-note") ||
       types.includes("text/rb-task") ||
+      types.includes("text/rb-backlog-task") ||
       types.includes("text/rb-move-actor") ||
       types.includes("text/rb-move-crew") ||
       types.includes("text/rb-move-group") ||
@@ -726,6 +734,11 @@
     }
     if (dt.getData("text/rb-task") === "1") {
       ondroptask?.(cell.date);
+      return;
+    }
+    const backlogTaskId = dt.getData("text/rb-backlog-task");
+    if (backlogTaskId) {
+      ondropbacklogtask?.(backlogTaskId, cell.date);
       return;
     }
   }

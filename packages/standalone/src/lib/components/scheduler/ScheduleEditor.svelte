@@ -3,6 +3,7 @@
   import ListView from "$lib/components/scheduler/ListView.svelte";
   import Sidebar from "$lib/components/scheduler/Sidebar.svelte";
   import DayToolSidebar from "$lib/components/scheduler/DayToolSidebar.svelte";
+  import TaskScheduleSidebar from "$lib/components/scheduler/TaskScheduleSidebar.svelte";
   import DayEditor from "$lib/components/scheduler/DayEditor.svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
   import CastEditorModal from "$lib/components/scheduler/CastEditorModal.svelte";
@@ -2176,6 +2177,72 @@
   }
 
   /**
+   * Add an unscheduled task to the doc-level backlog. Used by the
+   * Task Schedule sidebar (Backlog section).
+   */
+  function addBacklogTask(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    pushUndoImmediate();
+    const task = newTask({ text: trimmed });
+    doc.backlog = [...(doc.backlog ?? []), task];
+  }
+
+  function removeBacklogTask(taskId: string) {
+    if (!doc.backlog) return;
+    pushUndoImmediate();
+    doc.backlog = doc.backlog.filter((t) => t.id !== taskId);
+  }
+
+  /**
+   * Move a backlog task onto a specific day. Removes it from the doc
+   * backlog and appends it to the day's `tasks`. Seeds a fresh
+   * ScheduleDay entry if the target day is otherwise blank.
+   */
+  function moveBacklogTaskToDay(taskId: string, date: IsoDate) {
+    if (!doc.backlog) return;
+    const task = doc.backlog.find((t) => t.id === taskId);
+    if (!task) return;
+    pushUndoImmediate();
+    doc.backlog = doc.backlog.filter((t) => t.id !== taskId);
+    const existing = doc.schedule[date];
+    const baseDay: ScheduleDay = existing ?? {
+      eventTypeId: "",
+      calls: [],
+      description: "",
+      notes: "",
+      location: "",
+    };
+    doc.schedule[date] = {
+      ...baseDay,
+      tasks: [...(baseDay.tasks ?? []), task],
+    };
+  }
+
+  /**
+   * Toggle done state by location: a date string for a day's task, or
+   * "backlog" for an unscheduled task. Used by the sidebar's Completed
+   * section to uncheck a finished task without caring where it lives.
+   * Re-uses the existing on-day toggle logic for the day case.
+   */
+  function toggleTaskByWhere(where: string | "backlog", taskId: string) {
+    if (where === "backlog") {
+      if (!doc.backlog) return;
+      pushUndoImmediate();
+      doc.backlog = doc.backlog.map((t) => {
+        if (t.id !== taskId) return t;
+        if (t.done) {
+          const { doneAt: _da, doneBy: _db, ...rest } = t;
+          return { ...rest, done: false };
+        }
+        return { ...t, done: true, doneAt: new Date().toISOString() };
+      });
+      return;
+    }
+    toggleTask(where, taskId);
+  }
+
+  /**
    * Drop the Task chip on a day. Creates a blank-text task on that day
    * (seeding the schedule entry if needed) and signals the day editor
    * to open it in inline-edit mode so the cursor lands in the text
@@ -3649,6 +3716,16 @@
         />
       </div>
       {/if}
+      {#if doc.kind === "task"}
+        <div class="scheduler-sidebar">
+          <TaskScheduleSidebar
+            show={doc}
+            onaddbacklog={addBacklogTask}
+            onremovebacklog={removeBacklogTask}
+            ontoggletask={toggleTaskByWhere}
+          />
+        </div>
+      {/if}
       <div class="scheduler-grid">
         {#if viewMode === "calendar"}
           <CalendarGrid
@@ -3688,6 +3765,7 @@
             dayViewDate={scopeMode === "day" ? (scopeAnchor || doc.show.startDate) : undefined}
             ontoggletask={toggleTask}
             ondroptask={dropTaskOnDate}
+            ondropbacklogtask={moveBacklogTaskToDay}
           />
         {:else}
           <ListView
@@ -3697,6 +3775,7 @@
             onselectday={selectDay}
             ontoggletask={toggleTask}
             ondroptask={dropTaskOnDate}
+            ondropbacklogtask={moveBacklogTaskToDay}
             onremoveactor={removeActorFromCall}
             onremovecrew={removeCrewFromCall}
             onremovegroup={removeGroupFromCall}
@@ -4990,17 +5069,18 @@
     grid-template-columns: 32px minmax(0, 1fr) minmax(360px, 440px);
   }
 
-  /* Task Schedule mode hides the left "cast" sidebar entirely, so the
-     grid drops to two columns and lets the calendar / list fill the
-     freed width. */
+  /* Task Schedule mode swaps the cast sidebar for the task scheduler
+     sidebar (Backlog + Completed). Wider left column than rehearsal
+     mode since the task list / completed list need more horizontal
+     room than the cast list does. */
   .scheduler.task-mode {
-    grid-template-columns: minmax(0, 1fr) minmax(200px, 220px);
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(200px, 220px);
   }
   .scheduler.task-mode.right-sidebar-collapsed {
-    grid-template-columns: minmax(0, 1fr) minmax(32px, 32px);
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(32px, 32px);
   }
   .scheduler.task-mode.editor-open {
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(360px, 440px);
   }
 
   .scheduler-sidebar {

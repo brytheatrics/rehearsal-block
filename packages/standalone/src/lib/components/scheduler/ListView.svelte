@@ -60,6 +60,7 @@
     ondropcall?: (date: IsoDate) => void;
     ondropnote?: (date: IsoDate) => void;
     ondroptask?: (date: IsoDate) => void;
+    ondropbacklogtask?: (taskId: string, date: IsoDate) => void;
     ontoggletask?: (date: IsoDate, taskId: string) => void;
     onmoveactor?: (date: IsoDate, sourceCallId: string, targetCallId: string, actorId: string) => void;
     onmovecrew?: (date: IsoDate, sourceCallId: string, targetCallId: string, crewId: string) => void;
@@ -100,6 +101,7 @@
     ondropcall,
     ondropnote,
     ondroptask,
+    ondropbacklogtask,
     ontoggletask,
     onmoveactor,
     onmovecrew,
@@ -455,6 +457,7 @@
       types.includes("text/rb-call") ||
       types.includes("text/rb-note") ||
       types.includes("text/rb-task") ||
+      types.includes("text/rb-backlog-task") ||
       types.includes("text/rb-move-actor") ||
       types.includes("text/rb-move-crew") ||
       types.includes("text/rb-move-group") ||
@@ -571,6 +574,11 @@
     }
     if (dt.getData("text/rb-task") === "1") {
       ondroptask?.(date);
+      return;
+    }
+    const backlogTaskId = dt.getData("text/rb-backlog-task");
+    if (backlogTaskId) {
+      ondropbacklogtask?.(backlogTaskId, date);
       return;
     }
   }
