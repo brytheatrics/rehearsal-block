@@ -37,9 +37,11 @@ import { formatTime } from "./time.js";
 import {
   addDays,
   eachDayOfRange,
+  formatUsDateRange,
   parseIsoDate,
   weekStartOf,
 } from "./dates.js";
+import { holidayMap } from "./holidays.js";
 
 // -------------------------------------------------------------------
 // Types
@@ -482,10 +484,304 @@ function fmtTimeRange(
 /**
  * Build a self-contained HTML document for the print popup.
  */
+/**
+ * Print HTML for a Task Schedule doc. Renders a calendar (or list)
+ * grid of days with empty checkbox + task text per row, plus a
+ * Backlog section appended at the end. Done tasks are deliberately
+ * excluded - the printed page is a "what's left" snapshot Blake or
+ * his carpenters fill in physically. Holidays render as small badges
+ * to mark days the shop is dark; assignee chips are shown as small
+ * subtle text rather than colored pills since color is unreliable
+ * on shop printers.
+ */
+function buildTaskPrintHtml(
+  doc: ScheduleDoc,
+  options: PrintOptions,
+): string {
+  const s = doc.settings;
+  const title = escapeHtml(
+    `${doc.show.name || "Schedule"} Build Schedule`,
+  );
+  const isCalendar = options.mode === "calendar";
+  const orientation = isCalendar ? "landscape" : "portrait";
+  const margin = isCalendar ? "0.4in" : "0.5in";
+  const fontsLink = googleFontsLink(doc);
+
+  function cssFontName(name: string): string {
+    if (name === "Century Gothic") return '"Century Gothic", "CenturyGothic", Questrial';
+    return name;
+  }
+  const fontMain = cssFontName(s.fontFamily ?? "Inter");
+  const fontHeading = cssFontName(s.fontHeading ?? "Playfair Display");
+
+  const weekStartsOn = s.weekStartsOn ?? 0;
+  const grid = buildCalendarGrid(doc.show, { weekStartsOn });
+  const holidays = holidayMap(
+    doc.show.startDate,
+    doc.show.endDate,
+    s.showUsHolidays ?? false,
+    s.customHolidays ?? [],
+    s.hiddenHolidays ?? [],
+  );
+
+  const castById = new Map(doc.cast.map((c) => [c.id, c.firstName]));
+  function assigneeNames(ids: string[] | undefined): string {
+    if (!ids || ids.length === 0) return "";
+    return ids.map((id) => castById.get(id) ?? "").filter(Boolean).join(", ");
+  }
+
+  function renderTaskRow(text: string, ids?: string[]): string {
+    const a = assigneeNames(ids);
+    const aHtml = a ? ` <span class="task-assignees">(${escapeHtml(a)})</span>` : "";
+    return `<li class="task-row"><span class="task-box">☐</span> ${escapeHtml(text)}${aHtml}</li>`;
+  }
+
+  function renderDayContent(iso: string): string {
+    const day = doc.schedule[iso];
+    const holiday = holidays.get(iso as IsoDate);
+    const tasks = (day?.tasks ?? []).filter((t) => !t.done);
+    const desc = day?.description?.trim() ?? "";
+    const parts: string[] = [];
+    if (holiday) parts.push(`<span class="holiday">${escapeHtml(holiday)}</span>`);
+    if (desc) parts.push(`<div class="day-desc">${escapeHtml(desc)}</div>`);
+    if (tasks.length > 0) {
+      parts.push(`<ul class="task-list">${tasks.map((t) => renderTaskRow(t.text, t.assigneeIds)).join("")}</ul>`);
+    }
+    return parts.join("");
+  }
+
+  /** ISO weekday → header label. weekStartsOn rotates the headers. */
+  const dayHeaders = grid.weekdayHeaders;
+
+  const css = `
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: ${orientation}; margin: ${margin}; }
+    body {
+      font-family: ${fontMain}, system-ui, sans-serif;
+      font-size: 10px;
+      color: #1a1a1a;
+      line-height: 1.4;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    h1 {
+      font-family: ${fontHeading}, Georgia, serif;
+      font-size: 18px;
+      color: #2d1f3d;
+      margin-bottom: 4px;
+    }
+    .header-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid #2d1f3d;
+      padding-bottom: 6px;
+      margin-bottom: 10px;
+    }
+    .header-dates {
+      font-size: 11px;
+      color: #555;
+    }
+    .month-header {
+      font-family: ${fontHeading}, Georgia, serif;
+      font-size: 14px;
+      color: #2d1f3d;
+      margin: 14px 0 6px;
+    }
+    .calendar {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .weekday-headers {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #2d1f3d;
+      text-align: left;
+      padding: 0 4px;
+    }
+    .week {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      page-break-inside: avoid;
+    }
+    .cell {
+      border: 1px solid #d0d0d0;
+      border-radius: 3px;
+      padding: 4px 5px;
+      min-height: 70px;
+      font-size: 9.5px;
+    }
+    .cell.placeholder {
+      background: #fafafa;
+      border-color: #eee;
+    }
+    .day-num {
+      font-weight: 700;
+      color: #2d1f3d;
+      margin-bottom: 2px;
+    }
+    .holiday {
+      display: inline-block;
+      font-size: 7.5px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 6px;
+      background: #fff3e0;
+      color: #5a3500;
+      margin-bottom: 2px;
+    }
+    .day-desc {
+      font-style: italic;
+      color: #555;
+      margin: 2px 0;
+    }
+    .task-list {
+      list-style: none;
+      padding-left: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .task-row {
+      font-size: 9.5px;
+      line-height: 1.3;
+      display: flex;
+      align-items: flex-start;
+      gap: 3px;
+      flex-wrap: wrap;
+    }
+    .task-box {
+      font-size: 11px;
+      color: #2d1f3d;
+      flex-shrink: 0;
+    }
+    .task-assignees {
+      color: #777;
+      font-size: 8.5px;
+    }
+    /* List-mode styles */
+    .list-day {
+      page-break-inside: avoid;
+      border-bottom: 1px solid #ddd;
+      padding: 6px 0;
+    }
+    .list-day-header {
+      font-weight: 700;
+      color: #2d1f3d;
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+    /* Backlog */
+    .backlog-section {
+      margin-top: 18px;
+      page-break-inside: avoid;
+    }
+    .backlog-section h2 {
+      font-family: ${fontHeading}, Georgia, serif;
+      font-size: 13px;
+      color: #2d1f3d;
+      margin-bottom: 4px;
+      border-top: 1px solid #2d1f3d;
+      padding-top: 6px;
+    }
+    .backlog-list {
+      list-style: none;
+      padding-left: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+  `;
+
+  function renderCalendar(): string {
+    const parts: string[] = [];
+    parts.push('<div class="calendar">');
+    parts.push('<div class="weekday-headers">');
+    for (const h of dayHeaders) parts.push(`<div>${escapeHtml(h)}</div>`);
+    parts.push('</div>');
+    for (const row of grid.rows) {
+      if (isMonthHeaderRow(row)) {
+        parts.push(`<h3 class="month-header">${escapeHtml(row.label)}</h3>`);
+        parts.push('<div class="weekday-headers">');
+        for (const h of dayHeaders) parts.push(`<div>${escapeHtml(h)}</div>`);
+        parts.push('</div>');
+        continue;
+      }
+      if (!isWeekRow(row)) continue;
+      parts.push('<div class="week">');
+      for (const cell of row.cells) {
+        if (!cell.inRange) {
+          parts.push('<div class="cell placeholder"></div>');
+          continue;
+        }
+        const content = renderDayContent(cell.date);
+        parts.push(`<div class="cell"><div class="day-num">${cell.dayOfMonth}</div>${content}</div>`);
+      }
+      parts.push('</div>');
+    }
+    parts.push('</div>');
+    return parts.join("");
+  }
+
+  function renderList(): string {
+    const parts: string[] = ['<div class="list">'];
+    for (const iso of Object.keys(doc.schedule).sort()) {
+      const content = renderDayContent(iso);
+      if (!content) continue;
+      const d = parseIsoDate(iso as IsoDate);
+      const label = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+      parts.push(`<div class="list-day"><div class="list-day-header">${escapeHtml(label)}</div>${content}</div>`);
+    }
+    parts.push('</div>');
+    return parts.join("");
+  }
+
+  function renderBacklog(): string {
+    const items = (doc.backlog ?? []).filter((t) => !t.done);
+    if (items.length === 0) return "";
+    return `
+      <div class="backlog-section">
+        <h2>Backlog</h2>
+        <ul class="backlog-list">
+          ${items.map((t) => renderTaskRow(t.text, t.assigneeIds)).join("")}
+        </ul>
+      </div>
+    `;
+  }
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${title}</title>
+${fontsLink}
+<style>${css}</style>
+</head>
+<body>
+<div class="header-line">
+  <h1>${escapeHtml(doc.show.name || "Build Schedule")}</h1>
+  <span class="header-dates">${escapeHtml(formatUsDateRange(doc.show.startDate, doc.show.endDate))}</span>
+</div>
+${isCalendar ? renderCalendar() : renderList()}
+${renderBacklog()}
+</body>
+</html>`;
+}
+
 export function buildPrintHtml(
   doc: ScheduleDoc,
   options: PrintOptions,
 ): string {
+  if ((doc.kind ?? "rehearsal") === "task") {
+    return buildTaskPrintHtml(doc, options);
+  }
   const s = doc.settings;
   const timeFmt = s.timeFormat ?? "12h";
   const displayMode = s.castDisplayMode ?? "actor";
