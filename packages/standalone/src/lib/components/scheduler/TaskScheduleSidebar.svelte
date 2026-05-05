@@ -13,7 +13,6 @@
    *   separate "move to next build day" mutation needed.
    */
   import type { ScheduleDoc, Task } from "@rehearsal-block/core";
-  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
 
   interface Props {
     show: ScheduleDoc;
@@ -24,13 +23,15 @@
      * an ISO date (a day's task) or "backlog" (an unscheduled task).
      */
     ontoggletask: (where: string | "backlog", taskId: string) => void;
-    /** Permanently remove every task with `done: true` across the doc. */
-    onclearcompleted: () => void;
+    /**
+     * User clicked "Clear" in the Completed header. The parent owns the
+     * confirm modal (rendered at page level so it escapes the sidebar's
+     * sticky/overflow stacking context) and the actual mutation.
+     */
+    onrequestclearcompleted: () => void;
   }
 
-  const { show, onaddbacklog, onremovebacklog, ontoggletask, onclearcompleted }: Props = $props();
-
-  let confirmClearOpen = $state(false);
+  const { show, onaddbacklog, onremovebacklog, ontoggletask, onrequestclearcompleted }: Props = $props();
 
   let newBacklogText = $state("");
 
@@ -155,7 +156,7 @@
             type="button"
             class="ts-clear-btn"
             title="Permanently delete all completed tasks"
-            onclick={() => (confirmClearOpen = true)}
+            onclick={onrequestclearcompleted}
           >Clear</button>
         {/if}
       </div>
@@ -181,21 +182,6 @@
     {/if}
   </section>
 </aside>
-
-{#if confirmClearOpen}
-  <ConfirmModal
-    title="Clear completed tasks?"
-    message={`Permanently remove all ${completed.length} completed task${completed.length === 1 ? "" : "s"} from this schedule. This can't be undone.`}
-    confirmLabel="Clear all"
-    cancelLabel="Cancel"
-    variant="danger"
-    onconfirm={() => {
-      confirmClearOpen = false;
-      onclearcompleted();
-    }}
-    oncancel={() => (confirmClearOpen = false)}
-  />
-{/if}
 
 <style>
   .task-sidebar {

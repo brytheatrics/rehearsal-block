@@ -4,6 +4,7 @@
   import Sidebar from "$lib/components/scheduler/Sidebar.svelte";
   import DayToolSidebar from "$lib/components/scheduler/DayToolSidebar.svelte";
   import TaskScheduleSidebar from "$lib/components/scheduler/TaskScheduleSidebar.svelte";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
   import DayEditor from "$lib/components/scheduler/DayEditor.svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
   import CastEditorModal from "$lib/components/scheduler/CastEditorModal.svelte";
@@ -2220,6 +2221,24 @@
   }
 
   /**
+   * "Clear" button confirm state. The sidebar emits a request, the
+   * confirm modal renders here at page level (not inside the sidebar's
+   * sticky container, which would trap the modal in its stacking
+   * context and hide it behind the calendar grid).
+   */
+  let clearCompletedConfirmOpen = $state(false);
+
+  /** Count of done tasks - used to populate the confirm modal copy. */
+  const completedTaskCount = $derived.by<number>(() => {
+    let n = 0;
+    for (const t of doc.backlog ?? []) if (t.done) n++;
+    for (const day of Object.values(doc.schedule)) {
+      for (const t of day?.tasks ?? []) if (t.done) n++;
+    }
+    return n;
+  });
+
+  /**
    * Permanently remove every task with `done: true` across the entire
    * doc - both per-day task arrays and the unscheduled backlog. Used by
    * the "Clear" button in the Completed section of the task sidebar so
@@ -3757,7 +3776,7 @@
             onaddbacklog={addBacklogTask}
             onremovebacklog={removeBacklogTask}
             ontoggletask={toggleTaskByWhere}
-            onclearcompleted={clearCompletedTasks}
+            onrequestclearcompleted={() => (clearCompletedConfirmOpen = true)}
           />
         </div>
       {/if}
@@ -3891,6 +3910,21 @@
 
   </div>
 </div>
+
+{#if clearCompletedConfirmOpen}
+  <ConfirmModal
+    title="Clear completed tasks?"
+    message={`Permanently remove all ${completedTaskCount} completed task${completedTaskCount === 1 ? "" : "s"} from this schedule. This can't be undone.`}
+    confirmLabel="Clear all"
+    cancelLabel="Cancel"
+    variant="danger"
+    onconfirm={() => {
+      clearCompletedConfirmOpen = false;
+      clearCompletedTasks();
+    }}
+    oncancel={() => (clearCompletedConfirmOpen = false)}
+  />
+{/if}
 
 {#if defaultsOpen}
   <DefaultsModal
