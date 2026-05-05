@@ -207,7 +207,12 @@
   /** Show text labels next to toolbar icons - accessibility feature
    *  for users who can't remember what each icon does. */
   const showToolbarLabels = $derived(doc.settings.showToolbarLabels ?? false);
-  let shareId = $state<string | null>(null);
+  /* Stable share id for this doc. Initialized from doc.publishedShareId
+     on mount so reload-survives, then updated on first publish (or
+     auto-publish for task mode). Carried back to the doc via
+     `doc.publishedShareId = shareId` so the value persists across
+     editor sessions. */
+  let shareId = $state<string | null>(initialDoc.publishedShareId ?? null);
   let shareDropdownOpen = $state(false);
   let publishing = $state(false);
   let lastPublishedJson = $state("");
@@ -2906,7 +2911,14 @@
     const wasFirstPublish = !shareId;
     publishing = true;
     try {
-      shareId = await publishSchedule(doc, shareId);
+      const newId = await publishSchedule(doc, shareId);
+      shareId = newId;
+      // Stamp the share id back onto the doc so it survives reload
+      // and so future task-mode auto-republishes know which id to
+      // round-trip through.
+      if (doc.publishedShareId !== newId) {
+        doc.publishedShareId = newId;
+      }
       lastPublishedJson = JSON.stringify(doc);
       showToast("Schedule published!");
       if (wasFirstPublish) {
@@ -2922,6 +2934,118 @@
       shareDropdownOpen = false;
     }
     publishing = false;
+  }
+
+  /**
+   * Task-mode auto-publish + auto-pull-checks pipeline.
+   *
+   * Blake's TD workflow doesn't have a "publish manually" step - he
+   * just edits and the carpenters see the latest. Two effects:
+   *
+   *   1. Republish: any time the doc changes in task mode, debounce
+   *      a publishSchedule call (5s) so the R2 share blob stays in
+   *      sync with the editor's view. First call also creates the
+   *      share id from scratch.
+   *
+   *   2. Pull checks: every 15s in task mode (when there's a share
+   *      id), fetch /api/task-check and overlay the carpenters'
+   *      done / doneBy / doneAt values onto doc.tasks[]. One-way
+   *      sync; editor toggles aren't pushed back to task_checks
+   *      (the carpenter view's saves are the source of truth for
+   *      check state).
+   */
+  let republishTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastRepublishedJson = $state(initialDoc.publishedShareId ? JSON.stringify(initialDoc) : "");
+
+  $effect(() => {
+    if (doc.kind !== "task") return;
+    if (readOnly) return;
+    /* Track doc state via a JSON snapshot so the effect re-runs only
+       on real mutations, not reactive proxy noise. */
+    const json = JSON.stringify(doc);
+    if (json === lastRepublishedJson) return;
+    if (republishTimer) clearTimeout(republishTimer);
+    republishTimer = setTimeout(async () => {
+      try {
+        const newId = await publishSchedule(doc, shareId);
+        if (newId !== shareId) {
+          shareId = newId;
+        }
+        if (doc.publishedShareId !== newId) {
+          doc.publishedShareId = newId;
+        }
+        lastRepublishedJson = JSON.stringify(doc);
+        lastPublishedJson = lastRepublishedJson;
+      } catch {
+        /* silent - next mutation will retry */
+      }
+    }, 5000);
+  });
+
+  /* Polling effect: fetch carpenter check state for the doc's share id
+     every 15s and overlay onto doc.tasks[]. Stops if the page hides. */
+  $effect(() => {
+    if (doc.kind !== "task") return;
+    if (!shareId) return;
+    let alive = true;
+
+    async function pull() {
+      if (!alive) return;
+      try {
+        const res = await fetch(`/api/task-check?shareId=${encodeURIComponent(shareId!)}`);
+        if (!res.ok) return;
+        const body = await res.json();
+        applyCarpenterChecks(body.checks ?? []);
+      } catch {
+        /* network glitch - next poll retries */
+      }
+    }
+
+    pull();
+    const interval = setInterval(pull, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  });
+
+  /**
+   * Index every task by id once, then walk the carpenter check rows
+   * and update only the tasks whose state has actually changed (so
+   * the auto-republish $effect doesn't fire on every poll for
+   * unchanged data).
+   */
+  function applyCarpenterChecks(rows: Array<{ task_id: string; done: boolean; done_by: string | null; done_at: string | null }>) {
+    type Loc = { kind: "day"; date: string; index: number } | { kind: "backlog"; index: number };
+    const index = new Map<string, Loc>();
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      const tasks = day?.tasks;
+      if (!tasks) continue;
+      tasks.forEach((t, i) => index.set(t.id, { kind: "day", date: iso, index: i }));
+    }
+    (doc.backlog ?? []).forEach((t, i) => index.set(t.id, { kind: "backlog", index: i }));
+
+    for (const row of rows) {
+      const loc = index.get(row.task_id);
+      if (!loc) continue;
+      const tasks = loc.kind === "day" ? doc.schedule[loc.date]?.tasks : doc.backlog;
+      const t = tasks?.[loc.index];
+      if (!t) continue;
+      if (t.done === row.done && (t.doneBy ?? null) === row.done_by && (t.doneAt ?? null) === row.done_at) {
+        continue; // no change - skip mutation
+      }
+      if (row.done) {
+        t.done = true;
+        if (row.done_by) t.doneBy = row.done_by;
+        else delete t.doneBy;
+        if (row.done_at) t.doneAt = row.done_at;
+        else delete t.doneAt;
+      } else {
+        t.done = false;
+        delete t.doneBy;
+        delete t.doneAt;
+      }
+    }
   }
 
   // Clear the "just published" highlight whenever the share dropdown
@@ -3658,15 +3782,22 @@
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="export-dropdown" onclick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                class="export-option"
-                onclick={publish}
-                disabled={publishing}
-              >
-                <strong>{publishing ? "Publishing..." : "Publish"}</strong>
-                <span>{shareId ? "Push latest changes to your cast" : "Create a read-only link for your cast"}</span>
-              </button>
+              {#if doc.kind !== "task"}
+                <button
+                  type="button"
+                  class="export-option"
+                  onclick={publish}
+                  disabled={publishing}
+                >
+                  <strong>{publishing ? "Publishing..." : "Publish"}</strong>
+                  <span>{shareId ? "Push latest changes to your cast" : "Create a read-only link for your cast"}</span>
+                </button>
+              {:else}
+                <div class="export-option export-option-static">
+                  <strong>Auto-published</strong>
+                  <span>Edits flow to your team's link automatically. Their checks come back here within ~15s.</span>
+                </div>
+              {/if}
               <button
                 type="button"
                 class="export-option"
@@ -3675,7 +3806,7 @@
                 disabled={!shareId}
               >
                 <strong>Copy Link</strong>
-                <span>{shareId ? "Copy the share URL to clipboard" : "Publish first to get a link"}</span>
+                <span>{shareId ? "Copy the share URL to clipboard" : (doc.kind === "task" ? "Make any edit to generate the link" : "Publish first to get a link")}</span>
               </button>
               {#if showDemoBanners}
               <div class="share-demo-note">
@@ -5016,6 +5147,15 @@
   }
   .export-option:hover:not(:disabled) {
     background: var(--color-bg-alt);
+  }
+  /* Static indicator used for the task-mode "auto-publish" replacement
+     of the manual Publish button. Looks like an export-option but
+     without click affordance. */
+  .export-option-static {
+    cursor: default;
+  }
+  .export-option-static:hover {
+    background: transparent;
   }
   .export-option:disabled {
     opacity: 0.4;

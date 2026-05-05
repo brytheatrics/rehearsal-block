@@ -431,4 +431,12 @@ export interface ScheduleDoc {
    * when `kind === 'task'`. Ignored in rehearsal mode.
    */
   backlog?: Task[];
+  /**
+   * Stable share id for this doc, set after the first successful
+   * publish. Round-trips through subsequent republishes so the URL
+   * stays the same and reload-survives so the editor's task_checks
+   * polling knows which share to subscribe to without needing to
+   * re-publish first.
+   */
+  publishedShareId?: string;
 }
