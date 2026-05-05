@@ -31,3 +31,28 @@ These steps need a human to run them. Listed in the order they need to happen.
 - [ ] Seed Frank, Mike, etc. (your shop team) as cast members on a
       task schedule via the gear → Defaults → Cast tab so the
       assignee picker has real names to pick from.
+
+## Known design nuance (worth understanding, not a bug)
+
+The editor and the carpenter share view track "done" state in two
+different places, and they don't auto-merge:
+
+- **Editor** mutates `task.done` directly on the doc (saved to R2).
+- **Carpenter share view** writes to the `task_checks` table and
+  overlays it on top of the doc when rendering.
+
+What this means in practice:
+
+- If you check a task off in the editor, the carpenters see it as
+  done in the share link (since their view falls back to the doc's
+  `done` when there's no `task_checks` row).
+- If a carpenter checks a task off, your editor does NOT see it -
+  the doc's `done` is unchanged.
+- To see what carpenters have checked off, open the share URL in
+  another tab. That's currently the source of truth for their
+  activity.
+
+This is a deliberate split (carpenter writes shouldn't fight the
+editor's auto-save loop), but if it becomes annoying we can add a
+"Sync from share" button in the editor that fetches `task_checks`
+and applies them to the doc.
