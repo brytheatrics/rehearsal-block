@@ -69,9 +69,8 @@ Use `preview_start` with the name `rehearsal-block` - `.claude/launch.json` is c
 - Once on Free tier, deploy credits become unmetered but function budget (125k/mo) is the new bottleneck.
 
 ### Current paid-version wiring state
-- **Done**: Supabase auth + OAuth + magic link, `hooks.server.ts` with `/app` route guard, `/buy` Stripe checkout, `/api/stripe-webhook` signature-verified, `ShowStorage` interface + demo implementation, `/app` placeholder page with sign-out.
-- **Scaffolded**: `lib/storage/r2.ts` and `lib/storage/sync.ts` have interfaces defined but throw on all methods. `lib/storage/local.ts` and `lib/storage/supabase.ts` are older stubs that also throw. `supabase/migrations/001_init.sql` is a placeholder with a RAISE guard and the target schema inlined as comments.
-- **Missing**: everything else in the plan file's 10 phases.
+- **Done**: Supabase auth + OAuth + magic link, `hooks.server.ts` with `/app` route guard, `/buy` Stripe checkout, `/api/stripe-webhook` signature-verified, beta activation flow at `/beta`, R2 + Supabase metadata storage wired (full read/write, idb-keyval-backed local cache, sync layer push-to-cloud), share endpoint at `/api/share` (gzipped ScheduleDoc to R2 keyed by stable 8-char id), conflict-share tokens, contact-sheet PDF generation. Show list, show editor, /app/[showId] route all functional.
+- **Missing from the plan**: Phase 6 (client-side paged.js PDF), Phase 7 ops finishing touches (Sentry, pg_dump backup, CF proxy toggle, cost alerts), and the rest of the polish items.
 
 ### What's deployed and prerendered
 - **6 prerendered static pages**: `/`, `/demo`, `/privacy`, `/terms`, `/contact`, `/help` - zero function invocations per visit, served from Netlify CDN.
@@ -106,6 +105,22 @@ Use `preview_start` with the name `rehearsal-block` - `.claude/launch.json` is c
 - Conflicts use `actorId` for both cast and crew (shared conflict system)
 - Demo show in `packages/core/src/sample-show.ts` exports `sampleShow: ScheduleDoc`
 
+### Task Schedule (personal-use feature)
+Blake personally uses Rehearsal Block to manage his TLT shop's build schedule. Task Schedule mode is a forked editor body for that workflow, gated to his email via `lib/task-schedule-access.ts`. Not for general release.
+- `ScheduleDoc.kind: 'rehearsal' | 'task'` - undefined treated as 'rehearsal' for legacy docs
+- `ScheduleDay.tasks?: Task[]` - per-day tasks (only meaningful when kind=task)
+- `ScheduleDoc.backlog?: Task[]` - unscheduled tasks
+- `Task` shape: `{ id, text, done, doneBy?, doneAt?, assigneeIds? }` where assigneeIds reference cast members
+- Task editor body in DayEditor: per-row text + assignee multi-select popover + reorder + delete; dblclick on text to edit
+- Day cells filter `done: true` out (cleared via the Completed sidebar instead)
+- View-only carryover: today's cell prepends incomplete prior-day tasks; data still lives on the original day
+- Task chip drop in DayToolSidebar replaces the rehearsal Call chip; drop on a cell creates a blank task and inline-edits it in the cell
+- Backlog drag-onto-day: TaskScheduleSidebar's backlog rows drag onto cells via `text/rb-backlog-task`; ScheduleEditor's `moveBacklogTaskToDay` removes from backlog + appends to day in one undo step
+- TaskScheduleSidebar replaces the cast Sidebar in task mode (left column): Backlog up top, Completed below with "Clear" button + themed confirm modal (rendered at page level so it escapes the sidebar's sticky stacking context)
+- Auto-roll: every editor load, if startDate < current week's start (per `weekStartsOn`), advance startDate. Past tasks aren't deleted, they just fall out of the rendered grid range; carryover keeps surfacing them
+- TLT holiday seeding: new task schedules auto-set showUsHolidays=true, hiddenHolidays=["Presidents' Day", "Memorial Day", "Columbus Day", "Veterans Day"], and customHolidays=Black Friday + Christmas Eve for every year in the show range. Backfilled on load for any task-mode doc with hiddenHolidays===undefined
+- See `~/.claude/projects/.../memory/project_task_schedule.md` for context, plus PR commits prefixed TS-* for implementation history
+
 ### Paid-version Supabase tables (planned, not yet created)
 See `PRODUCT_SPEC.md` "Database schema" for full definitions.
 - `shows_index` - metadata only. No `document` column - doc bytes live in R2.
@@ -118,13 +133,10 @@ See `PRODUCT_SPEC.md` "Database schema" for full definitions.
 - **Paid version v1** - the 10-phase plan at `C:\Users\blake\.claude\plans\curious-cuddling-butterfly.md`. Done so far: Phase 2.5 (prerender audit - 6 routes), Phase 3 UI (show list with calendar backdrop, plum cards, NewShowModal - mock data only, needs Phase 1 storage to wire real data), Phase 7 partial (healthcheck endpoint, GitHub Actions keepalive cron, CSP + security headers - still need Sentry, pg_dump backup, CF proxy toggle, cost alerts), Phase 8 (static pages /privacy /terms /contact /help + ComingSoonModal + hamburger nav). Phase 1 scaffolding is in place (r2.ts, sync.ts, local.ts, supabase.ts interfaces, migration placeholder, .env with R2 credentials, Supabase tables + JWT hook created). When starting Phase 1 implementation: *"Read the plan and start Phase 1."*
 - **Beta testing** - plan at `C:\Users\blake\.claude\plans\curious-cuddling-moth.md`. Starts after all phases in the paid version plan are complete. 5-15 invited testers, beta code activation via `/beta` page, full app access, BETA watermark on exports. Do not start beta work until all paid version phases ship.
 - **Onboarding tour / first-time helper popups** - plan at `C:\Users\blake\.claude\plans\onboarding-tour.md`. Coachmark overlay pattern, three tours (show-list, new-show-modal, schedule-editor), IndexedDB state, global toggle in My Defaults. ~5 hours focused. When starting: *"Read the onboarding tour plan and start implementing."*
-- **Landing-page hero loop animation** - replace the current scroll-pinned version. Details in SESSION_HISTORY.md.
 - **Help docs / tutorial packet** - the /help page now has key concepts, toolbar reference, keyboard shortcuts, and FAQ. Full help docs (getting started guide, feature reference) are a separate future session. When starting: *"Read the planned help docs section in SESSION_HISTORY.md and start Phase 1 (exploration)."*
 
-## Most-recent session (2026-04-11)
+## Most-recent session (2026-05-04 / 2026-05-05)
 
-Two-part session: paid version planning + implementation of quick-win phases. 11 commits deployed.
+Long single-thread session building the Task Schedule feature for Blake's personal TLT TD work. Local-only commits, not pushed. See `BLAKE_TODO.md` at repo root for the steps Blake needs to run before deploying.
 
-**Planning**: approved a 10-phase plan for the paid version at `.claude/plans/curious-cuddling-butterfly.md`. Key decisions: all blob storage on Cloudflare R2 Free, Supabase Free for metadata only, full local-first with 60s idle-based debounce, 7-day daily version history, refund policy with show_activity audit log enforcement, ops hardening.
-
-**Implemented**: CLAUDE.md/PRODUCT_SPEC.md/README.md rewrite, PATTERNS.md split, 6 prerendered routes, Phase 1 storage scaffolding (r2.ts, sync.ts, migrations placeholder, .env.example), Phase 8 static pages (/privacy /terms /contact /help), hamburger nav on all widths, ComingSoonModal for Sign In/Buy buttons, /help page with collapsible TOC + toolbar icons + keyboard shortcuts, Shift+O hotkey, seamless header-to-hero gradient, dev-only draft banners, paywall audit verified. Phase 7: /api/healthcheck endpoint, GitHub Actions keepalive cron, CSP + security headers. Phase 3 UI: show list with calendar backdrop grid (3-col, plum gradient cards, archive/edit/duplicate/delete buttons, "[Name]'s Shows" header), NewShowModal, ShowCard component, localhost auth bypass for preview. Supabase tables (shows_index, show_activity) + JWT has_paid hook created. R2 buckets created. Real migration DDL in 001_init.sql.
+CLAUDE.md will get a fuller summary when all TS-3 + TS-4 commits land. Until then, the commit log (commits prefixed `TS-*`) is the authoritative changelog.
