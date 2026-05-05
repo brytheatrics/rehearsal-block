@@ -6,6 +6,7 @@
    */
   import { browser } from "$app/environment";
   import { decodeSchedule } from "$lib/share";
+  import TaskShareView from "$lib/components/share/TaskShareView.svelte";
   import type {
     ScheduleDoc,
     ScheduleDay,
@@ -31,6 +32,11 @@
   let error = $state("");
   let selectedActorId = $state<string | null>(null);
   let viewMode = $state<"calendar" | "list">("calendar");
+  /* The R2 share id (only set when the URL was loaded via ?id=...).
+     Threaded through to TaskShareView for the carpenter check overlay
+     endpoint. Hash-encoded loads have no server-side share, so the
+     task share view's check toggles are disabled in that case. */
+  let serverShareId = $state<string | null>(null);
 
   // Load schedule from URL: either ?id=xxx (server-stored) or #d=xxx (hash-encoded)
   $effect(() => {
@@ -40,6 +46,7 @@
     const shareId = params.get("id");
 
     if (shareId) {
+      serverShareId = shareId;
       // Fetch from server
       fetch(`/api/share?id=${encodeURIComponent(shareId)}`)
         .then((res) => {
@@ -218,6 +225,12 @@
   <div class="view-page">
     <div class="view-loading">Loading schedule...</div>
   </div>
+{:else if doc.kind === "task" && serverShareId}
+  <!-- Task Schedule mode: carpenter check-off view with its own
+       header, sidebar, and live check overlay. Hash-encoded shares
+       fall through to the rehearsal view since they have no server
+       share id to overlay against. -->
+  <TaskShareView {doc} shareId={serverShareId} />
 {:else}
   <div class="view-page">
     <header class="view-header">

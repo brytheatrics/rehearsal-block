@@ -16,8 +16,17 @@
 
   interface Props {
     show: ScheduleDoc;
-    onaddbacklog: (text: string) => void;
-    onremovebacklog: (taskId: string) => void;
+    /**
+     * When true (carpenter share view), the sidebar hides editing
+     * affordances: the "Add task" input, the X-to-remove buttons on
+     * backlog rows, the drag handle on backlog rows, and the "Clear"
+     * button on the Completed section. Toggling done state via the
+     * row checkbox / Completed uncheck button stays available so
+     * carpenters can still drive the workflow.
+     */
+    readOnly?: boolean;
+    onaddbacklog?: (text: string) => void;
+    onremovebacklog?: (taskId: string) => void;
     /**
      * Toggle done on a task identified by its location. `where` is either
      * an ISO date (a day's task) or "backlog" (an unscheduled task).
@@ -28,17 +37,24 @@
      * confirm modal (rendered at page level so it escapes the sidebar's
      * sticky/overflow stacking context) and the actual mutation.
      */
-    onrequestclearcompleted: () => void;
+    onrequestclearcompleted?: () => void;
   }
 
-  const { show, onaddbacklog, onremovebacklog, ontoggletask, onrequestclearcompleted }: Props = $props();
+  const {
+    show,
+    readOnly = false,
+    onaddbacklog,
+    onremovebacklog,
+    ontoggletask,
+    onrequestclearcompleted,
+  }: Props = $props();
 
   let newBacklogText = $state("");
 
   function commitBacklog() {
     const trimmed = newBacklogText.trim();
     if (!trimmed) return;
-    onaddbacklog(trimmed);
+    onaddbacklog?.(trimmed);
     newBacklogText = "";
   }
 
@@ -98,28 +114,32 @@
       <h3>Backlog</h3>
       <span class="ts-count">{show.backlog?.filter((t) => !t.done).length ?? 0}</span>
     </header>
-    <p class="ts-hint">Unscheduled tasks. Drag onto a day to schedule it.</p>
-    <div class="ts-add-row">
-      <input
-        type="text"
-        class="ts-add-input"
-        placeholder="Add task..."
-        value={newBacklogText}
-        oninput={(e) => (newBacklogText = e.currentTarget.value)}
-        onkeydown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commitBacklog();
-          }
-        }}
-      />
-      <button
-        type="button"
-        class="ts-add-btn"
-        disabled={!newBacklogText.trim()}
-        onclick={commitBacklog}
-      >Add</button>
-    </div>
+    {#if readOnly}
+      <p class="ts-hint">Anything available to pick up if you finish today's list.</p>
+    {:else}
+      <p class="ts-hint">Unscheduled tasks. Drag onto a day to schedule it.</p>
+      <div class="ts-add-row">
+        <input
+          type="text"
+          class="ts-add-input"
+          placeholder="Add task..."
+          value={newBacklogText}
+          oninput={(e) => (newBacklogText = e.currentTarget.value)}
+          onkeydown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitBacklog();
+            }
+          }}
+        />
+        <button
+          type="button"
+          class="ts-add-btn"
+          disabled={!newBacklogText.trim()}
+          onclick={commitBacklog}
+        >Add</button>
+      </div>
+    {/if}
     {#if (show.backlog ?? []).filter((t) => !t.done).length === 0}
       <p class="ts-empty">No unscheduled tasks.</p>
     {:else}
@@ -127,19 +147,24 @@
         {#each (show.backlog ?? []).filter((t) => !t.done) as task (task.id)}
           <li
             class="ts-row backlog-row"
-            draggable="true"
-            ondragstart={(e) => dragBacklogTask(e, task.id)}
-            title="Drag onto a day to schedule"
+            class:read-only={readOnly}
+            draggable={readOnly ? "false" : "true"}
+            ondragstart={readOnly ? undefined : (e) => dragBacklogTask(e, task.id)}
+            title={readOnly ? undefined : "Drag onto a day to schedule"}
           >
-            <span class="ts-handle" aria-hidden="true">⋮⋮</span>
+            {#if !readOnly}
+              <span class="ts-handle" aria-hidden="true">⋮⋮</span>
+            {/if}
             <span class="ts-text">{task.text}</span>
-            <button
-              type="button"
-              class="ts-icon-btn ts-icon-danger"
-              title="Remove from backlog"
-              aria-label={`Remove ${task.text}`}
-              onclick={() => onremovebacklog(task.id)}
-            >×</button>
+            {#if !readOnly}
+              <button
+                type="button"
+                class="ts-icon-btn ts-icon-danger"
+                title="Remove from backlog"
+                aria-label={`Remove ${task.text}`}
+                onclick={() => onremovebacklog?.(task.id)}
+              >×</button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -151,7 +176,7 @@
       <h3>Completed</h3>
       <div class="ts-header-meta">
         <span class="ts-count">{completed.length}</span>
-        {#if completed.length > 0}
+        {#if completed.length > 0 && !readOnly}
           <button
             type="button"
             class="ts-clear-btn"
@@ -322,6 +347,12 @@
   }
   .backlog-row:hover {
     border-color: var(--color-teal);
+  }
+  .backlog-row.read-only {
+    cursor: default;
+  }
+  .backlog-row.read-only:hover {
+    border-color: var(--color-border);
   }
 
   .ts-handle {
