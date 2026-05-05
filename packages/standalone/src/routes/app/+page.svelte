@@ -713,6 +713,7 @@
                   castCount={show.castCount}
                   updatedAt={show.updatedAt}
                   archived={show.archived}
+                  kind={fullDocs.get(show.id)?.document.kind ?? "rehearsal"}
                   onopen={handleOpen}
                   onedit={handleEdit}
                   onarchive={handleArchive}

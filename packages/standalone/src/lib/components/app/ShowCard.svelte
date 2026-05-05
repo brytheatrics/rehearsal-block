@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatUsDateRange } from "@rehearsal-block/core";
+  import { formatUsDateRange, type ScheduleKind } from "@rehearsal-block/core";
 
   interface Props {
     id: string;
@@ -9,6 +9,10 @@
     castCount: number;
     updatedAt: string;
     archived: boolean;
+    /** "task" tints the card teal so Blake can tell his build
+     *  schedules apart from rehearsal shows at a glance. Defaults to
+     *  rehearsal (the standard plum gradient). */
+    kind?: ScheduleKind;
     onopen: (id: string) => void;
     onedit: (id: string) => void;
     onarchive: (id: string) => void;
@@ -20,8 +24,10 @@
 
   const {
     id, name, startDate, endDate, castCount, updatedAt, archived,
+    kind = "rehearsal",
     onopen, onedit, onarchive, onduplicate, ondelete, onexport, onhistory,
   }: Props = $props();
+  const isTask = $derived(kind === "task");
 
   const dateRange = $derived(
     startDate && endDate ? formatUsDateRange(startDate, endDate) : "No dates set",
@@ -50,6 +56,7 @@
 <div
   class="show-card"
   class:archived
+  class:task-mode={isTask}
   onclick={() => onopen(id)}
 >
   <div class="card-top-btns">
@@ -179,6 +186,27 @@
   }
   .show-card.archived:hover {
     opacity: 0.8;
+  }
+
+  /* Task Schedule cards get a teal gradient so they're distinguishable
+     from rehearsal shows at a glance on the show list. Same shape and
+     contrast as the plum default - just hue shifted. */
+  .show-card.task-mode {
+    background: linear-gradient(
+      180deg,
+      var(--color-teal-dark, #2a6764) 0%,
+      var(--color-teal, #38817d) 50%,
+      #4ea29e 100%
+    );
+    border-color: var(--color-teal, #38817d);
+  }
+  .show-card.task-mode.archived {
+    background: linear-gradient(
+      180deg,
+      #3d5957 0%,
+      #4d6a68 50%,
+      #5e7a78 100%
+    );
   }
 
   .card-top-btns {
