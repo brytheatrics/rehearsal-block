@@ -13,6 +13,21 @@ These steps need a human to run them. Listed in the order they need to happen.
       Why it has to run before deploying: the carpenter share view's
       first toggle will throw if the table doesn't exist.
 
+- [ ] **Run the advisor-fix migration**
+      File: `packages/standalone/supabase/migrations/006_advisor_fixes.sql`
+      How: same flow - SQL editor → paste → run.
+      What it does: clears the 3 critical security warnings on the
+      Supabase dashboard.
+        - Drops the unused `users_paid_status` view (was created
+          manually in the dashboard, not referenced by any app code,
+          and the advisor flagged it for exposing auth.users).
+        - Recreates `beta_status` with `security_invoker = true` and
+          adds a column-level grant + singleton RLS policy on
+          `beta_config` so the BetaBanner and beta gating still work
+          but `beta_code` stays unreadable from the public role.
+      After running, the advisor warnings should clear within a
+      minute or so.
+
 ## Things to test on real hardware after push
 
 - [ ] **Carpenter share flow on a phone**
