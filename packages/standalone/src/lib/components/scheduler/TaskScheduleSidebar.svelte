@@ -115,7 +115,7 @@
       <span class="ts-count">{show.backlog?.filter((t) => !t.done).length ?? 0}</span>
     </header>
     {#if readOnly}
-      <p class="ts-hint">Anything available to pick up if you finish today's list.</p>
+      <p class="ts-hint">Unscheduled tasks.</p>
     {:else}
       <p class="ts-hint">Unscheduled tasks. Drag onto a day to schedule it.</p>
       <div class="ts-add-row">
