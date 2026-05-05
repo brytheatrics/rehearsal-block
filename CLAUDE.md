@@ -137,6 +137,26 @@ See `PRODUCT_SPEC.md` "Database schema" for full definitions.
 
 ## Most-recent session (2026-05-04 / 2026-05-05)
 
-Long single-thread session building the Task Schedule feature for Blake's personal TLT TD work. Local-only commits, not pushed. See `BLAKE_TODO.md` at repo root for the steps Blake needs to run before deploying.
+Long single-thread session building the Task Schedule feature for Blake's personal TLT TD work. ~20 commits, all local on `main`, none pushed. See `BLAKE_TODO.md` at repo root for the pre-push checklist (the Supabase migration in particular has to run before any carpenter check toggles will work in production).
 
-CLAUDE.md will get a fuller summary when all TS-3 + TS-4 commits land. Until then, the commit log (commits prefixed `TS-*`) is the authoritative changelog.
+**Decisions made up front**: kind field on the doc, email allowlist gate (no JWT custom claim - one user doesn't justify the infra), single-fork strategy (reuse calendar/list/grid shell, fork only DayCell and DayEditor inner content), view-only carryover (data stays on origin day, today's cell renders prior-day incomplete), check-off-only carpenter access, polling for sync (skip Realtime), task_checks Supabase table for carpenter check state separate from the main doc, TLT-specific holiday auto-seeding, automatic startDate roll forward each week.
+
+**Implemented (TS-1 through TS-4)**:
+- TS-1: kind field, email allowlist (`task-schedule-access.ts`), "+ New Task Schedule" button gated to Blake's two emails
+- TS-2: full editor (data model, cell rendering, day-editor task body, dblclick edit, Task chip drop with cell-inline edit, ListView task rendering, TaskScheduleSidebar with Backlog + Completed, drag-from-backlog, Clear-completed with themed confirm at page level, TLT holiday seed + backfill, weekly auto-roll of startDate)
+- TS-3: `task_checks` Supabase migration (005), `/api/task-check` POST + GET endpoints, TaskShareView component for the carpenter view (polls every 15s, optimistic toggles + revert-on-error, name prompt + localStorage, filter dropdown, mobile-first defaults), TaskScheduleSidebar gains a `readOnly` flag so the carpenter view reuses it
+- TS-4: task-mode print HTML path (no done tasks, checkboxes empty, Backlog section appended, holiday badges)
+
+**Key files added/changed**:
+- `packages/core/src/types.ts` - kind, Task, day.tasks, doc.backlog
+- `packages/core/src/tasks.ts` - newTask, getCarriedOverTasks
+- `packages/core/src/export.ts` - buildTaskPrintHtml branch
+- `packages/standalone/src/lib/components/scheduler/TaskScheduleSidebar.svelte`
+- `packages/standalone/src/lib/components/share/TaskShareView.svelte`
+- `packages/standalone/src/lib/task-schedule-access.ts`
+- `packages/standalone/src/lib/tlt-holidays.ts`
+- `packages/standalone/src/routes/api/task-check/+server.ts`
+- `packages/standalone/supabase/migrations/005_task_checks.sql`
+- DayCell, DayEditor, CalendarGrid, ListView, ScheduleEditor, NewShowModal, /(view)/view/+page.svelte all gain `kind === 'task'` branches
+
+**Not started this session**: pushing to deploy. Blake's standing rule is explicit-ask-only on push. He plans to run the migration + push when he's ready to start using this for an actual show.
