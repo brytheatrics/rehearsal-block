@@ -2121,9 +2121,31 @@
    * carpenter share view triggers the toggle - this editor-side
    * handler leaves it unset.
    */
+  /**
+   * Mirror an editor-side check toggle into the carpenter check table
+   * so the polling effect (which reads from that table) doesn't
+   * immediately revert it on the next pull. Fire-and-forget: a failed
+   * write means the task_checks row stays out of sync briefly, and
+   * the next poll will overwrite the editor's local state - same
+   * behavior as before this sync existed. Only fires in task mode
+   * with a published share.
+   */
+  function syncTaskCheckToServer(taskId: string, done: boolean) {
+    if (doc.kind !== "task") return;
+    if (!shareId) return;
+    fetch("/api/task-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shareId, taskId, done, doneBy: null }),
+    }).catch(() => { /* fire-and-forget */ });
+  }
+
   function toggleTask(date: IsoDate, taskId: string) {
     const day = doc.schedule[date];
     if (!day || !day.tasks) return;
+    const current = day.tasks.find((t) => t.id === taskId);
+    if (!current) return;
+    const willBeDone = !current.done;
     pushUndoImmediate();
     doc.schedule[date] = {
       ...day,
@@ -2136,6 +2158,7 @@
         return { ...t, done: true, doneAt: new Date().toISOString() };
       }),
     };
+    syncTaskCheckToServer(taskId, willBeDone);
   }
 
   /**
@@ -2170,6 +2193,11 @@
       ...day,
       tasks: day.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
     };
+    /* If this update flipped the done state, mirror it to task_checks
+       so the polling effect doesn't revert the change on next pull. */
+    if (Object.prototype.hasOwnProperty.call(patch, "done")) {
+      syncTaskCheckToServer(taskId, !!patch.done);
+    }
   }
 
   function removeTaskFromDay(date: IsoDate, taskId: string) {
@@ -2281,6 +2309,9 @@
   function toggleTaskByWhere(where: string | "backlog", taskId: string) {
     if (where === "backlog") {
       if (!doc.backlog) return;
+      const current = doc.backlog.find((t) => t.id === taskId);
+      if (!current) return;
+      const willBeDone = !current.done;
       pushUndoImmediate();
       doc.backlog = doc.backlog.map((t) => {
         if (t.id !== taskId) return t;
@@ -2290,6 +2321,7 @@
         }
         return { ...t, done: true, doneAt: new Date().toISOString() };
       });
+      syncTaskCheckToServer(taskId, willBeDone);
       return;
     }
     toggleTask(where, taskId);
