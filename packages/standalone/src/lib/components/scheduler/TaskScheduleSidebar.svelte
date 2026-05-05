@@ -13,6 +13,7 @@
    *   separate "move to next build day" mutation needed.
    */
   import type { ScheduleDoc, Task } from "@rehearsal-block/core";
+  import ConfirmModal from "$lib/components/ConfirmModal.svelte";
 
   interface Props {
     show: ScheduleDoc;
@@ -23,9 +24,13 @@
      * an ISO date (a day's task) or "backlog" (an unscheduled task).
      */
     ontoggletask: (where: string | "backlog", taskId: string) => void;
+    /** Permanently remove every task with `done: true` across the doc. */
+    onclearcompleted: () => void;
   }
 
-  const { show, onaddbacklog, onremovebacklog, ontoggletask }: Props = $props();
+  const { show, onaddbacklog, onremovebacklog, ontoggletask, onclearcompleted }: Props = $props();
+
+  let confirmClearOpen = $state(false);
 
   let newBacklogText = $state("");
 
@@ -143,7 +148,17 @@
   <section class="ts-section">
     <header class="ts-header">
       <h3>Completed</h3>
-      <span class="ts-count">{completed.length}</span>
+      <div class="ts-header-meta">
+        <span class="ts-count">{completed.length}</span>
+        {#if completed.length > 0}
+          <button
+            type="button"
+            class="ts-clear-btn"
+            title="Permanently delete all completed tasks"
+            onclick={() => (confirmClearOpen = true)}
+          >Clear</button>
+        {/if}
+      </div>
     </header>
     {#if completed.length === 0}
       <p class="ts-empty">Nothing complete yet.</p>
@@ -166,6 +181,21 @@
     {/if}
   </section>
 </aside>
+
+{#if confirmClearOpen}
+  <ConfirmModal
+    title="Clear completed tasks?"
+    message={`Permanently remove all ${completed.length} completed task${completed.length === 1 ? "" : "s"} from this schedule. This can't be undone.`}
+    confirmLabel="Clear all"
+    cancelLabel="Cancel"
+    variant="danger"
+    onconfirm={() => {
+      confirmClearOpen = false;
+      onclearcompleted();
+    }}
+    oncancel={() => (confirmClearOpen = false)}
+  />
+{/if}
 
 <style>
   .task-sidebar {
@@ -201,6 +231,28 @@
     font-size: 0.75rem;
     color: var(--color-text-muted);
     font-weight: 500;
+  }
+
+  .ts-header-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .ts-clear-btn {
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+  .ts-clear-btn:hover {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
   }
 
   .ts-hint {

@@ -2220,6 +2220,35 @@
   }
 
   /**
+   * Permanently remove every task with `done: true` across the entire
+   * doc - both per-day task arrays and the unscheduled backlog. Used by
+   * the "Clear" button in the Completed section of the task sidebar so
+   * Blake can reset the list (typically after a show opens).
+   */
+  function clearCompletedTasks() {
+    pushUndoImmediate();
+    const nextSchedule: typeof doc.schedule = {};
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      if (!day) continue;
+      const tasks = day.tasks;
+      if (!tasks || tasks.length === 0) {
+        nextSchedule[iso] = day;
+        continue;
+      }
+      const remaining = tasks.filter((t) => !t.done);
+      if (remaining.length === tasks.length) {
+        nextSchedule[iso] = day;
+      } else {
+        nextSchedule[iso] = { ...day, tasks: remaining };
+      }
+    }
+    doc.schedule = nextSchedule;
+    if (doc.backlog && doc.backlog.length > 0) {
+      doc.backlog = doc.backlog.filter((t) => !t.done);
+    }
+  }
+
+  /**
    * Toggle done state by location: a date string for a day's task, or
    * "backlog" for an unscheduled task. Used by the sidebar's Completed
    * section to uncheck a finished task without caring where it lives.
@@ -3728,6 +3757,7 @@
             onaddbacklog={addBacklogTask}
             onremovebacklog={removeBacklogTask}
             ontoggletask={toggleTaskByWhere}
+            onclearcompleted={clearCompletedTasks}
           />
         </div>
       {/if}
