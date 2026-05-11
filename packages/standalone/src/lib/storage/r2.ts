@@ -21,6 +21,7 @@ import {
   HeadObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export interface R2Client {
   /** Fetch an object by key. Returns null if not found. Returns raw bytes. */
@@ -40,6 +41,14 @@ export interface R2Client {
 
   /** List object keys with a prefix. */
   list(prefix: string): Promise<string[]>;
+
+  /**
+   * Generate a presigned PUT URL the browser can upload directly to.
+   * Used by the Task Schedule Uploads flow for files larger than the
+   * 6 MB Netlify function multipart body cap. Expiration default ~15
+   * minutes; long enough for any phone-network upload to finish.
+   */
+  presignPut(key: string, contentType: string, expiresSeconds?: number): Promise<string>;
 }
 
 export interface R2Config {
@@ -133,6 +142,20 @@ export function createR2Client(config: R2Config): R2Client {
         continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
       } while (continuationToken);
       return keys;
+    },
+
+    async presignPut(key, contentType, expiresSeconds = 900) {
+      const cmd = new PutObjectCommand({
+        Bucket,
+        Key: key,
+        ContentType: contentType,
+      });
+      /* getSignedUrl's signature trips on duplicate @smithy/types
+       * versions in the pnpm tree (client-s3 pins one, the presigner
+       * pins another). Both are runtime-compatible; cast to bypass
+       * the structural type mismatch. */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return getSignedUrl(s3 as any, cmd as any, { expiresIn: expiresSeconds });
     },
   };
 }

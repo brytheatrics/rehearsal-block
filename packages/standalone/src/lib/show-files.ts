@@ -7,25 +7,48 @@
 import type { ShowFile } from "@rehearsal-block/core";
 
 /**
- * Upload a single file. Returns the server-assigned metadata or
- * throws with a user-readable message on failure. Caller is
- * responsible for appending the result to `doc.files`.
+ * Upload a single file via the presigned-URL flow. The browser POSTs
+ * a small JSON request to /api/files/presign to get a signed R2 URL,
+ * then PUTs the file bytes directly to that URL - bypassing the
+ * 6 MB Netlify function multipart body limit.
+ *
+ * Returns the server-assigned ShowFile metadata. The caller appends
+ * it to doc.files; the next auto-save propagates everywhere.
  */
 export async function uploadShowFile(showId: string, file: File): Promise<ShowFile> {
-  const form = new FormData();
-  form.append("showId", showId);
-  form.append("file", file);
-  const res = await fetch("/api/files", { method: "POST", body: form });
-  if (!res.ok) {
+  /* 1. Ask the server for a presigned URL. */
+  const presignRes = await fetch("/api/files/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      showId,
+      filename: file.name,
+      mimeType: file.type,
+      size: file.size,
+    }),
+  });
+  if (!presignRes.ok) {
     let msg = "Upload failed";
     try {
-      const body = await res.json();
+      const body = await presignRes.json();
       if (body?.message) msg = body.message;
     } catch { /* leave default */ }
     throw new Error(msg);
   }
-  const body = await res.json();
-  return body.file as ShowFile;
+  const { uploadUrl, file: meta } = (await presignRes.json()) as { uploadUrl: string; file: ShowFile };
+
+  /* 2. PUT the actual bytes directly to R2. Browser → R2, no
+        function in the middle, no 6 MB cap. */
+  const putRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!putRes.ok) {
+    throw new Error(`R2 upload failed (${putRes.status})`);
+  }
+
+  return meta;
 }
 
 /**

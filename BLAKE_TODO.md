@@ -13,6 +13,25 @@ These steps need a human to run them. Listed in the order they need to happen.
       Why it has to run before deploying: the carpenter share view's
       first toggle will throw if the table doesn't exist.
 
+- [ ] **Add CORS rules to the R2 bucket** (for direct-from-browser
+      uploads in the Task Schedule Uploads panel)
+      How: Cloudflare dashboard → R2 → your bucket → Settings → CORS
+      policy. Paste in:
+      ```json
+      [
+        {
+          "AllowedOrigins": ["https://rehearsalblock.com", "https://www.rehearsalblock.com", "http://localhost:5173", "http://localhost:50135"],
+          "AllowedMethods": ["PUT", "GET"],
+          "AllowedHeaders": ["Content-Type"],
+          "ExposeHeaders": ["ETag"],
+          "MaxAgeSeconds": 3600
+        }
+      ]
+      ```
+      Replace the origins list with whatever domains the editor
+      actually runs on (production + your dev port). Without this,
+      browser uploads larger than 6 MB hit a CORS error.
+
 - [ ] **Run the advisor-fix migration**
       File: `packages/standalone/supabase/migrations/006_advisor_fixes.sql`
       How: same flow - SQL editor → paste → run.
