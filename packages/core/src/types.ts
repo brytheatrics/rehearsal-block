@@ -161,6 +161,35 @@ export interface Task {
   doneAt?: string;
   /** Cast-member ids assigned to this task. Reuses the existing cast array. */
   assigneeIds?: string[];
+  /** File ids (from `ScheduleDoc.files`) attached to this task. Used by
+   *  the paperclip UI so a shop carpenter can open the drawing or
+   *  reference photo for a specific task without leaving the share view. */
+  attachmentIds?: string[];
+}
+
+/**
+ * A file (drawing PDF, reference photo, etc.) attached to a Task
+ * Schedule. Files live in R2 keyed by `r2Key`; the doc only stores
+ * lightweight metadata. Only meaningful when `ScheduleDoc.kind === 'task'`.
+ *
+ * The carpenter share view shows a "Drawings" section listing every
+ * file so the shop crew can pull the actual drawing PDF instead of
+ * digging through their email. Optional per-task attachments narrow
+ * the list down for context-specific references.
+ */
+export interface ShowFile {
+  /** Stable id assigned on first upload; used by `Task.attachmentIds`. */
+  id: string;
+  /** Original filename, sanitized for display. */
+  name: string;
+  /** "application/pdf", "image/jpeg", etc. */
+  mimeType: string;
+  /** Size in bytes. */
+  size: number;
+  /** ISO timestamp the upload completed. */
+  uploadedAt: string;
+  /** Full key in the shared R2 bucket: "show-files:{showId}:{fileId}-{sanitizedName}". */
+  r2Key: string;
 }
 
 export interface ScheduleDay {
@@ -431,6 +460,12 @@ export interface ScheduleDoc {
    * when `kind === 'task'`. Ignored in rehearsal mode.
    */
   backlog?: Task[];
+  /**
+   * File attachments for Task Schedule mode (drawing PDFs, reference
+   * photos, etc.). Each file lives in R2; this list holds the metadata.
+   * Tasks reference these via `Task.attachmentIds`.
+   */
+  files?: ShowFile[];
   /**
    * Stable share id for this doc, set after the first successful
    * publish. Round-trips through subsequent republishes so the URL

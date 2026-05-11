@@ -12,7 +12,8 @@
    *   renderer in DayCell prepends it to today's cell automatically - no
    *   separate "move to next build day" mutation needed.
    */
-  import type { ScheduleDoc, Task } from "@rehearsal-block/core";
+  import type { ScheduleDoc, ShowFile, Task } from "@rehearsal-block/core";
+  import { showFileUrl, formatFileSize } from "$lib/show-files.js";
 
   interface Props {
     show: ScheduleDoc;
@@ -38,6 +39,15 @@
      * sticky/overflow stacking context) and the actual mutation.
      */
     onrequestclearcompleted?: () => void;
+    /**
+     * Drawings panel upload + delete callbacks. Owned by the parent so
+     * the parent can show toasts, handle progress, and write the
+     * resulting ShowFile metadata onto `doc.files`. Only used in
+     * editor mode - in readOnly (carpenter) mode the upload button is
+     * hidden and the row-level delete buttons hide too.
+     */
+    onuploadfile?: (file: File) => void;
+    onremovefile?: (file: ShowFile) => void;
   }
 
   const {
@@ -47,7 +57,35 @@
     onremovebacklog,
     ontoggletask,
     onrequestclearcompleted,
+    onuploadfile,
+    onremovefile,
   }: Props = $props();
+
+  /* File picker for the Drawings upload button. Hidden input + a
+     styled trigger button works around the limited <input type="file">
+     styling. */
+  let fileInputEl = $state<HTMLInputElement | null>(null);
+
+  function pickFiles() {
+    fileInputEl?.click();
+  }
+
+  function onFilePicked(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const list = input.files;
+    if (!list) return;
+    for (const f of Array.from(list)) {
+      onuploadfile?.(f);
+    }
+    /* Reset so re-picking the same file fires change again. */
+    input.value = "";
+  }
+
+  function fileIcon(mime: string): string {
+    if (mime.startsWith("image/")) return "🖼";
+    if (mime === "application/pdf") return "📄";
+    return "📎";
+  }
 
   let newBacklogText = $state("");
 
@@ -201,6 +239,63 @@
             >↺</button>
             <span class="ts-text done">{row.task.text}</span>
             <span class="ts-where">{formatWhereLabel(row.where)}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
+  <section class="ts-section">
+    <header class="ts-header">
+      <h3>Drawings</h3>
+      <div class="ts-header-meta">
+        <span class="ts-count">{show.files?.length ?? 0}</span>
+        {#if !readOnly}
+          <button
+            type="button"
+            class="ts-clear-btn"
+            title="Upload a PDF or photo"
+            onclick={pickFiles}
+          >Upload</button>
+        {/if}
+      </div>
+    </header>
+    {#if !readOnly}
+      <p class="ts-hint">PDFs and photos. Click to open.</p>
+      <input
+        type="file"
+        accept="application/pdf,image/*"
+        multiple
+        class="ts-file-input"
+        bind:this={fileInputEl}
+        onchange={onFilePicked}
+      />
+    {:else}
+      <p class="ts-hint">Drawings + photos for this build. Tap to open.</p>
+    {/if}
+    {#if !show.files || show.files.length === 0}
+      <p class="ts-empty">No drawings uploaded yet.</p>
+    {:else}
+      <ul class="ts-list">
+        {#each show.files as file (file.id)}
+          <li class="ts-row file-row">
+            <span class="file-icon" aria-hidden="true">{fileIcon(file.mimeType)}</span>
+            <a
+              href={showFileUrl(file)}
+              target="_blank"
+              rel="noopener"
+              class="file-link"
+              title={`${file.name} - ${formatFileSize(file.size)}`}
+            >{file.name}</a>
+            {#if !readOnly}
+              <button
+                type="button"
+                class="ts-icon-btn ts-icon-danger"
+                title="Remove drawing"
+                aria-label={`Remove ${file.name}`}
+                onclick={() => onremovefile?.(file)}
+              >×</button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -405,5 +500,32 @@
   .ts-icon-uncheck:hover {
     color: var(--color-teal);
     border-color: var(--color-teal);
+  }
+
+  /* ---- Drawings section ---- */
+  .ts-file-input {
+    display: none;
+  }
+  .file-row {
+    /* Override grab cursor from .backlog-row by being more specific. */
+    cursor: default;
+  }
+  .file-icon {
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+  .file-link {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text);
+    text-decoration: none;
+  }
+  .file-link:hover {
+    color: var(--color-teal);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 </style>

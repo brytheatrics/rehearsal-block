@@ -33,6 +33,7 @@
   import CastChip from "./CastChip.svelte";
   import GroupChip from "./GroupChip.svelte";
   import InlineEditor from "./InlineEditor.svelte";
+  import { showFileUrl as listShowFileUrl } from "$lib/show-files.js";
 
   type InlineField = "description" | "time" | "endTime" | "notes";
 
@@ -147,6 +148,10 @@
     const m = show.cast.find((c) => c.id === id);
     if (!m) return null;
     return { name: displayNames.get(id) ?? m.firstName, color: m.color };
+  }
+
+  function listFileById(id: string) {
+    return show.files?.find((f) => f.id === id);
   }
 
   function listFormatCarryoverDate(iso: string): string {
@@ -782,6 +787,23 @@
                       {@const a = listAssigneeDisplay(aid)}
                       {#if a}
                         <span class="list-task-assignee" style:background={a.color}>{a.name}</span>
+                      {/if}
+                    {/each}
+                  </span>
+                {/if}
+                {#if row.task.attachmentIds && row.task.attachmentIds.length > 0}
+                  <span class="list-task-attachments">
+                    {#each row.task.attachmentIds as fid (fid)}
+                      {@const f = listFileById(fid)}
+                      {#if f}
+                        <a
+                          href={listShowFileUrl(f)}
+                          target="_blank"
+                          rel="noopener"
+                          class="list-task-attachment"
+                          onclick={(e) => e.stopPropagation()}
+                          title={f.name}
+                        >📎 {f.name}</a>
                       {/if}
                     {/each}
                   </span>
@@ -1598,5 +1620,28 @@
     border-radius: var(--radius-full);
     color: #fff;
     font-weight: 500;
+  }
+  .list-task-attachments {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex-basis: 100%;
+    margin-left: 22px;
+  }
+  .list-task-attachment {
+    font-size: 0.6875rem;
+    color: var(--color-teal);
+    text-decoration: none;
+    background: rgba(56, 129, 125, 0.08);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .list-task-attachment:hover {
+    color: var(--color-teal-dark);
+    text-decoration: underline;
   }
 </style>

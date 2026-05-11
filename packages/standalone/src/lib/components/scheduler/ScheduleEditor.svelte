@@ -5,6 +5,7 @@
   import DayToolSidebar from "$lib/components/scheduler/DayToolSidebar.svelte";
   import TaskScheduleSidebar from "$lib/components/scheduler/TaskScheduleSidebar.svelte";
   import ConfirmModal from "$lib/components/ConfirmModal.svelte";
+  import { uploadShowFile, deleteShowFile } from "$lib/show-files.js";
   import DayEditor from "$lib/components/scheduler/DayEditor.svelte";
   import DefaultsModal from "$lib/components/scheduler/DefaultsModal.svelte";
   import CastEditorModal from "$lib/components/scheduler/CastEditorModal.svelte";
@@ -28,6 +29,7 @@
     ScheduleDoc,
     Settings,
     Show,
+    ShowFile,
     Task,
   } from "@rehearsal-block/core";
   import { getDefaultCallTimes, downloadCsv, openPrintWindow, weekStartOf, eachDayOfRange, parseIsoDate, addDays, formatUsDateRange, blockingConflictsFor, nextLocationColor, newTask } from "@rehearsal-block/core";
@@ -2277,6 +2279,64 @@
    * the "Clear" button in the Completed section of the task sidebar so
    * Blake can reset the list (typically after a show opens).
    */
+  /**
+   * Upload a file attachment for this show (drawing PDF or reference
+   * photo). Optimistic-friendly: the Sidebar's pickFiles handler fires
+   * this per file; we fire the upload, then on success append to
+   * doc.files so the row appears in the Drawings list. On failure,
+   * toast and bail.
+   */
+  async function uploadFileForShow(file: File) {
+    if (!showId) {
+      showToast("Saving... try again in a moment.");
+      return;
+    }
+    try {
+      const meta = await uploadShowFile(showId, file);
+      pushUndoImmediate();
+      doc.files = [...(doc.files ?? []), meta];
+      showToast(`Uploaded ${meta.name}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      showToast(msg);
+    }
+  }
+
+  /**
+   * Remove a drawing from the doc + R2. Also detaches it from any
+   * task that referenced it via Task.attachmentIds so we don't leave
+   * dangling references.
+   */
+  async function removeFileFromShow(file: ShowFile) {
+    pushUndoImmediate();
+    doc.files = (doc.files ?? []).filter((f) => f.id !== file.id);
+    for (const [iso, day] of Object.entries(doc.schedule)) {
+      const tasks = day?.tasks;
+      if (!tasks) continue;
+      let changed = false;
+      const next = tasks.map((t) => {
+        if (!t.attachmentIds || !t.attachmentIds.includes(file.id)) return t;
+        changed = true;
+        const cleaned = t.attachmentIds.filter((id) => id !== file.id);
+        return { ...t, attachmentIds: cleaned.length > 0 ? cleaned : undefined };
+      });
+      if (changed) doc.schedule[iso] = { ...day, tasks: next };
+    }
+    if (doc.backlog) {
+      doc.backlog = doc.backlog.map((t) => {
+        if (!t.attachmentIds || !t.attachmentIds.includes(file.id)) return t;
+        const cleaned = t.attachmentIds.filter((id) => id !== file.id);
+        return { ...t, attachmentIds: cleaned.length > 0 ? cleaned : undefined };
+      });
+    }
+    try {
+      await deleteShowFile(file);
+    } catch {
+      /* the doc-side detach already happened; R2 row stays orphaned.
+         Not catastrophic - the file is no longer referenced anywhere. */
+    }
+  }
+
   function clearCompletedTasks() {
     pushUndoImmediate();
     const nextSchedule: typeof doc.schedule = {};
@@ -3940,6 +4000,8 @@
             onremovebacklog={removeBacklogTask}
             ontoggletask={toggleTaskByWhere}
             onrequestclearcompleted={() => (clearCompletedConfirmOpen = true)}
+            onuploadfile={uploadFileForShow}
+            onremovefile={removeFileFromShow}
           />
         </div>
       {/if}

@@ -41,6 +41,7 @@
   import LocationChips from "./LocationChips.svelte";
   import RichTextEditor from "./RichTextEditor.svelte";
   import TimePicker from "./TimePicker.svelte";
+  import { showFileUrl } from "$lib/show-files.js";
 
   interface Props {
     date: IsoDate;
@@ -127,6 +128,9 @@
   let newTaskText = $state("");
   let newTaskAssignees = $state<string[]>([]);
   let assigneePickerOpenFor = $state<string | "new" | null>(null);
+  /* Per-task paperclip popover. Same UX shape as the assignee picker:
+     click toggles, second click closes, click elsewhere is fine. */
+  let attachmentPickerOpenFor = $state<string | null>(null);
 
   /* Inline-edit state for task text. Set to a task id when the user
      double-clicks the text span; cleared on blur/Enter commit. */
@@ -170,6 +174,15 @@
     } else {
       onupdatetask?.(date, taskId, { assigneeIds: next.length > 0 ? next : undefined });
     }
+  }
+
+  function toggleAttachment(taskId: string, fileId: string, current: string[]) {
+    const next = current.includes(fileId)
+      ? current.filter((id) => id !== fileId)
+      : [...current, fileId];
+    onupdatetask?.(date, taskId, {
+      attachmentIds: next.length > 0 ? next : undefined,
+    });
   }
 
   function commitTaskTextEdit(taskId: string, text: string) {
@@ -948,6 +961,46 @@
                       {/each}
                       {#if show.cast.length === 0}
                         <p class="task-assignee-empty">Add team members in the sidebar.</p>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+                <div class="task-attach-control">
+                  <button
+                    type="button"
+                    class="task-attach-btn"
+                    class:has-attachments={(task.attachmentIds?.length ?? 0) > 0}
+                    title="Attach drawings or photos"
+                    aria-label="Attach files"
+                    onclick={() => attachmentPickerOpenFor = attachmentPickerOpenFor === task.id ? null : task.id}
+                  >
+                    📎{#if task.attachmentIds && task.attachmentIds.length > 0}<span class="task-attach-count">{task.attachmentIds.length}</span>{/if}
+                  </button>
+                  {#if attachmentPickerOpenFor === task.id}
+                    <div class="task-attach-popover">
+                      {#if !show.files || show.files.length === 0}
+                        <p class="task-assignee-empty">No drawings uploaded yet. Add some in the Drawings panel.</p>
+                      {:else}
+                        {#each show.files as file (file.id)}
+                          {@const attached = (task.attachmentIds ?? []).includes(file.id)}
+                          <label class="task-assignee-option">
+                            <input
+                              type="checkbox"
+                              checked={attached}
+                              onchange={() => toggleAttachment(task.id, file.id, task.attachmentIds ?? [])}
+                            />
+                            <span class="file-link-inline">{file.name}</span>
+                            <a
+                              href={showFileUrl(file)}
+                              target="_blank"
+                              rel="noopener"
+                              class="open-icon"
+                              title="Open in new tab"
+                              aria-label={`Open ${file.name}`}
+                              onclick={(e) => e.stopPropagation()}
+                            >↗</a>
+                          </label>
+                        {/each}
                       {/if}
                     </div>
                   {/if}
@@ -2775,5 +2828,72 @@
     font-style: italic;
     background: var(--color-bg-alt);
     border-radius: var(--radius-sm);
+  }
+
+  /* Per-task paperclip control. Sits between the assignee picker and
+     the reorder/delete buttons. */
+  .task-attach-control {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .task-attach-btn {
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1;
+    padding: 3px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .task-attach-btn:hover {
+    border-color: var(--color-teal);
+    color: var(--color-teal);
+  }
+  .task-attach-btn.has-attachments {
+    border-color: var(--color-teal);
+    color: var(--color-teal);
+  }
+  .task-attach-count {
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+  .task-attach-popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 220px;
+    max-width: 320px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-2);
+    z-index: 70;
+  }
+  .file-link-inline {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+  }
+  .open-icon {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-size: 0.75rem;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .open-icon:hover {
+    color: var(--color-teal);
   }
 </style>
