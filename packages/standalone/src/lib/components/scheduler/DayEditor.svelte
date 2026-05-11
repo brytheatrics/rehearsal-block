@@ -907,8 +907,16 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <span
                     class="task-edit-text-display"
-                    title="Double-click to edit"
-                    ondblclick={() => startEditingTask(task.id)}
+                    title="Click to edit"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => startEditingTask(task.id)}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        startEditingTask(task.id);
+                      }
+                    }}
                   >{task.text}</span>
                 {/if}
                 <div class="task-assignee-control">
