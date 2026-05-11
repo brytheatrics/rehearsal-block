@@ -29,7 +29,14 @@
     shareId: string;
   }
 
-  const { doc, shareId }: Props = $props();
+  const { doc: initialDoc, shareId }: Props = $props();
+
+  /* Local mutable copy of the doc so we can re-poll the share blob
+     and pick up Blake's edits (new tasks, edited text, new uploaded
+     drawings, etc.). The parent /view route fetched the doc once on
+     mount; without this, carpenters would have to reload the page to
+     see anything Blake adds after they first opened the link. */
+  let liveDoc = $state<ScheduleDoc>(initialDoc);
 
   type CheckState = { done: boolean; doneBy: string | null; doneAt: string | null };
 
@@ -52,8 +59,8 @@
       const { doneAt: _da, doneBy: _db, ...rest } = t;
       return { ...rest, done: false };
     };
-    const nextSchedule: typeof doc.schedule = {};
-    for (const [iso, day] of Object.entries(doc.schedule)) {
+    const nextSchedule: typeof liveDoc.schedule = {};
+    for (const [iso, day] of Object.entries(liveDoc.schedule)) {
       if (!day) continue;
       if (!day.tasks || day.tasks.length === 0) {
         nextSchedule[iso] = day;
@@ -62,9 +69,9 @@
       nextSchedule[iso] = { ...day, tasks: day.tasks.map(overlay) };
     }
     return {
-      ...doc,
+      ...liveDoc,
       schedule: nextSchedule,
-      backlog: doc.backlog ? doc.backlog.map(overlay) : doc.backlog,
+      backlog: liveDoc.backlog ? liveDoc.backlog.map(overlay) : liveDoc.backlog,
     };
   });
 
@@ -86,9 +93,30 @@
       nameModalOpen = true;
     }
     fetchChecks();
-    const interval = setInterval(fetchChecks, 15_000);
-    return () => clearInterval(interval);
+    const checksInterval = setInterval(fetchChecks, 15_000);
+
+    /* Re-poll the doc itself every 30s so new tasks, edited text,
+       and freshly uploaded files Blake adds in the editor flow to
+       carpenters without making them refresh. The doc payload is
+       small (gzipped JSON, KB range), so this is cheap. */
+    const docInterval = setInterval(fetchDoc, 30_000);
+
+    return () => {
+      clearInterval(checksInterval);
+      clearInterval(docInterval);
+    };
   });
+
+  async function fetchDoc() {
+    try {
+      const res = await fetch(`/api/share?id=${encodeURIComponent(shareId)}`);
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.doc) liveDoc = body.doc;
+    } catch {
+      /* network glitch - next poll retries */
+    }
+  }
 
   function commitName() {
     const trimmed = nameInputValue.trim();
@@ -120,11 +148,11 @@
 
   function findTaskState(taskId: string): { done: boolean } | null {
     if (checks[taskId]) return { done: checks[taskId].done };
-    for (const day of Object.values(doc.schedule)) {
+    for (const day of Object.values(liveDoc.schedule)) {
       const t = day?.tasks?.find((x) => x.id === taskId);
       if (t) return { done: t.done };
     }
-    const bt = doc.backlog?.find((x) => x.id === taskId);
+    const bt = liveDoc.backlog?.find((x) => x.id === taskId);
     if (bt) return { done: bt.done };
     return null;
   }
@@ -222,7 +250,7 @@
   const filterRange = $derived.by<{ start: IsoDate; end: IsoDate } | null>(() => {
     const today = todayIso();
     if (filter === "today") return { start: today, end: today };
-    if (filter === "upcoming") return { start: today, end: doc.show.endDate as IsoDate };
+    if (filter === "upcoming") return { start: today, end: liveDoc.show.endDate as IsoDate };
     if (filter === "week") {
       // 7-day window starting today (carpenter-friendly "what's this week").
       return { start: today, end: addDaysIso(today, 6) };
@@ -238,13 +266,13 @@
 </script>
 
 <svelte:head>
-  <title>{doc.show.name} - Tasks</title>
+  <title>{liveDoc.show.name} - Tasks</title>
 </svelte:head>
 
 <div class="task-share-page" class:phone={isPhoneWidth}>
   <header class="task-share-header">
     <div class="header-left">
-      <h1>{doc.show.name}</h1>
+      <h1>{liveDoc.show.name}</h1>
       {#if carpenterName}
         <span class="carpenter-name">
           Hi, {carpenterName}.
