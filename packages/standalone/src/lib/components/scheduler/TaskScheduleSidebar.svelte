@@ -247,7 +247,7 @@
 
   <section class="ts-section">
     <header class="ts-header">
-      <h3>Drawings</h3>
+      <h3>Uploads</h3>
       <div class="ts-header-meta">
         <span class="ts-count">{show.files?.length ?? 0}</span>
         {#if !readOnly}
@@ -261,7 +261,7 @@
       </div>
     </header>
     {#if !readOnly}
-      <p class="ts-hint">PDFs and photos. Click to open.</p>
+      <p class="ts-hint">PDFs and photos. Click to open. <strong>×</strong> to delete.</p>
       <input
         type="file"
         accept="application/pdf,image/*"
@@ -271,10 +271,10 @@
         onchange={onFilePicked}
       />
     {:else}
-      <p class="ts-hint">Drawings + photos for this build. Tap to open.</p>
+      <p class="ts-hint">Files for this build. Tap to open.</p>
     {/if}
     {#if !show.files || show.files.length === 0}
-      <p class="ts-empty">No drawings uploaded yet.</p>
+      <p class="ts-empty">Nothing uploaded yet.</p>
     {:else}
       <ul class="ts-list">
         {#each show.files as file (file.id)}
