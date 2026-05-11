@@ -20,7 +20,11 @@ These steps need a human to run them. Listed in the order they need to happen.
       ```json
       [
         {
-          "AllowedOrigins": ["https://rehearsalblock.com", "https://www.rehearsalblock.com", "http://localhost:5173", "http://localhost:50135"],
+          "AllowedOrigins": [
+            "https://rehearsalblock.com",
+            "https://www.rehearsalblock.com",
+            "http://localhost:5173"
+          ],
           "AllowedMethods": ["PUT", "GET"],
           "AllowedHeaders": ["Content-Type"],
           "ExposeHeaders": ["ETag"],
@@ -28,9 +32,10 @@ These steps need a human to run them. Listed in the order they need to happen.
         }
       ]
       ```
-      Replace the origins list with whatever domains the editor
-      actually runs on (production + your dev port). Without this,
-      browser uploads larger than 6 MB hit a CORS error.
+      Paste the entire `[ {...} ]` block. Without this, browser
+      uploads larger than 6 MB hit a CORS error. If a dev port
+      other than 5173 is ever needed, just edit this list and
+      re-save - updates take effect in seconds.
 
 - [ ] **Run the advisor-fix migration**
       File: `packages/standalone/supabase/migrations/006_advisor_fixes.sql`
