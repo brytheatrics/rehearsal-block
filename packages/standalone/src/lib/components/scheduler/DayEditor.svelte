@@ -132,6 +132,60 @@
      click toggles, second click closes, click elsewhere is fine. */
   let attachmentPickerOpenFor = $state<string | null>(null);
 
+  /* Drag-to-reorder state. Desktop uses the drag handle + native
+     HTML5 drag-drop; mobile keeps the ↑/↓ arrows since touch drag
+     is awkward. We track the task being dragged so the drop handler
+     knows what to move where. */
+  let draggingTaskId = $state<string | null>(null);
+  let dragOverTaskId = $state<string | null>(null);
+
+  function handleTaskDragStart(e: DragEvent, taskId: string) {
+    if (!e.dataTransfer) return;
+    draggingTaskId = taskId;
+    e.dataTransfer.effectAllowed = "move";
+    /* Use a private MIME type so this doesn't fire other handlers
+       (cell drops, etc.) that look at generic drag payloads. */
+    e.dataTransfer.setData("text/rb-task-reorder", taskId);
+    e.dataTransfer.setData("text/plain", "Task");
+  }
+
+  function handleTaskDragOver(e: DragEvent, taskId: string) {
+    if (!draggingTaskId || draggingTaskId === taskId) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    dragOverTaskId = taskId;
+  }
+
+  function handleTaskDragLeave(taskId: string) {
+    if (dragOverTaskId === taskId) dragOverTaskId = null;
+  }
+
+  function handleTaskDrop(e: DragEvent, targetTaskId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragged = draggingTaskId;
+    draggingTaskId = null;
+    dragOverTaskId = null;
+    if (!dragged || dragged === targetTaskId) return;
+    const tasks = day.tasks ?? [];
+    const fromIdx = tasks.findIndex((t) => t.id === dragged);
+    const toIdx = tasks.findIndex((t) => t.id === targetTaskId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    /* Walk the array one direction at a time using the existing
+       reorder callback so the parent's undo stack records each step.
+       For small lists (the editor's day-task lists) this is fine. */
+    const direction = fromIdx < toIdx ? "down" : "up";
+    const steps = Math.abs(toIdx - fromIdx);
+    for (let i = 0; i < steps; i++) {
+      onreordertask?.(date, dragged, direction);
+    }
+  }
+
+  function handleTaskDragEnd() {
+    draggingTaskId = null;
+    dragOverTaskId = null;
+  }
+
   /* Inline-edit state for task text. Set to a task id when the user
      double-clicks the text span; cleared on blur/Enter commit. */
   let editingTaskId = $state<string | null>(null);
@@ -876,8 +930,23 @@
         {#if day.tasks && day.tasks.length > 0}
           <ul class="task-edit-list">
             {#each day.tasks as task, idx (task.id)}
-              <li class="task-edit-row" class:done={task.done}>
-                <span class="task-edit-handle" aria-hidden="true">⋮⋮</span>
+              <li
+                class="task-edit-row"
+                class:done={task.done}
+                class:drag-over={dragOverTaskId === task.id}
+                class:dragging={draggingTaskId === task.id}
+                ondragover={(e) => handleTaskDragOver(e, task.id)}
+                ondragleave={() => handleTaskDragLeave(task.id)}
+                ondrop={(e) => handleTaskDrop(e, task.id)}
+                ondragend={handleTaskDragEnd}
+              >
+                <span
+                  class="task-edit-handle"
+                  aria-hidden="true"
+                  draggable="true"
+                  ondragstart={(e) => handleTaskDragStart(e, task.id)}
+                  title="Drag to reorder"
+                >⋮⋮</span>
                 <input
                   type="checkbox"
                   class="task-edit-check"
@@ -1008,7 +1077,7 @@
                 <div class="task-row-buttons">
                   <button
                     type="button"
-                    class="task-icon-btn"
+                    class="task-icon-btn task-icon-arrow"
                     title="Move up"
                     aria-label="Move up"
                     disabled={idx === 0}
@@ -1016,7 +1085,7 @@
                   >↑</button>
                   <button
                     type="button"
-                    class="task-icon-btn"
+                    class="task-icon-btn task-icon-arrow"
                     title="Move down"
                     aria-label="Move down"
                     disabled={idx === (day.tasks!.length - 1)}
@@ -2713,17 +2782,25 @@
   }
   .task-edit-row {
     display: grid;
-    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-columns: auto auto 1fr auto auto auto;
     gap: 6px;
     align-items: center;
     padding: 4px 6px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
+    transition: border-color var(--transition-fast), opacity var(--transition-fast);
   }
   .task-edit-row.done .task-edit-text {
     text-decoration: line-through;
     color: var(--color-text-muted);
+  }
+  .task-edit-row.drag-over {
+    border-color: var(--color-teal);
+    background: rgba(56, 129, 125, 0.06);
+  }
+  .task-edit-row.dragging {
+    opacity: 0.45;
   }
   .task-edit-handle {
     color: var(--color-text-subtle);
@@ -2731,6 +2808,12 @@
     line-height: 1;
     cursor: grab;
     user-select: none;
+  }
+  .task-edit-handle:active {
+    cursor: grabbing;
+  }
+  .task-edit-handle:hover {
+    color: var(--color-teal);
   }
   .task-edit-check {
     margin: 0;
@@ -2775,6 +2858,20 @@
     display: inline-flex;
     gap: 2px;
     align-items: center;
+  }
+
+  /* Desktop has working HTML5 drag from the ⋮⋮ handle; mobile uses
+     the ↑/↓ arrow buttons since touch drag is awkward. Hide each
+     surface in the inverse environment. */
+  @media (min-width: 769px) {
+    .task-icon-arrow {
+      display: none;
+    }
+  }
+  @media (max-width: 768px) {
+    .task-edit-handle {
+      display: none;
+    }
   }
   .task-icon-btn {
     font: inherit;
