@@ -208,6 +208,92 @@
     toggleTask(date, taskId);
   }
 
+  /**
+   * Carpenter writes flow through /api/share-mutate, which fetches
+   * the current R2 doc, applies the operation, and writes back.
+   * Server-side merge avoids racing two carpenters' clicks.
+   *
+   * We update liveDoc optimistically so the UI feels instant; the
+   * next 30s doc poll will reconcile if the server-side result
+   * differs (rare).
+   */
+  async function carpenterAddBacklog(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (!carpenterName) {
+      nameInputValue = "";
+      nameModalOpen = true;
+      return;
+    }
+    /* Optimistic local insert with a placeholder id; the server
+       will assign the real id, but liveDoc gets replaced on the
+       next poll so divergence is short-lived. */
+    const placeholderId = `task_pending_${Date.now()}`;
+    liveDoc = {
+      ...liveDoc,
+      backlog: [...(liveDoc.backlog ?? []), { id: placeholderId, text: trimmed, done: false }],
+    };
+    try {
+      await fetch("/api/share-mutate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shareId,
+          action: "addBacklog",
+          payload: { text: trimmed },
+          addedBy: carpenterName,
+        }),
+      });
+      /* Force a doc refresh so the placeholder id is replaced with
+         the real one. Without this the carpenter sees a duplicate
+         row until the next 30s poll fires. */
+      fetchDoc();
+    } catch {
+      /* revert optimistic */
+      liveDoc = {
+        ...liveDoc,
+        backlog: (liveDoc.backlog ?? []).filter((t) => t.id !== placeholderId),
+      };
+    }
+  }
+
+  async function carpenterMoveToToday(taskId: string) {
+    const today = todayIso();
+    const task = liveDoc.backlog?.find((t) => t.id === taskId);
+    if (!task) return;
+    /* Optimistic local move. */
+    const next = { ...liveDoc };
+    next.backlog = (next.backlog ?? []).filter((t) => t.id !== taskId);
+    const existing = next.schedule[today];
+    const baseDay = existing ?? {
+      eventTypeId: "",
+      calls: [],
+      description: "",
+      notes: "",
+      location: "",
+    };
+    next.schedule = {
+      ...next.schedule,
+      [today]: { ...baseDay, tasks: [...(baseDay.tasks ?? []), task] },
+    };
+    liveDoc = next;
+    try {
+      await fetch("/api/share-mutate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shareId,
+          action: "moveToToday",
+          payload: { taskId, todayIso: today },
+          addedBy: carpenterName,
+        }),
+      });
+    } catch {
+      /* revert optimistic on failure */
+      fetchDoc();
+    }
+  }
+
   /* ---- Filter + view mode ---- */
 
   type Filter = "today" | "week" | "upcoming" | "all";
@@ -321,6 +407,9 @@
         show={viewDoc}
         readOnly={true}
         ontoggletask={toggleTask}
+        oncarpenteraddbacklog={carpenterAddBacklog}
+        oncarpentermovetotoday={carpenterMoveToToday}
+        sectionsExpandedByDefault={!isPhoneWidth}
       />
     </aside>
     <main class="task-share-main">
@@ -493,10 +582,13 @@
     .task-share-sidebar {
       position: static;
       max-height: none;
-      order: 2;
+      /* Above the list view on mobile so carpenters can see (and
+         expand) Backlog / Completed / Uploads without scrolling
+         past the day list. Sections default to collapsed on mobile. */
+      order: 1;
     }
     .task-share-main {
-      order: 1;
+      order: 2;
     }
     .task-share-page.phone .task-share-header {
       gap: var(--space-2);

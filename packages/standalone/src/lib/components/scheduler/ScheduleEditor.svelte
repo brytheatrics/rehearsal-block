@@ -3102,6 +3102,102 @@
   });
 
   /**
+   * Doc-poll effect: fetch the share doc every 30s and merge in any
+   * carpenter-driven changes (backlog adds, moveToToday) so Blake's
+   * editor view stays in sync without needing a manual reload.
+   *
+   * Strategy:
+   *   - Diff backlog: append any task ids on the remote that aren't
+   *     local (carpenter added).
+   *   - Diff schedule[*].tasks: append any tasks on the remote that
+   *     aren't anywhere local (carpenter moved a backlog item to a
+   *     day).
+   *   - Remove from local backlog any task that's now on a day in
+   *     the remote (carpenter moved it - we shouldn't keep both).
+   *
+   * This is purely additive merge - we never delete Blake's local
+   * changes. The 5s auto-republish then pushes the merged state
+   * back to R2.
+   */
+  $effect(() => {
+    if (doc.kind !== "task") return;
+    if (!shareId) return;
+    let alive = true;
+
+    async function pullDoc() {
+      if (!alive) return;
+      try {
+        const res = await fetch(`/api/share?id=${encodeURIComponent(shareId!)}`);
+        if (!res.ok) return;
+        const body = await res.json();
+        const remote = body.doc as ScheduleDoc | undefined;
+        if (!remote) return;
+        applyRemoteCarpenterMutations(remote);
+      } catch {
+        /* glitch - next poll retries */
+      }
+    }
+
+    pullDoc();
+    const interval = setInterval(pullDoc, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  });
+
+  function applyRemoteCarpenterMutations(remote: ScheduleDoc) {
+    /* Index local tasks by id across schedule + backlog so we can
+       answer "is this id already known locally?". */
+    const localIds = new Set<string>();
+    for (const day of Object.values(doc.schedule)) {
+      for (const t of day?.tasks ?? []) localIds.add(t.id);
+    }
+    for (const t of doc.backlog ?? []) localIds.add(t.id);
+
+    /* Append carpenter-added backlog items. */
+    const remoteBacklog = remote.backlog ?? [];
+    const newBacklogItems = remoteBacklog.filter((t) => !localIds.has(t.id));
+    if (newBacklogItems.length > 0) {
+      doc.backlog = [...(doc.backlog ?? []), ...newBacklogItems];
+    }
+
+    /* Append carpenter-added day tasks (moveToToday operations). */
+    for (const [iso, day] of Object.entries(remote.schedule)) {
+      const remoteTasks = day?.tasks;
+      if (!remoteTasks) continue;
+      const newDayTasks = remoteTasks.filter((t) => !localIds.has(t.id));
+      if (newDayTasks.length === 0) continue;
+      const localDay = doc.schedule[iso];
+      const baseDay = localDay ?? {
+        eventTypeId: "",
+        calls: [],
+        description: "",
+        notes: "",
+        location: "",
+      };
+      doc.schedule[iso] = {
+        ...baseDay,
+        tasks: [...(baseDay.tasks ?? []), ...newDayTasks],
+      };
+    }
+
+    /* If the remote moved an item out of backlog onto a day, the
+       merge above already adds it to the day. Now strip it from our
+       local backlog so we don't render it twice. */
+    const remoteDayTaskIds = new Set<string>();
+    for (const day of Object.values(remote.schedule)) {
+      for (const t of day?.tasks ?? []) remoteDayTaskIds.add(t.id);
+    }
+    if (doc.backlog) {
+      const filtered = doc.backlog.filter((t) => !remoteDayTaskIds.has(t.id));
+      if (filtered.length !== doc.backlog.length) {
+        doc.backlog = filtered;
+      }
+    }
+  }
+
+  /**
    * Index every task by id once, then walk the carpenter check rows
    * and update only the tasks whose state has actually changed (so
    * the auto-republish $effect doesn't fire on every poll for

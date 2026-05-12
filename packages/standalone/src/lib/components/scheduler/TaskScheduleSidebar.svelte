@@ -48,6 +48,22 @@
      */
     onuploadfile?: (file: File) => void;
     onremovefile?: (file: ShowFile) => void;
+    /**
+     * Initial collapse state for the three sections (Backlog, Completed,
+     * Uploads). Defaults to true (all expanded). The carpenter share view
+     * passes false on mobile so the list doesn't get pushed off-screen
+     * by three big stacked panels.
+     */
+    sectionsExpandedByDefault?: boolean;
+    /**
+     * Carpenter-mode-only callbacks. Same name space as the editor
+     * onaddbacklog but distinct so we can permit "carpenter adds an
+     * unscheduled task" in readOnly without enabling text editing.
+     * Wired by TaskShareView to /api/share-mutate.
+     */
+    oncarpenteraddbacklog?: (text: string) => void;
+    /** Carpenter moves a backlog task onto today's date. */
+    oncarpentermovetotoday?: (taskId: string) => void;
   }
 
   const {
@@ -59,6 +75,9 @@
     onrequestclearcompleted,
     onuploadfile,
     onremovefile,
+    sectionsExpandedByDefault = true,
+    oncarpenteraddbacklog,
+    oncarpentermovetotoday,
   }: Props = $props();
 
   /* File picker for the Drawings upload button. Hidden input + a
@@ -87,12 +106,31 @@
     return "📎";
   }
 
+  /* Per-section collapse state. Default open everywhere - the
+     read-only / carpenter view sets these to closed on mobile via
+     the `collapsedDefault` prop so a phone-sized share link doesn't
+     bury the list view under three big stacked panels. */
+  let backlogOpen = $state(sectionsExpandedByDefault);
+  let completedOpen = $state(sectionsExpandedByDefault);
+  let uploadsOpen = $state(sectionsExpandedByDefault);
+
+  /* "Add to today" - carpenter helper for moveBacklogToToday. Editor
+     uses drag-and-drop, which doesn't work on phones, so carpenters
+     get a button on each backlog row instead. */
+  function todayIsoForCarpenter(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
   let newBacklogText = $state("");
 
   function commitBacklog() {
     const trimmed = newBacklogText.trim();
     if (!trimmed) return;
-    onaddbacklog?.(trimmed);
+    if (readOnly) {
+      oncarpenteraddbacklog?.(trimmed);
+    } else {
+      onaddbacklog?.(trimmed);
+    }
     newBacklogText = "";
   }
 
@@ -147,13 +185,47 @@
 </script>
 
 <aside class="task-sidebar">
-  <section class="ts-section">
-    <header class="ts-header">
-      <h3>Backlog</h3>
-      <span class="ts-count">{show.backlog?.filter((t) => !t.done).length ?? 0}</span>
-    </header>
+  <section class="ts-section" class:collapsed={!backlogOpen}>
+    <div class="ts-section-row">
+      <button
+        type="button"
+        class="ts-section-toggle"
+        aria-expanded={backlogOpen}
+        onclick={() => (backlogOpen = !backlogOpen)}
+      >
+        <span class="ts-chevron" aria-hidden="true">{backlogOpen ? "▾" : "▸"}</span>
+        <h3>Backlog</h3>
+        <span class="ts-count">{show.backlog?.filter((t) => !t.done).length ?? 0}</span>
+      </button>
+    </div>
+    {#if backlogOpen}
     {#if readOnly}
-      <p class="ts-hint">Unscheduled tasks.</p>
+      {#if oncarpenteraddbacklog}
+        <p class="ts-hint">Add a task you've spotted, or tap → to start it today.</p>
+        <div class="ts-add-row">
+          <input
+            type="text"
+            class="ts-add-input"
+            placeholder="Add task..."
+            value={newBacklogText}
+            oninput={(e) => (newBacklogText = e.currentTarget.value)}
+            onkeydown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitBacklog();
+              }
+            }}
+          />
+          <button
+            type="button"
+            class="ts-add-btn"
+            disabled={!newBacklogText.trim()}
+            onclick={commitBacklog}
+          >Add</button>
+        </div>
+      {:else}
+        <p class="ts-hint">Unscheduled tasks.</p>
+      {/if}
     {:else}
       <p class="ts-hint">Unscheduled tasks. Drag onto a day to schedule it.</p>
       <div class="ts-add-row">
@@ -194,6 +266,15 @@
               <span class="ts-handle" aria-hidden="true">⋮⋮</span>
             {/if}
             <span class="ts-text">{task.text}</span>
+            {#if readOnly && oncarpentermovetotoday}
+              <button
+                type="button"
+                class="ts-icon-btn ts-icon-teal"
+                title="Move to today"
+                aria-label={`Move "${task.text}" to today`}
+                onclick={() => oncarpentermovetotoday(task.id)}
+              >→</button>
+            {/if}
             {#if !readOnly}
               <button
                 type="button"
@@ -207,23 +288,31 @@
         {/each}
       </ul>
     {/if}
+    {/if}
   </section>
 
-  <section class="ts-section">
-    <header class="ts-header">
-      <h3>Completed</h3>
-      <div class="ts-header-meta">
+  <section class="ts-section" class:collapsed={!completedOpen}>
+    <div class="ts-section-row">
+      <button
+        type="button"
+        class="ts-section-toggle"
+        aria-expanded={completedOpen}
+        onclick={() => (completedOpen = !completedOpen)}
+      >
+        <span class="ts-chevron" aria-hidden="true">{completedOpen ? "▾" : "▸"}</span>
+        <h3>Completed</h3>
         <span class="ts-count">{completed.length}</span>
-        {#if completed.length > 0 && !readOnly}
-          <button
-            type="button"
-            class="ts-clear-btn"
-            title="Permanently delete all completed tasks"
-            onclick={onrequestclearcompleted}
-          >Clear</button>
-        {/if}
-      </div>
-    </header>
+      </button>
+      {#if completed.length > 0 && !readOnly}
+        <button
+          type="button"
+          class="ts-clear-btn"
+          title="Permanently delete all completed tasks"
+          onclick={() => onrequestclearcompleted?.()}
+        >Clear</button>
+      {/if}
+    </div>
+    {#if completedOpen}
     {#if completed.length === 0}
       <p class="ts-empty">Nothing complete yet.</p>
     {:else}
@@ -243,23 +332,31 @@
         {/each}
       </ul>
     {/if}
+    {/if}
   </section>
 
-  <section class="ts-section">
-    <header class="ts-header">
-      <h3>Uploads</h3>
-      <div class="ts-header-meta">
+  <section class="ts-section" class:collapsed={!uploadsOpen}>
+    <div class="ts-section-row">
+      <button
+        type="button"
+        class="ts-section-toggle"
+        aria-expanded={uploadsOpen}
+        onclick={() => (uploadsOpen = !uploadsOpen)}
+      >
+        <span class="ts-chevron" aria-hidden="true">{uploadsOpen ? "▾" : "▸"}</span>
+        <h3>Uploads</h3>
         <span class="ts-count">{show.files?.length ?? 0}</span>
-        {#if !readOnly}
-          <button
-            type="button"
-            class="ts-clear-btn"
-            title="Upload a PDF or photo"
-            onclick={pickFiles}
-          >Upload</button>
-        {/if}
-      </div>
-    </header>
+      </button>
+      {#if !readOnly}
+        <button
+          type="button"
+          class="ts-clear-btn"
+          title="Upload a PDF or photo"
+          onclick={pickFiles}
+        >Upload</button>
+      {/if}
+    </div>
+    {#if uploadsOpen}
     {#if !readOnly}
       <p class="ts-hint">PDFs and photos. Click to open. <strong>×</strong> to delete.</p>
       <input
@@ -300,6 +397,7 @@
         {/each}
       </ul>
     {/if}
+    {/if}
   </section>
 </aside>
 
@@ -309,6 +407,57 @@
     flex-direction: column;
     gap: var(--space-4);
     min-width: 0;
+  }
+
+  .ts-section-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .ts-section-toggle {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: var(--space-2);
+    cursor: pointer;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+  }
+  .ts-chevron {
+    display: inline-block;
+    width: 14px;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+  .ts-section-toggle h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 0.9375rem;
+    color: var(--color-plum);
+  }
+  .ts-section.collapsed {
+    /* Tighten padding when collapsed so the header row is the
+       only thing visible. */
+    padding-bottom: var(--space-2);
+    gap: 0;
+  }
+
+  .ts-icon-teal {
+    color: var(--color-teal);
+    font-weight: 700;
+  }
+  .ts-icon-teal:hover {
+    border-color: var(--color-teal);
+    background: rgba(56, 129, 125, 0.08);
   }
 
   .ts-section {
@@ -321,28 +470,10 @@
     gap: var(--space-2);
   }
 
-  .ts-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-  .ts-header h3 {
-    margin: 0;
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    color: var(--color-plum);
-  }
   .ts-count {
     font-size: 0.75rem;
     color: var(--color-text-muted);
     font-weight: 500;
-  }
-
-  .ts-header-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
   }
 
   .ts-clear-btn {
