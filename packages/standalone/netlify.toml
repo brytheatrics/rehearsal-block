@@ -30,12 +30,6 @@
   NODE_VERSION = "22"
   PNPM_VERSION = "10"
 
-# Force the Netlify-supplied subdomain to redirect to the custom domain
-# so bookmarks, old share links, and stray traffic all land on a single
-# canonical URL. Without this, auth redirects + share links sent before
-# the custom domain was wired could leak users onto netlify.app.
-[[redirects]]
-  from = "https://rehearsal-block.netlify.app/*"
-  to = "https://rehearsalblock.com/:splat"
-  status = 301
-  force = true
+# Note: the netlify.app → rehearsalblock.com canonical redirect lives
+# in `static/_redirects` instead of `[[redirects]]` here because the
+# SvelteKit Netlify adapter blocks netlify.toml redirect rules.

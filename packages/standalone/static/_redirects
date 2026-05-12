@@ -1,0 +1,10 @@
+# Force the Netlify-supplied subdomain to redirect to the custom
+# domain so bookmarks, old share links, and stray traffic all land
+# on a single canonical URL. The `!` forces the redirect even when
+# a static file or function would otherwise serve the request.
+#
+# Lives in static/_redirects (not netlify.toml) because the
+# SvelteKit Netlify adapter blocks netlify.toml redirects with the
+# error "Redirects are not supported in netlify.toml. Use
+# _redirects instead."
+https://rehearsal-block.netlify.app/* https://rehearsalblock.com/:splat 301!
