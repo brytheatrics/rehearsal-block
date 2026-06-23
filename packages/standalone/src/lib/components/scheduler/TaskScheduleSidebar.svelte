@@ -64,6 +64,12 @@
     oncarpenteraddbacklog?: (text: string) => void;
     /** Carpenter moves a backlog task onto today's date. */
     oncarpentermovetotoday?: (taskId: string) => void;
+    /**
+     * Editor moves a day task back to the Backlog. Fired when a
+     * `text/rb-day-task` drag from DayEditor is dropped on the
+     * Backlog section. Disabled in readOnly mode.
+     */
+    onmovedaytaskbacklog?: (fromDate: string, taskId: string) => void;
   }
 
   const {
@@ -78,7 +84,39 @@
     sectionsExpandedByDefault = true,
     oncarpenteraddbacklog,
     oncarpentermovetotoday,
+    onmovedaytaskbacklog,
   }: Props = $props();
+
+  /* Backlog-section drop target state. Lights up the section border
+     while a day-task drag hovers over it. */
+  let backlogDragOver = $state(false);
+
+  function backlogDragOverHandler(e: DragEvent) {
+    if (readOnly || !onmovedaytaskbacklog) return;
+    if (!e.dataTransfer?.types.includes("text/rb-day-task")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    backlogDragOver = true;
+  }
+
+  function backlogDragLeaveHandler() {
+    backlogDragOver = false;
+  }
+
+  function backlogDropHandler(e: DragEvent) {
+    backlogDragOver = false;
+    if (readOnly || !onmovedaytaskbacklog) return;
+    const payload = e.dataTransfer?.getData("text/rb-day-task");
+    if (!payload) return;
+    const colon = payload.indexOf(":");
+    if (colon < 0) return;
+    const fromDate = payload.slice(0, colon);
+    const taskId = payload.slice(colon + 1);
+    if (!fromDate || !taskId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onmovedaytaskbacklog(fromDate, taskId);
+  }
 
   /* File picker for the Drawings upload button. Hidden input + a
      styled trigger button works around the limited <input type="file">
@@ -185,7 +223,16 @@
 </script>
 
 <aside class="task-sidebar">
-  <section class="ts-section" class:collapsed={!backlogOpen}>
+  <section
+    class="ts-section"
+    class:collapsed={!backlogOpen}
+    class:drop-target={backlogDragOver}
+    role="region"
+    aria-label="Backlog"
+    ondragover={backlogDragOverHandler}
+    ondragleave={backlogDragLeaveHandler}
+    ondrop={backlogDropHandler}
+  >
     <div class="ts-section-row">
       <button
         type="button"
@@ -443,6 +490,10 @@
     font-family: var(--font-display);
     font-size: 0.9375rem;
     color: var(--color-plum);
+  }
+  .ts-section.drop-target {
+    border-color: var(--color-teal);
+    background: rgba(56, 129, 125, 0.06);
   }
   .ts-section.collapsed {
     /* Tighten padding when collapsed so the header row is the

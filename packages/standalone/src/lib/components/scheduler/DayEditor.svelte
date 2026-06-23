@@ -83,6 +83,9 @@
     onupdatetask?: (date: IsoDate, taskId: string, patch: Partial<Task>) => void;
     onremovetask?: (date: IsoDate, taskId: string) => void;
     onreordertask?: (date: IsoDate, taskId: string, dir: "up" | "down") => void;
+    /** Move a day task back to the doc-level Backlog. Used by the
+     *  per-row button and by drag-to-Backlog from the sidebar. */
+    onmovetaskbacklog?: (date: IsoDate, taskId: string) => void;
     /**
      * When set by the parent (after a Task chip drop), the day editor
      * enters inline-edit mode for this task id and immediately calls
@@ -114,6 +117,7 @@
     onupdatetask,
     onremovetask,
     onreordertask,
+    onmovetaskbacklog,
     pendingFocusTaskId = null,
     onclearpendingfocus,
   }: Props = $props();
@@ -142,10 +146,14 @@
   function handleTaskDragStart(e: DragEvent, taskId: string) {
     if (!e.dataTransfer) return;
     draggingTaskId = taskId;
-    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.effectAllowed = "copyMove";
     /* Use a private MIME type so this doesn't fire other handlers
        (cell drops, etc.) that look at generic drag payloads. */
     e.dataTransfer.setData("text/rb-task-reorder", taskId);
+    /* Second payload lets the Backlog section in TaskScheduleSidebar
+       accept a drop. Format: `<sourceDate>:<taskId>` so the parent
+       knows which day to remove from. */
+    e.dataTransfer.setData("text/rb-day-task", `${date}:${taskId}`);
     e.dataTransfer.setData("text/plain", "Task");
   }
 
@@ -1091,6 +1099,13 @@
                     disabled={idx === (day.tasks!.length - 1)}
                     onclick={() => onreordertask?.(date, task.id, "down")}
                   >↓</button>
+                  <button
+                    type="button"
+                    class="task-icon-btn task-icon-arrow"
+                    title="Move to Backlog"
+                    aria-label={`Move "${task.text}" to Backlog`}
+                    onclick={() => onmovetaskbacklog?.(date, task.id)}
+                  >⇤</button>
                   <button
                     type="button"
                     class="task-icon-btn task-icon-danger"

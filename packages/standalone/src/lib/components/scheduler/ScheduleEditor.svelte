@@ -2256,6 +2256,24 @@
   }
 
   /**
+   * Inverse of moveBacklogTaskToDay - take a task off a specific day
+   * and append it back to the doc-level backlog. Drives both the
+   * "Move to Backlog" button on each day-task row in the DayEditor and
+   * the drag-onto-Backlog-section flow in TaskScheduleSidebar.
+   */
+  function moveDayTaskToBacklog(fromDate: IsoDate, taskId: string) {
+    const existing = doc.schedule[fromDate];
+    const task = existing?.tasks?.find((t) => t.id === taskId);
+    if (!existing || !task) return;
+    pushUndoImmediate();
+    doc.schedule[fromDate] = {
+      ...existing,
+      tasks: (existing.tasks ?? []).filter((t) => t.id !== taskId),
+    };
+    doc.backlog = [...(doc.backlog ?? []), task];
+  }
+
+  /**
    * "Clear" button confirm state. The sidebar emits a request, the
    * confirm modal renders here at page level (not inside the sidebar's
    * sticky container, which would trap the modal in its stacking
@@ -4098,6 +4116,7 @@
             onrequestclearcompleted={() => (clearCompletedConfirmOpen = true)}
             onuploadfile={uploadFileForShow}
             onremovefile={removeFileFromShow}
+            onmovedaytaskbacklog={moveDayTaskToBacklog}
           />
         </div>
       {/if}
@@ -4213,6 +4232,7 @@
           onupdatetask={updateTaskOnDay}
           onremovetask={removeTaskFromDay}
           onreordertask={reorderTaskOnDay}
+          onmovetaskbacklog={moveDayTaskToBacklog}
           {pendingFocusTaskId}
           onclearpendingfocus={() => (pendingFocusTaskId = null)}
         />
