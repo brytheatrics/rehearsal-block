@@ -224,7 +224,7 @@
 
 <aside class="task-sidebar">
   <section
-    class="ts-section"
+    class="ts-section ts-section-backlog"
     class:collapsed={!backlogOpen}
     class:drop-target={backlogDragOver}
     role="region"
@@ -338,7 +338,7 @@
     {/if}
   </section>
 
-  <section class="ts-section" class:collapsed={!completedOpen}>
+  <section class="ts-section ts-section-completed" class:collapsed={!completedOpen}>
     <div class="ts-section-row">
       <button
         type="button"
@@ -382,7 +382,7 @@
     {/if}
   </section>
 
-  <section class="ts-section" class:collapsed={!uploadsOpen}>
+  <section class="ts-section ts-section-uploads" class:collapsed={!uploadsOpen}>
     <div class="ts-section-row">
       <button
         type="button"
@@ -709,5 +709,16 @@
     color: var(--color-teal);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+
+  /* Mobile: sidebar sits below the calendar/list. Reorder the three
+     sections so the actionable ones (Backlog, Uploads) come before
+     the archival Completed list. Desktop keeps the original visual
+     order (Backlog above Completed above Uploads). Breakpoint matches
+     the ScheduleEditor's grid collapse. */
+  @media (max-width: 900px) {
+    .ts-section-backlog { order: 1; }
+    .ts-section-uploads { order: 2; }
+    .ts-section-completed { order: 3; }
   }
 </style>

@@ -3164,27 +3164,66 @@
     };
   });
 
-  function applyRemoteCarpenterMutations(remote: ScheduleDoc) {
-    /* Index local tasks by id across schedule + backlog so we can
-       answer "is this id already known locally?". */
-    const localIds = new Set<string>();
-    for (const day of Object.values(doc.schedule)) {
-      for (const t of day?.tasks ?? []) localIds.add(t.id);
-    }
-    for (const t of doc.backlog ?? []) localIds.add(t.id);
+  /**
+   * Snapshot of task ids seen in the last remote pull, used as the
+   * baseline for three-way merge in applyRemoteCarpenterMutations.
+   *
+   * Without this, the merge can't tell "carpenter added a new task"
+   * apart from "Blake deleted a task locally" - both look like
+   * "in remote, not in local" and the old additive merge would
+   * re-add deleted items on the next poll (see the deleted-backlog-
+   * item resurrection bug).
+   *
+   * On first poll these are empty, so nothing is treated as "new"
+   * relative to the baseline - all matching ids fall through to the
+   * `already local` check and are left alone. Subsequent polls have
+   * a real baseline to compare against.
+   */
+  let lastSeenRemoteBacklogIds = $state<Set<string>>(new Set());
+  let lastSeenRemoteDayTaskIds = $state<Set<string>>(new Set());
 
-    /* Append carpenter-added backlog items. */
-    const remoteBacklog = remote.backlog ?? [];
-    const newBacklogItems = remoteBacklog.filter((t) => !localIds.has(t.id));
+  function applyRemoteCarpenterMutations(remote: ScheduleDoc) {
+    /* Local presence sets - "is this id already somewhere in Blake's
+       working copy?". Used to avoid rendering the same task twice. */
+    const localBacklogIds = new Set<string>();
+    for (const t of doc.backlog ?? []) localBacklogIds.add(t.id);
+    const localDayTaskIds = new Set<string>();
+    for (const day of Object.values(doc.schedule)) {
+      for (const t of day?.tasks ?? []) localDayTaskIds.add(t.id);
+    }
+
+    /* Snapshot of the remote we're merging in, used to update the
+       baseline at the end. */
+    const remoteBacklogIds = new Set<string>();
+    for (const t of remote.backlog ?? []) remoteBacklogIds.add(t.id);
+    const remoteDayTaskIds = new Set<string>();
+    for (const day of Object.values(remote.schedule)) {
+      for (const t of day?.tasks ?? []) remoteDayTaskIds.add(t.id);
+    }
+
+    /* Carpenter-added backlog items: on remote NOW, weren't on remote
+       LAST time we polled, and aren't anywhere local. If the id was
+       in the previous baseline but is missing locally, that means
+       Blake deleted it - do NOT re-add. */
+    const newBacklogItems = (remote.backlog ?? []).filter((t) =>
+      !lastSeenRemoteBacklogIds.has(t.id)
+        && !localBacklogIds.has(t.id)
+        && !localDayTaskIds.has(t.id)
+    );
     if (newBacklogItems.length > 0) {
       doc.backlog = [...(doc.backlog ?? []), ...newBacklogItems];
     }
 
-    /* Append carpenter-added day tasks (moveToToday operations). */
+    /* Carpenter-added day tasks (usually moveToToday, could also be
+       a task that appeared on a day directly). Same three-way check:
+       must be new-to-remote AND not already local. */
     for (const [iso, day] of Object.entries(remote.schedule)) {
       const remoteTasks = day?.tasks;
       if (!remoteTasks) continue;
-      const newDayTasks = remoteTasks.filter((t) => !localIds.has(t.id));
+      const newDayTasks = remoteTasks.filter((t) =>
+        !lastSeenRemoteDayTaskIds.has(t.id)
+          && !localDayTaskIds.has(t.id)
+      );
       if (newDayTasks.length === 0) continue;
       const localDay = doc.schedule[iso];
       const baseDay = localDay ?? {
@@ -3198,21 +3237,23 @@
         ...baseDay,
         tasks: [...(baseDay.tasks ?? []), ...newDayTasks],
       };
-    }
-
-    /* If the remote moved an item out of backlog onto a day, the
-       merge above already adds it to the day. Now strip it from our
-       local backlog so we don't render it twice. */
-    const remoteDayTaskIds = new Set<string>();
-    for (const day of Object.values(remote.schedule)) {
-      for (const t of day?.tasks ?? []) remoteDayTaskIds.add(t.id);
-    }
-    if (doc.backlog) {
-      const filtered = doc.backlog.filter((t) => !remoteDayTaskIds.has(t.id));
-      if (filtered.length !== doc.backlog.length) {
-        doc.backlog = filtered;
+      /* If a carpenter moved one of these items from backlog to
+         a day, strip our stale backlog copy so it doesn't render
+         twice. Gate on lastSeen - if remote had it on backlog
+         previously and now has it on a day, that's a move. If it
+         was never on the remote backlog baseline, don't touch our
+         backlog (Blake may have just moved day → backlog locally). */
+      for (const t of newDayTasks) {
+        if (lastSeenRemoteBacklogIds.has(t.id) && doc.backlog?.some((b) => b.id === t.id)) {
+          doc.backlog = doc.backlog.filter((b) => b.id !== t.id);
+        }
       }
     }
+
+    /* Advance the baseline so the next poll sees this remote as
+       "already known". */
+    lastSeenRemoteBacklogIds = remoteBacklogIds;
+    lastSeenRemoteDayTaskIds = remoteDayTaskIds;
   }
 
   /**
@@ -5826,12 +5867,36 @@
 
   @media (max-width: 900px) {
     .scheduler,
-    .scheduler.editor-open {
+    .scheduler.editor-open,
+    /* Task Schedule mode carries its own three-column template with
+       higher specificity than plain .scheduler, so we have to name
+       every task-mode variant explicitly to collapse it to a single
+       stacked column on mobile. Missing one means the container
+       stays as a 3-column grid and `order:` below silently no-ops. */
+    .scheduler.task-mode,
+    .scheduler.task-mode.editor-open,
+    .scheduler.task-mode.right-sidebar-collapsed,
+    .scheduler.task-mode.sidebar-collapsed,
+    .scheduler.task-mode.sidebar-collapsed.editor-open,
+    .scheduler.task-mode.sidebar-collapsed.right-sidebar-collapsed {
       grid-template-columns: 1fr;
     }
     .scheduler-sidebar {
       position: static;
       max-height: none;
+    }
+    /* Task Schedule mode: the calendar/list of dates is the primary
+       thing the user wants on a phone. Push the sidebar (Backlog +
+       Uploads + Completed) below it. Rehearsal mode keeps its
+       existing DOM order (cast sidebar on top). */
+    .scheduler.task-mode .scheduler-grid {
+      order: 1;
+    }
+    .scheduler.task-mode .scheduler-sidebar {
+      order: 2;
+    }
+    .scheduler.task-mode .scheduler-right-sidebar {
+      order: 3;
     }
     .demo-banner {
       flex-direction: column;

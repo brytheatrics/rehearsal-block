@@ -582,13 +582,14 @@
     .task-share-sidebar {
       position: static;
       max-height: none;
-      /* Above the list view on mobile so carpenters can see (and
-         expand) Backlog / Completed / Uploads without scrolling
-         past the day list. Sections default to collapsed on mobile. */
-      order: 1;
+      /* Day list is the primary thing to see on a phone. Sidebar
+         (Backlog / Uploads / Completed) drops below it. Sections
+         default to collapsed on mobile so the drop below the day
+         list doesn't feel far. */
+      order: 2;
     }
     .task-share-main {
-      order: 2;
+      order: 1;
     }
     .task-share-page.phone .task-share-header {
       gap: var(--space-2);
